@@ -27,7 +27,6 @@ export default function LoginPage() {
   // Selected persona state ("client" | "freelancer")
   const [persona, setPersona] = useState<"client" | "freelancer">("client");
 
-  // Credentials state
   const [email, setEmail] = useState("alex.rivera@nexum.demo");
   const [password, setPassword] = useState("demo1234");
   const [showPassword, setShowPassword] = useState(false);
@@ -99,15 +98,19 @@ export default function LoginPage() {
     try {
       if (persona === "client" && email.trim() === client.email) {
         const ok = await loginAs("CLIENT");
-        if (ok) return router.push("/");
+        if (ok) return router.push("/client/dashboard");
       } else if (persona === "freelancer" && email.trim() === freelancerA.email) {
         const ok = await loginAs("FREELANCER_A");
-        if (ok) return router.push("/");
+        if (ok) return router.push("/freelancer/dashboard");
       }
 
       const result = await loginWithCredentials(email.trim(), password);
       if (result.success) {
-        router.push("/");
+        if (result.user?.role === "FREELANCER") {
+          router.push("/freelancer/dashboard");
+        } else {
+          router.push("/client/dashboard");
+        }
       } else {
         showToast(result.error || "Authentication failed. Check credentials.");
       }
