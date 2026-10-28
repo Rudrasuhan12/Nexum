@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #FFFFFF;
+  --color-ink: #0A0D14;
+  --color-ink-light: #20242D;
+  --color-ink-muted: #64748B;
+  --color-cobalt: #425CFB;
+  --color-cobalt-hover: #334be0;
+  --color-mist: #E2E6EF;
+  --color-mist-light: #F0F3FA;
+  --color-verified: #187B62;
+  --color-verified-light: #E8F5F1;
+  --color-attention: #F0B44C;
+  --color-attention-light: #FEF7EC;
+
+  --font-heading: var(--font-manrope), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), monospace;
+
+  --shadow-attio: 0 2px 4px rgba(15, 23, 42, 0.04), 0 24px 60px -12px rgba(15, 23, 42, 0.16), 0 40px 90px -24px rgba(15, 23, 42, 0.12);
+  --shadow-terminal: 0 25px 60px -12px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  --shadow-floating: 0 16px 40px -8px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.05);
+}
+
+:root {
+  --background: #FFFFFF;
+  --foreground: #0A0D14;
+}
+
+body {
+  background-color: #FFFFFF;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+/* Attio Exact Periwinkle-Blue Background with Crisp White Pinstripes*/
+.bg-attio-vibrant-periwinkle {
+  background-color: #D6E3FC;
+  background-image: 
+    /* LAYER 1: Subtle, tight 1px white pinstripes */
+    repeating-linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.36) 0px,
+      rgba(255, 255, 255, 0.36) 1px,
+      transparent 1px,
+      transparent 9px
+    ),
+    /* LAYER 2: Luminous Periwinkle Radial Gradient */
+    radial-gradient(
+      ellipse 90% 70% at 50% 45%,
+      #ECF3FE 0%,
+      #D7E5FD 50%,
+      #C2D7FA 100%
+    );
+}
+
+/* Cinematic Reveal */
+@keyframes cinematicReveal {
+  0% {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0);
+  }
+}
+
+.animate-cinematic {
+  animation: cinematicReveal 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Micro-scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+/* Traveling Laser Beam Animation */
+@keyframes laserSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(1200%);
+  }
+}
+
+.animate-laser-sweep {
+  animation: laserSweep 4.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+/* Seamless Silk Marquee */
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee 32s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Cinematic Product Window Entrance */
+@keyframes cinematicBoxReveal {
+  0% {
+    opacity: 0;
+    filter: blur(14px);
+    transform: translateY(40px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0px) scale(1);
+  }
+}
+
+.animate-cinematic-box {
+  animation: cinematicBoxReveal 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Attio Dark Pinstripe Canvas */
+.bg-dark-cosmic-stripes {
+  background-color: #07090E;
+  background-image: repeating-linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.07) 0px,
+    rgba(255, 255, 255, 0.07) 1px,
+    transparent 1px,
+    transparent 15px
+  );
+}
+
+/* Vertical Passing Light Streaks */
+@keyframes verticalBeamDrift {
+  0% {
+    transform: translateY(-120%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.7;
+  }
+  80% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(1200%);
+    opacity: 0;
+  }
+}
+
+.animate-beam-slow {
+  animation: verticalBeamDrift 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-beam-mid {
+  animation: verticalBeamDrift 6.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-beam-fast {
+  animation: verticalBeamDrift 4.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Circular Radar Sweep */
+@keyframes radarSweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-radar-sweep {
+  animation: radarSweep 8s linear infinite;
+  transform-origin: center center;
+}
+/* Smooth Editorial Text Crossfade */
+@keyframes textCrossfade {
+  0% {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0);
+  }
+}
+
+.animate-text-crossfade {
+  animation: textCrossfade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Attio High-Contrast Dotted Background Grid */
+/* Attio Crisp Visible Dotted Background */
+.bg-attio-dots {
+  background-color: #FFFFFF;
+  background-image: radial-gradient(#64748B 1.5px, transparent 1.5px);
+  background-size: 24px 24px;
+}
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  overflow-x: clip; /* Allows sticky curtain reveal to work smoothly */
+}
