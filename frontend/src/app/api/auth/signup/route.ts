@@ -48,7 +48,13 @@ export async function POST(request: Request) {
           ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=128&h=128&fit=crop&crop=faces"
           : "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=128&h=128&fit=crop&crop=faces",
       title: title || (role === "CLIENT" ? "Client / Buyer" : `${skills?.[0] || "Software"} Specialist`),
+      companyOrHandle: role === "CLIENT" ? "Nexum Client" : `@${name.trim().toLowerCase().replace(/\s+/g, "_")}`,
+      location: "Remote",
+      timezone: "UTC",
+      statusBadge: role === "CLIENT" ? "Verified Buyer" : "Verified Freelancer",
+      summary: role === "CLIENT" ? "Managing freelance projects on Nexum." : "Freelance professional delivering milestone-proven software.",
       canLogin: true,
+      isDemoData: false,
     };
 
     try {

@@ -51,8 +51,14 @@ export async function POST(request: Request) {
                 backendData.user.role === "CLIENT"
                   ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=128&h=128&fit=crop&crop=faces"
                   : "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=128&h=128&fit=crop&crop=faces",
-              title: backendData.user.role === "CLIENT" ? "Verified Client" : "Verified Freelancer",
+              title: backendData.user.title || (backendData.user.role === "CLIENT" ? "Verified Client" : "Verified Freelancer"),
+              companyOrHandle: backendData.user.companyOrHandle || (backendData.user.role === "CLIENT" ? "Nexum Client" : `@${backendData.user.name?.toLowerCase().replace(/\s+/g, "_") || "freelancer"}`),
+              location: backendData.user.location || "Remote",
+              timezone: backendData.user.timezone || "UTC",
+              statusBadge: backendData.user.statusBadge || (backendData.user.role === "CLIENT" ? "Verified Buyer" : "Verified Freelancer"),
+              summary: backendData.user.summary || (backendData.user.role === "CLIENT" ? "Managing freelance projects with milestone escrow proof." : "Full-stack freelancer delivering verified milestones."),
               canLogin: true,
+              isDemoData: false,
             };
 
             await setSession(loggedInUser);

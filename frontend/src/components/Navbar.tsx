@@ -418,7 +418,7 @@ export default function Navbar() {
               </Link>
 
               <Link
-                href="/login"
+                href="/signup"
                 className={`inline-flex h-9 items-center justify-center rounded-lg px-4 text-xs font-semibold shadow-xs transition-all duration-300 ${
                   isDark
                     ? "bg-white text-slate-900 hover:bg-slate-100"

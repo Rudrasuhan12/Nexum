@@ -13,12 +13,25 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
-const corsOrigin = process.env.CORS_ORIGIN || "http://localhost:3000";
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
+  : ["http://localhost:3000", "http://127.0.0.1:3000"];
 
 // Middlewares
 app.use(
   cors({
-    origin: corsOrigin,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, Next.js server-side fetch)
+      if (!origin) return callback(null, true);
+      if (
+        allowedOrigins.includes("*") ||
+        allowedOrigins.includes(origin) ||
+        origin.endsWith(".vercel.app")
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
   })
 );
@@ -59,8 +72,8 @@ app.use(
 );
 
 if (process.env.NODE_ENV !== "test") {
-  app.listen(port, () => {
-    console.log(`🚀 Nexum Express Backend running on http://localhost:${port}`);
+  app.listen(Number(port), "0.0.0.0", () => {
+    console.log(`🚀 Nexum Express Backend running on port ${port}`);
     console.log(`📡 Health endpoint: http://localhost:${port}/health`);
   });
 }
