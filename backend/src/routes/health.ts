@@ -13,6 +13,7 @@ router.get("/", async (_req: Request, res: Response) => {
     dbStatus = "CONNECTED";
     dbLatencyMs = Date.now() - start;
   } catch (err: unknown) {
+    console.error("Database health check error:", err);
     dbStatus = "ERROR";
   }
 

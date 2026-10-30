@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 
 import healthRouter from "./routes/health.js";
+import authRouter from "./routes/auth.js";
 import usersRouter from "./routes/users.js";
 import projectsRouter from "./routes/projects.js";
 import paymentsRouter from "./routes/payments.js";
@@ -25,6 +26,7 @@ app.use(express.json());
 
 // Routes
 app.use("/health", healthRouter);
+app.use("/api/auth", authRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/payments", paymentsRouter);
@@ -64,4 +66,3 @@ if (process.env.NODE_ENV !== "test") {
 }
 
 export default app;
-

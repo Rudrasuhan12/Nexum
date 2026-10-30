@@ -132,13 +132,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-white flex flex-col lg:grid lg:grid-cols-2 selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen lg:h-screen lg:max-h-screen w-full bg-white flex flex-col lg:grid lg:grid-cols-2 selection:bg-indigo-500 selection:text-white lg:overflow-hidden">
       {/* ==============================================================
           LEFT COLUMN: CLEAN WHITE AUTHENTICATION CONTAINER
          ============================================================== */}
-      <div className="w-full flex flex-col justify-between px-6 sm:px-12 lg:px-16 xl:px-20 py-8 lg:py-12 overflow-y-auto">
+      <div className="w-full h-full flex flex-col justify-between px-6 sm:px-10 lg:px-12 xl:px-16 py-3.5 sm:py-4.5 lg:py-5 overflow-y-auto">
         {/* Top Header / Back Link */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-2.5 sm:mb-3">
           <Link
             href="/"
             className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors group"
@@ -152,24 +152,24 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Center Content Box */}
-        <div className="max-w-[420px] w-full mx-auto my-auto">
+        {/* Center Content Box (WIDTH: ~1 cm wider via max-w-[435px]) */}
+        <div className="max-w-[435px] w-full mx-auto my-auto">
           {/* Logo & Headline */}
-          <div className="flex flex-col items-center text-center mb-7">
-            <div className="mb-4 transition-transform hover:scale-105 duration-200">
-              <Logo surface="light" className="h-12 w-12 object-contain" />
+          <div className="flex flex-col items-center text-center mb-3 sm:mb-3.5">
+            <div className="mb-2 transition-transform hover:scale-105 duration-200">
+              <Logo surface="light" className="h-10 w-10 sm:h-11 sm:w-11 object-contain" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight font-heading">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight font-heading">
               Welcome Back !
             </h1>
-            <p className="text-xs sm:text-[13px] text-slate-500 mt-1.5">
+            <p className="text-xs text-slate-500 mt-1">
               Please enter your details to access your workspace.
             </p>
           </div>
 
           {/* Active User Alert if logged in */}
           {user && (
-            <div className="mb-5 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-2.5 text-xs text-emerald-950 shadow-xs">
+            <div className="mb-3 flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/80 px-3.5 py-2 text-xs text-emerald-950 shadow-xs">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                 <span>
@@ -189,23 +189,23 @@ export default function LoginPage() {
           {/* ==============================================================
               PERSONA SWITCHER (2 CARDS: CLIENT / BUYER & FREELANCER)
              ============================================================== */}
-          <div className="grid grid-cols-2 gap-3 mb-5" role="group" aria-label="Select demo role">
+          <div className="grid grid-cols-2 gap-3 mb-3 sm:mb-3.5" role="group" aria-label="Select demo role">
             {/* Persona 1: Client / Buyer */}
             <button
               type="button"
               onClick={() => handleSelectPersona("client")}
-              className={`relative text-left flex items-center gap-2.5 p-3 rounded-2xl border transition-all duration-200 cursor-pointer active:scale-98 ${
+              className={`relative text-left flex items-center gap-2.5 p-2.5 sm:p-3 rounded-xl border transition-all duration-200 cursor-pointer active:scale-98 ${
                 persona === "client"
                   ? "border-[#4f46e5] bg-[#eef2ff] shadow-[0_4px_14px_rgba(79,70,229,0.12)] ring-2 ring-[#4f46e5]/20"
                   : "border-slate-200 bg-slate-50/60 hover:bg-white hover:border-slate-300 hover:shadow-xs"
               }`}
             >
-              <div className="w-9 h-9 rounded-full overflow-hidden shrink-0 ring-1 ring-slate-200">
+              <div className="w-8.5 h-8.5 rounded-full overflow-hidden shrink-0 ring-1 ring-slate-200">
                 <Image
                   src={client.avatar}
                   alt={client.name}
-                  width={36}
-                  height={36}
+                  width={34}
+                  height={34}
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -230,18 +230,18 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => handleSelectPersona("freelancer")}
-              className={`relative text-left flex items-center gap-2.5 p-3 rounded-2xl border transition-all duration-200 cursor-pointer active:scale-98 ${
+              className={`relative text-left flex items-center gap-2.5 p-2.5 sm:p-3 rounded-xl border transition-all duration-200 cursor-pointer active:scale-98 ${
                 persona === "freelancer"
                   ? "border-[#4f46e5] bg-[#eef2ff] shadow-[0_4px_14px_rgba(79,70,229,0.12)] ring-2 ring-[#4f46e5]/20"
                   : "border-slate-200 bg-slate-50/60 hover:bg-white hover:border-slate-300 hover:shadow-xs"
               }`}
             >
-              <div className="w-9 h-9 rounded-full overflow-hidden shrink-0 ring-1 ring-slate-200">
+              <div className="w-8.5 h-8.5 rounded-full overflow-hidden shrink-0 ring-1 ring-slate-200">
                 <Image
                   src={freelancerA.avatar}
                   alt={freelancerA.name}
-                  width={36}
-                  height={36}
+                  width={34}
+                  height={34}
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -264,15 +264,15 @@ export default function LoginPage() {
           </div>
 
           {/* ==============================================================
-              LOGIN FORM
+              LOGIN FORM (HEIGHT: ~1.5 cm taller via inputs, spacing, buttons)
              ============================================================== */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-3.5">
             {/* Email Address Field */}
             <div>
-              <label htmlFor="login-email" className="block text-xs font-bold text-slate-700 mb-1.5">
+              <label htmlFor="login-email" className="block text-xs font-bold text-slate-700 mb-1">
                 Email Address
               </label>
-              <div className="h-11 flex items-center gap-2.5 border border-slate-200 rounded-xl px-3 bg-white transition focus-within:border-[#4f46e5] focus-within:ring-2 focus-within:ring-[#4f46e5]/15 shadow-2xs">
+              <div className="h-10 sm:h-10.5 flex items-center gap-2.5 border border-slate-200 rounded-xl px-3 bg-white transition focus-within:border-[#4f46e5] focus-within:ring-2 focus-within:ring-[#4f46e5]/15 shadow-2xs">
                 <Mail className="w-4 h-4 text-slate-400 shrink-0" />
                 <input
                   id="login-email"
@@ -288,7 +288,7 @@ export default function LoginPage() {
 
             {/* Password Field */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-1">
                 <label htmlFor="login-password" className="block text-xs font-bold text-slate-700">
                   Password
                 </label>
@@ -303,7 +303,7 @@ export default function LoginPage() {
                   Use demo credentials &rarr;
                 </button>
               </div>
-              <div className="h-11 flex items-center gap-2.5 border border-slate-200 rounded-xl px-3 bg-white transition focus-within:border-[#4f46e5] focus-within:ring-2 focus-within:ring-[#4f46e5]/15 shadow-2xs">
+              <div className="h-10 sm:h-10.5 flex items-center gap-2.5 border border-slate-200 rounded-xl px-3 bg-white transition focus-within:border-[#4f46e5] focus-within:ring-2 focus-within:ring-[#4f46e5]/15 shadow-2xs">
                 <Lock className="w-4 h-4 text-slate-400 shrink-0" />
                 <input
                   id="login-password"
@@ -320,13 +320,13 @@ export default function LoginPage() {
                   className="text-slate-400 hover:text-slate-600 border-0 bg-transparent p-1 cursor-pointer shrink-0"
                   title={showPassword ? "Hide password" : "Show password"}
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
 
             {/* Checkbox & Security Row */}
-            <div className="flex items-center justify-between text-xs pt-1">
+            <div className="flex items-center justify-between text-xs py-0.5">
               <label className="flex items-center gap-2 cursor-pointer text-slate-600 font-medium text-[11.5px]">
                 <input
                   type="checkbox"
@@ -338,23 +338,23 @@ export default function LoginPage() {
               </label>
 
               <div className="flex items-center gap-1 font-mono text-[10px] text-slate-400">
-                <ShieldCheck className="w-3 h-3 text-[#4f46e5]" />
+                <ShieldCheck className="w-3.5 h-3.5 text-[#4f46e5]" />
                 <span>Secured with dual SHA-256</span>
               </div>
             </div>
 
-            {/* Primary Action Button - Lighter Vibrant Blue / Indigo */}
+            {/* Primary Action Button */}
             <button
               type="submit"
               disabled={isSubmitting}
-              className="h-11 w-full rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-white font-bold text-xs sm:text-[13px] shadow-[0_6px_20px_rgba(79,70,229,0.28)] hover:shadow-[0_8px_25px_rgba(79,70,229,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer disabled:opacity-50 mt-4 flex items-center justify-center gap-2 group"
+              className="h-10.5 sm:h-11 w-full rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-white font-bold text-xs sm:text-[13px] shadow-[0_4px_16px_rgba(79,70,229,0.25)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.35)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer disabled:opacity-50 mt-2 flex items-center justify-center gap-2 group"
             >
               <span>{isSubmitting ? "Entering Workspace..." : "Login"}</span>
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </button>
 
             {/* Legal Notice */}
-            <p className="text-[11px] text-slate-500 text-center leading-relaxed pt-2">
+            <p className="text-[10.5px] text-slate-500 text-center leading-tight pt-0.5">
               By creating an account, you agree to our{" "}
               <Link href="#" className="font-semibold text-slate-800 hover:underline">
                 Terms of Service
@@ -366,12 +366,12 @@ export default function LoginPage() {
             </p>
 
             {/* Divider */}
-            <div className="flex items-center gap-2.5 text-slate-400 text-[10px] font-semibold tracking-wider my-3 before:content-[''] before:h-px before:flex-1 before:bg-slate-200 after:content-[''] after:h-px after:flex-1 after:bg-slate-200">
+            <div className="flex items-center gap-2.5 text-slate-400 text-[10px] font-semibold tracking-wider my-2 before:content-[''] before:h-px before:flex-1 before:bg-slate-200 after:content-[''] after:h-px after:flex-1 after:bg-slate-200">
               OR CONTINUE WITH
             </div>
 
             {/* Social Demo Login Buttons */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               {/* Google */}
               <button
                 type="button"
@@ -379,9 +379,9 @@ export default function LoginPage() {
                   handleSelectPersona("client");
                   showToast("Simulating Google login for Alex Rivera...");
                 }}
-                className="h-10 border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 rounded-xl text-slate-700 flex items-center justify-center gap-2 text-xs font-semibold transition hover:-translate-y-0.5 hover:shadow-xs cursor-pointer"
+                className="h-9 sm:h-9.5 border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 rounded-xl text-slate-700 flex items-center justify-center gap-2 text-xs font-semibold transition hover:-translate-y-0.5 hover:shadow-xs cursor-pointer"
               >
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z" />
                   <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24Z" />
                   <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15Z" />
@@ -397,7 +397,7 @@ export default function LoginPage() {
                   handleSelectPersona("freelancer");
                   showToast("Simulating Microsoft login for Rohan Verma...");
                 }}
-                className="h-10 border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 rounded-xl text-slate-700 flex items-center justify-center gap-2 text-xs font-semibold transition hover:-translate-y-0.5 hover:shadow-xs cursor-pointer"
+                className="h-9 sm:h-9.5 border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 rounded-xl text-slate-700 flex items-center justify-center gap-2 text-xs font-semibold transition hover:-translate-y-0.5 hover:shadow-xs cursor-pointer"
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 23 23">
                   <path fill="#f35325" d="M1 1h10v10H1z" />
@@ -408,11 +408,19 @@ export default function LoginPage() {
                 <span>Microsoft</span>
               </button>
             </div>
+
+            {/* Sign Up Redirect */}
+            <div className="text-center pt-2 text-xs text-slate-500">
+              Don&apos;t have an account?{" "}
+              <Link href="/signup" className="font-semibold text-[#4f46e5] hover:text-[#4338ca] hover:underline">
+                Sign Up
+              </Link>
+            </div>
           </form>
         </div>
 
         {/* Footer info */}
-        <div className="mt-8 text-center text-[11px] text-slate-400 font-mono">
+        <div className="mt-2.5 sm:mt-3 text-center text-[10.5px] text-slate-400 font-mono">
           <span>Nexum Protocol · Reconcile-Before-Retry Engine</span>
         </div>
       </div>
@@ -421,7 +429,7 @@ export default function LoginPage() {
           RIGHT COLUMN: VIBRANT PERIWINKLE/INDIGO GLASS SHOWCASE
           Directly matching Image 1: Glass container, 3D character, to-and-fro lamp, carousel
          ============================================================== */}
-      <div className="hidden lg:flex flex-col items-center justify-center p-8 xl:p-12 bg-gradient-to-br from-[#5b52f0] via-[#4f46e5] to-[#3730a3] relative overflow-hidden select-none">
+      <div className="hidden lg:flex flex-col items-center justify-center p-4 xl:p-8 bg-gradient-to-br from-[#5b52f0] via-[#4f46e5] to-[#3730a3] relative overflow-hidden select-none h-full max-h-screen">
         {/* Style tag for accurate physics-based to-and-fro lamp motion and subtle floating */}
         <style jsx global>{`
           @keyframes toAndFroLamp {
@@ -462,7 +470,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:36px_36px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_60%,transparent_100%)] pointer-events-none" />
 
         {/* The Glassmorphic Showcase Card */}
-        <div className="relative w-full max-w-[500px] aspect-[4/5] rounded-[36px] border border-white/25 bg-white/10 backdrop-blur-xl shadow-[0_30px_70px_rgba(0,0,0,0.25)] flex flex-col justify-between p-8 sm:p-10 overflow-hidden text-white">
+        <div className="relative w-full max-w-[420px] xl:max-w-[450px] max-h-[calc(100vh-2.5rem)] aspect-[4/5] rounded-[28px] sm:rounded-[32px] border border-white/25 bg-white/10 backdrop-blur-xl shadow-[0_24px_60px_rgba(0,0,0,0.25)] flex flex-col justify-between p-5 sm:p-7 overflow-hidden text-white">
           {/* Subtle Glass Sheen Top Edge */}
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent" />
 
@@ -475,10 +483,10 @@ export default function LoginPage() {
             <div className="w-4 h-1.5 rounded-full bg-white/70 shadow-sm" />
 
             {/* Compact Hanging Cord (Shortened so lamp stays high above head) */}
-            <div className="w-[1.5px] h-7 bg-gradient-to-b from-white/80 via-white/50 to-slate-300" />
+            <div className="w-[1.5px] h-5 bg-gradient-to-b from-white/80 via-white/50 to-slate-300" />
 
             {/* Sleek Metallic Dome Shade (Proportional compact dome matching reference) */}
-            <div className="w-22 h-10 rounded-t-full bg-gradient-to-b from-slate-200 via-slate-400 to-slate-800 shadow-[0_8px_20px_rgba(0,0,0,0.35)] relative overflow-hidden">
+            <div className="w-20 h-9 rounded-t-full bg-gradient-to-b from-slate-200 via-slate-400 to-slate-800 shadow-[0_8px_20px_rgba(0,0,0,0.35)] relative overflow-hidden">
               {/* Metallic rim accent */}
               <div className="absolute -bottom-0.5 inset-x-0 h-1 rounded-full bg-gradient-to-r from-slate-300 via-white to-slate-300 shadow-inner" />
               {/* Subtle recessed interior glow */}
@@ -487,29 +495,29 @@ export default function LoginPage() {
 
             {/* Soft Downward Volumetric Light Beam (Sways with the lamp, shines onto the character below) */}
             <div
-              className="w-64 h-72 bg-gradient-to-b from-white/20 via-white/5 to-transparent blur-md pointer-events-none -mt-1"
+              className="w-56 h-60 bg-gradient-to-b from-white/20 via-white/5 to-transparent blur-md pointer-events-none -mt-1"
               style={{
                 clipPath: "polygon(36% 0%, 64% 0%, 100% 100%, 0% 100%)",
               }}
             />
           </div>
 
-          {/* Center 3D Developer Character in Beanbag Chair (Shifted ~2cm down for balanced clearance) */}
-          <div className="relative z-10 my-auto flex flex-col items-center justify-center translate-y-7 sm:translate-y-8 py-2">
-            <div className="relative w-72 h-64 sm:w-80 sm:h-72 flex items-center justify-center [animation:gentleFloat_5s_ease-in-out_infinite]">
+          {/* Center 3D Developer Character in Beanbag Chair */}
+          <div className="relative z-10 my-auto flex flex-col items-center justify-center translate-y-2.5 sm:translate-y-3 py-1">
+            <div className="relative w-60 h-52 sm:w-68 sm:h-60 flex items-center justify-center [animation:gentleFloat_5s_ease-in-out_infinite]">
               {/* Soft Ambient Floor Shadow */}
-              <div className="absolute bottom-2 w-60 h-10 bg-black/40 rounded-full blur-xl" />
-              <div className="absolute bottom-3 w-48 h-6 bg-[#1e1b4b]/60 rounded-full blur-md" />
+              <div className="absolute bottom-2 w-48 h-7 bg-black/40 rounded-full blur-xl" />
+              <div className="absolute bottom-3 w-36 h-5 bg-[#1e1b4b]/60 rounded-full blur-md" />
 
               {/* Glowing Laptop Screen Ambience */}
-              <div className="absolute top-[42%] left-[42%] w-18 h-18 bg-indigo-300/25 rounded-full [animation:pulseScreenGlow_3s_ease-in-out_infinite] pointer-events-none" />
+              <div className="absolute top-[42%] left-[42%] w-14 h-14 bg-indigo-300/25 rounded-full [animation:pulseScreenGlow_3s_ease-in-out_infinite] pointer-events-none" />
 
               {/* The 3D Rendered Asset (Reversed/Mirrored horizontally to face left towards the form) */}
               <Image
                 src="/developer-3d-v3.png"
                 alt="3D Freelance Developer in beanbag chair working on laptop"
-                width={380}
-                height={380}
+                width={320}
+                height={320}
                 className="relative z-10 w-full h-full object-contain drop-shadow-[0_16px_28px_rgba(0,0,0,0.4)] select-none pointer-events-none"
                 priority
               />
@@ -519,16 +527,16 @@ export default function LoginPage() {
           {/* ==============================================================
               BOTTOM TEXT & CAROUSEL DOTS (Directly matching Image 1)
              ============================================================== */}
-          <div className="relative z-20 pt-4 pb-2 sm:pb-3">
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white mb-2 font-heading transition-all duration-300">
+          <div className="relative z-20 pt-2 pb-1">
+            <h2 className="text-base sm:text-lg font-bold tracking-tight text-white mb-1 font-heading transition-all duration-300">
               {SHOWCASE_SLIDES[activeSlide].title}
             </h2>
-            <p className="text-xs sm:text-[13px] text-white/80 leading-relaxed font-normal max-w-sm transition-all duration-300">
+            <p className="text-xs text-white/80 leading-relaxed font-normal max-w-sm transition-all duration-300 line-clamp-2">
               {SHOWCASE_SLIDES[activeSlide].description}
             </p>
 
             {/* 3 Pagination Carousel Dots / Pills */}
-            <div className="flex items-center gap-2 mt-4 sm:mt-5">
+            <div className="flex items-center gap-2 mt-2.5">
               {SHOWCASE_SLIDES.map((_, idx) => (
                 <button
                   key={idx}

@@ -3,6 +3,18 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { DemoUser } from "@/lib/auth-types";
 
+export interface SignupPayload {
+  email: string;
+  password: string;
+  role: "CLIENT" | "FREELANCER";
+  name: string;
+  preferences?: string[];
+  skills?: string[];
+  profileType?: string;
+  workExperience?: string;
+  title?: string;
+}
+
 interface AuthContextType {
   user: DemoUser | null;
   isLoading: boolean;
@@ -11,6 +23,7 @@ interface AuthContextType {
     email: string,
     password?: string
   ) => Promise<{ success: boolean; error?: string; user?: DemoUser }>;
+  signup: (payload: SignupPayload) => Promise<{ success: boolean; error?: string; user?: DemoUser }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -116,6 +129,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const signup = async (
+    payload: SignupPayload
+  ): Promise<{ success: boolean; error?: string; user?: DemoUser }> => {
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || "Registration failed" };
+      }
+
+      setUser(data.user);
+      return { success: true, user: data.user };
+    } catch (err: unknown) {
+      console.error("Signup failed:", err);
+      const msg = err instanceof Error ? err.message : "Network error during registration";
+      return { success: false, error: msg };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = async () => {
     setIsLoading(true);
     try {
@@ -129,7 +169,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, loginAs, loginWithCredentials, logout, refreshUser }}>
+    <AuthContext.Provider
+      value={{ user, isLoading, loginAs, loginWithCredentials, signup, logout, refreshUser }}
+    >
       {children}
     </AuthContext.Provider>
   );
