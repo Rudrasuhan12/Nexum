@@ -42,11 +42,11 @@ export default function LoginPage() {
   const router = useRouter();
   const { user, loginAs, loginWithCredentials, logout } = useAuth();
 
-  // Selected persona state ("client" | "freelancer")
-  const [persona, setPersona] = useState<"client" | "freelancer">("client");
+  // Selected persona state ("client" | "freelancer" | null) - not pre-selected by default
+  const [persona, setPersona] = useState<"client" | "freelancer" | null>(null);
 
-  const [email, setEmail] = useState("alex.rivera@nexum.demo");
-  const [password, setPassword] = useState("demo1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
@@ -75,17 +75,25 @@ export default function LoginPage() {
     }, 3500);
   };
 
-  // Handle persona selection
+  // Handle persona selection (toggleable, clears if already selected)
   const handleSelectPersona = (key: "client" | "freelancer") => {
+    if (persona === key) {
+      setPersona(null);
+      setEmail("");
+      setPassword("");
+      showToast("Cleared demo persona selection.");
+      return;
+    }
+
     setPersona(key);
     if (key === "client") {
       setEmail(client.email);
       setPassword("demo1234");
-      showToast("Selected Alex Rivera (Client / Buyer)");
+      showToast("Pre-filled demo: Alex Rivera (Client)");
     } else {
       setEmail(freelancerA.email);
       setPassword("demo1234");
-      showToast("Selected Rohan Verma (Freelancer)");
+      showToast("Pre-filled demo: Rohan Verma (Freelancer)");
     }
   };
 
@@ -189,6 +197,23 @@ export default function LoginPage() {
           {/* ==============================================================
               PERSONA SWITCHER (2 CARDS: CLIENT / BUYER & FREELANCER)
              ============================================================== */}
+          <div className="flex items-center justify-between mb-1.5 px-0.5">
+            <span className="text-[11px] font-semibold text-slate-500">Quick Demo Accounts (Optional)</span>
+            {persona && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPersona(null);
+                  setEmail("");
+                  setPassword("");
+                  showToast("Cleared demo persona selection.");
+                }}
+                className="text-[10px] font-medium text-slate-400 hover:text-indigo-600 underline cursor-pointer"
+              >
+                Clear demo
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-3 mb-3 sm:mb-3.5" role="group" aria-label="Select demo role">
             {/* Persona 1: Client / Buyer */}
             <button
@@ -278,8 +303,14 @@ export default function LoginPage() {
                   id="login-email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="alex.rivera@nexum.demo"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEmail(val);
+                    if (persona && val !== (persona === "client" ? client.email : freelancerA.email)) {
+                      setPersona(null);
+                    }
+                  }}
+                  placeholder="name@company.com"
                   required
                   className="w-full border-0 outline-none bg-transparent text-xs sm:text-[13px] text-slate-900 placeholder:text-slate-400"
                 />
@@ -295,8 +326,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setPassword("demo1234");
-                    showToast("Pre-filled demo password.");
+                    handleSelectPersona(persona || "client");
                   }}
                   className="text-[11px] font-semibold text-[#4f46e5] hover:text-[#4338ca] hover:underline cursor-pointer"
                 >
@@ -309,7 +339,13 @@ export default function LoginPage() {
                   id="login-password"
                   type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPassword(val);
+                    if (persona && val !== "demo1234") {
+                      setPersona(null);
+                    }
+                  }}
                   placeholder="••••••••"
                   required
                   className="w-full border-0 outline-none bg-transparent text-xs sm:text-[13px] text-slate-900 placeholder:text-slate-400"
