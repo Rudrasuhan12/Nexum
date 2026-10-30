@@ -71,6 +71,8 @@ export interface ProjectCardData {
   hasDeltaChange?: boolean;
 }
 
+const STABLE_NOW = 1793365200000;
+
 const INITIAL_PROJECTS: ProjectCardData[] = [
   {
     id: "proj_1",
@@ -87,9 +89,9 @@ const INITIAL_PROJECTS: ProjectCardData[] = [
       urgent: true,
     },
     lastUpdated: "2 hours ago",
-    updatedTimestamp: Date.now() - 2 * 3600 * 1000,
-    createdAtTimestamp: Date.now() - 14 * 86400 * 1000,
-    nextMilestoneDueTimestamp: Date.now() + 1 * 86400 * 1000,
+    updatedTimestamp: STABLE_NOW - 2 * 3600 * 1000,
+    createdAtTimestamp: STABLE_NOW - 14 * 86400 * 1000,
+    nextMilestoneDueTimestamp: STABLE_NOW + 1 * 86400 * 1000,
     freelancer: {
       name: "Rohan Verma",
       role: "Payment Rails Specialist",
@@ -118,9 +120,9 @@ const INITIAL_PROJECTS: ProjectCardData[] = [
       urgent: true,
     },
     lastUpdated: "5 hours ago",
-    updatedTimestamp: Date.now() - 5 * 3600 * 1000,
-    createdAtTimestamp: Date.now() - 7 * 86400 * 1000,
-    nextMilestoneDueTimestamp: Date.now() + 3 * 86400 * 1000,
+    updatedTimestamp: STABLE_NOW - 5 * 3600 * 1000,
+    createdAtTimestamp: STABLE_NOW - 7 * 86400 * 1000,
+    nextMilestoneDueTimestamp: STABLE_NOW + 3 * 86400 * 1000,
     freelancer: {
       name: "Elena Rostova",
       role: "Full-Stack AI Architect",
@@ -150,9 +152,9 @@ const INITIAL_PROJECTS: ProjectCardData[] = [
       urgent: false,
     },
     lastUpdated: "Yesterday, 3:30 PM",
-    updatedTimestamp: Date.now() - 26 * 3600 * 1000,
-    createdAtTimestamp: Date.now() - 4 * 86400 * 1000,
-    nextMilestoneDueTimestamp: Date.now() + 10 * 86400 * 1000,
+    updatedTimestamp: STABLE_NOW - 26 * 3600 * 1000,
+    createdAtTimestamp: STABLE_NOW - 4 * 86400 * 1000,
+    nextMilestoneDueTimestamp: STABLE_NOW + 10 * 86400 * 1000,
     freelancer: {
       name: "Marcus Chen",
       role: "Cloud Reliability & DevOps",
@@ -181,8 +183,8 @@ const INITIAL_PROJECTS: ProjectCardData[] = [
       urgent: false,
     },
     lastUpdated: "2 days ago",
-    updatedTimestamp: Date.now() - 48 * 3600 * 1000,
-    createdAtTimestamp: Date.now() - 5 * 86400 * 1000,
+    updatedTimestamp: STABLE_NOW - 48 * 3600 * 1000,
+    createdAtTimestamp: STABLE_NOW - 5 * 86400 * 1000,
     nextMilestoneDueTimestamp: null,
     totalBudget: "$2,500.00",
     needsAction: false,
@@ -202,8 +204,8 @@ const INITIAL_PROJECTS: ProjectCardData[] = [
       urgent: false,
     },
     lastUpdated: "3 days ago",
-    updatedTimestamp: Date.now() - 72 * 3600 * 1000,
-    createdAtTimestamp: Date.now() - 3 * 86400 * 1000,
+    updatedTimestamp: STABLE_NOW - 72 * 3600 * 1000,
+    createdAtTimestamp: STABLE_NOW - 3 * 86400 * 1000,
     nextMilestoneDueTimestamp: null,
     needsAction: false,
   },
@@ -222,8 +224,8 @@ const INITIAL_PROJECTS: ProjectCardData[] = [
       urgent: false,
     },
     lastUpdated: "1 week ago",
-    updatedTimestamp: Date.now() - 168 * 3600 * 1000,
-    createdAtTimestamp: Date.now() - 30 * 86400 * 1000,
+    updatedTimestamp: STABLE_NOW - 168 * 3600 * 1000,
+    createdAtTimestamp: STABLE_NOW - 30 * 86400 * 1000,
     nextMilestoneDueTimestamp: null,
     freelancer: {
       name: "Priya Sharma",
@@ -248,9 +250,9 @@ const INITIAL_PROJECTS: ProjectCardData[] = [
       urgent: false,
     },
     lastUpdated: "4 days ago",
-    updatedTimestamp: Date.now() - 96 * 3600 * 1000,
-    createdAtTimestamp: Date.now() - 12 * 86400 * 1000,
-    nextMilestoneDueTimestamp: Date.now() + 6 * 86400 * 1000,
+    updatedTimestamp: STABLE_NOW - 96 * 3600 * 1000,
+    createdAtTimestamp: STABLE_NOW - 12 * 86400 * 1000,
+    nextMilestoneDueTimestamp: STABLE_NOW + 6 * 86400 * 1000,
     freelancer: {
       name: "David K.",
       role: "Distributed Systems Architect",
@@ -279,8 +281,8 @@ const INITIAL_PROJECTS: ProjectCardData[] = [
       urgent: true,
     },
     lastUpdated: "5 days ago",
-    updatedTimestamp: Date.now() - 120 * 3600 * 1000,
-    createdAtTimestamp: Date.now() - 20 * 86400 * 1000,
+    updatedTimestamp: STABLE_NOW - 120 * 3600 * 1000,
+    createdAtTimestamp: STABLE_NOW - 20 * 86400 * 1000,
     nextMilestoneDueTimestamp: null,
     totalBudget: "$2,200.00",
     needsAction: true,

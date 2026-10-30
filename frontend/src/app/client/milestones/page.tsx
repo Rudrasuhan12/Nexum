@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import { useRouter } from "next/navigation";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import DashboardTopHeader from "@/components/DashboardTopHeader";
@@ -34,11 +34,19 @@ export default function DedicatedClientMilestonesPage() {
             </p>
           </div>
 
-          <ClientMilestonesView
-            onOpenProjectWorkspace={(projectId) => {
-              router.push(`/client/projects/${projectId}?tab=milestones`);
-            }}
-          />
+          <Suspense
+            fallback={
+              <div className="p-8 text-center text-xs text-slate-500">
+                Loading milestones workspace...
+              </div>
+            }
+          >
+            <ClientMilestonesView
+              onOpenProjectWorkspace={(projectId) => {
+                router.push(`/client/projects/${projectId}?tab=milestones`);
+              }}
+            />
+          </Suspense>
         </main>
       </div>
     </div>

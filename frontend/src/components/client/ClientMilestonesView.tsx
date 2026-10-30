@@ -35,7 +35,6 @@ export default function ClientMilestonesView({
 }: ClientMilestonesViewProps) {
   // Milestone dataset state (mutable for releases & corrections)
   const [milestones, setMilestones] = useState<FullMilestoneData[]>(CLIENT_MILESTONES);
-  const [nowTimestamp] = useState(() => Date.now());
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -109,18 +108,18 @@ export default function ClientMilestonesView({
 
       // 5. Due Date Filter
       if (dueDateFilter === "OVERDUE" && !m.isOverdue) return false;
-      if (dueDateFilter === "THIS_WEEK") {
-        const oneWeek = nowTimestamp + 7 * 86400 * 1000;
-        if (m.dueDateTimestamp > oneWeek || m.dueDateTimestamp < nowTimestamp) return false;
+      if (
+        dueDateFilter === "THIS_WEEK" &&
+        !m.daysRemainingOrOverdue.toLowerCase().includes("today") &&
+        !m.daysRemainingOrOverdue.toLowerCase().includes("3 days")
+      ) {
+        return false;
       }
-      if (dueDateFilter === "NEXT_30_DAYS") {
-        const thirtyDays = nowTimestamp + 30 * 86400 * 1000;
-        if (m.dueDateTimestamp > thirtyDays) return false;
-      }
+      if (dueDateFilter === "NEXT_30_DAYS" && m.isOverdue) return false;
 
       return true;
     });
-  }, [milestones, searchQuery, workflowFilter, projectFilter, paymentFilter, dueDateFilter, nowTimestamp]);
+  }, [milestones, searchQuery, workflowFilter, projectFilter, paymentFilter, dueDateFilter]);
 
   // Handle Accept & Release Funds via PayPal Sandbox Capture
   const handleApproveAndRelease = async (m: FullMilestoneData) => {

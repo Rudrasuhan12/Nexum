@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -47,7 +47,7 @@ type ProjectTab =
   | "payments"
   | "activity";
 
-export default function DedicatedProjectWorkspacePage() {
+function ProjectWorkspaceContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -1183,6 +1183,20 @@ export default function DedicatedProjectWorkspacePage() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function DedicatedProjectWorkspacePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center text-xs text-slate-500 font-medium">
+          Loading project workspace...
+        </div>
+      }
+    >
+      <ProjectWorkspaceContent />
+    </Suspense>
   );
 }
 
