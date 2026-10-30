@@ -10,12 +10,9 @@ import {
 } from "lucide-react";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import DashboardTopHeader from "@/components/DashboardTopHeader";
-import ClientOverviewHeader from "@/components/client/ClientOverviewHeader";
-import ClientFinancialSummary from "@/components/client/ClientFinancialSummary";
-import ActionRequiredCard from "@/components/client/ActionRequiredCard";
-import RecommendedFreelancers from "@/components/client/RecommendedFreelancers";
-import MilestoneSummaryList from "@/components/client/MilestoneSummaryList";
-import RecentActivityList from "@/components/client/RecentActivityList";
+import ClientOverview from "@/components/client/ClientOverview";
+import ClientProjectsView from "@/components/client/ClientProjectsView";
+import ClientMilestonesView from "@/components/client/ClientMilestonesView";
 import ClientSettingsView from "@/components/client/ClientSettingsView";
 import NexumAssistantPanel from "@/components/client/NexumAssistantPanel";
 import { useAuth } from "@/context/AuthContext";
@@ -28,7 +25,7 @@ export default function ClientDashboardPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab");
-      if (tabParam && ["overview", "milestones", "escrow", "audit", "settings"].includes(tabParam)) {
+      if (tabParam && ["overview", "projects", "milestones", "freelancers", "workspace", "payments", "settings", "escrow", "audit"].includes(tabParam)) {
         return tabParam;
       }
     }
@@ -102,7 +99,7 @@ export default function ClientDashboardPage() {
   };
 
   const handleCreateProject = () => {
-    showToast("AI Project Intake Studio: Drafting structured brief for new scope...");
+    router.push("/client/post-project");
   };
 
   return (
@@ -124,12 +121,20 @@ export default function ClientDashboardPage() {
           title={
             activeTab === "overview"
               ? "Overview"
+              : activeTab === "projects"
+              ? "My Projects"
               : activeTab === "milestones"
               ? "Milestone Schedule"
               : activeTab === "escrow"
               ? "PayPal Escrow Rails"
               : activeTab === "settings"
               ? "Profile & Settings"
+              : activeTab === "freelancers"
+              ? "Find Freelancers"
+              : activeTab === "workspace"
+              ? "Workspace"
+              : activeTab === "payments"
+              ? "Payments & Proof"
               : "Consensus Audit Trail"
           }
           subtitle="Horizon Commerce LLC"
@@ -141,181 +146,42 @@ export default function ClientDashboardPage() {
               TAB 1: OVERVIEW (REDESIGNED SAAS HIERARCHY)
              ============================================================== */}
           {activeTab === "overview" && (
-            <div className="space-y-6 sm:space-y-8">
-              
-              {/* A. Compact Overview Header (Replaces Oversized Profile Card) */}
-              <ClientOverviewHeader
-                clientName={client.name}
-                companyName={client.companyOrHandle}
-                projectName="Bilateral E-Commerce Payment Rails"
-                agreementHash="canonical_v1.2_#9f8c2b7e"
-                onFindFreelancer={handleFindFreelancer}
-                onCreateProject={handleCreateProject}
-              />
+            <ClientOverview
+              onNavigateTab={(tab) => setActiveTab(tab)}
+              onReviewMilestone={() => {
+                setActiveTab("milestones");
+                showToast("Opening milestone submission review...");
+              }}
+              onApproveAgreement={() => {
+                setActiveTab("workspace");
+                showToast("Opening bilateral scope agreement for sign-off...");
+              }}
+            />
+          )}
 
-              {/* B. Financial Summary (4 Accurate KPI Cards) */}
-              <ClientFinancialSummary
-                ceilingAmount="$4,500.00"
-                capturedAmount={milestone2Status === "IN_REVIEW" ? "$1,200.00" : "$2,700.00"}
-                pendingFundingAmount={milestone2Status === "IN_REVIEW" ? "$1,500.00" : "$0.00"}
-                reserveAmount="$1,800.00"
-                milestone2Status={milestone2Status}
-              />
-
-              {/* C. Action-Required Section (Immediate Focus) */}
-              <ActionRequiredCard
-                milestoneStatus={milestone2Status}
-                isCapturing={isCapturing}
-                onApproveAndRelease={handleApproveAndRelease}
-                onRequestRevision={() => setShowRevisionModal(true)}
-              />
-
-              {/* D. Recommended Freelancers Grid */}
-              <div id="recommended-freelancers">
-                <RecommendedFreelancers
-                  onShareBrief={(candidateName) =>
-                    showToast(`Consent-aware structured project brief shared with ${candidateName}.`)
-                  }
-                  onViewAllFreelancers={() => router.push("/client/freelancers")}
-                />
-              </div>
-
-              {/* E. Milestone Progress Summary */}
-              <MilestoneSummaryList
-                milestone2Status={milestone2Status}
-                onViewAllMilestones={() => setActiveTab("milestones")}
-              />
-
-              {/* F. Recent Activity & Consensus Events */}
-              <RecentActivityList
-                onViewAuditTrail={() => setActiveTab("audit")}
-              />
-
-            </div>
+          {/* ==============================================================
+              TAB 2: MY PROJECTS (LIFECYCLE FILTERS & COMPREHENSIVE CARDS)
+             ============================================================== */}
+          {activeTab === "projects" && (
+            <ClientProjectsView
+              onOpenProjectWorkspace={(projId) => {
+                router.push(`/client/projects/${projId}`);
+              }}
+              onCreateNewProject={() => {
+                router.push("/client/post-project");
+              }}
+            />
           )}
 
           {/* ==============================================================
               TAB 2: MILESTONES (DEDICATED FULL VIEW)
              ============================================================== */}
           {activeTab === "milestones" && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
-                  Milestone Contract Schedule
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                  Agreement locked under canonical hash <code className="font-mono text-blue-700">canonical_v1.2_#9f8c2b7e</code> with contractor Rohan Verma.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100 shadow-xs overflow-hidden">
-                
-                {/* M1 */}
-                <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-start gap-3.5">
-                    <div className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 grid place-items-center shrink-0 mt-0.5">
-                      <CheckCircle2 className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm">Milestone 1: Project Intake & Architecture PRD</span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          Approved & Released
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Completed Oct 26 · PayPal Order #4AB912048C881923K · Scope signed off by Alex Rivera
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-left sm:text-right font-mono shrink-0">
-                    <div className="text-base font-extrabold text-slate-900">$1,200.00 USD</div>
-                    <div className="text-[11px] text-emerald-600 font-semibold">Captured & Released</div>
-                  </div>
-                </div>
-
-                {/* M2 */}
-                <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
-                  <div className="flex items-start gap-3.5">
-                    <div className="w-9 h-9 rounded-full bg-amber-50 border border-amber-200 text-amber-600 grid place-items-center shrink-0 mt-0.5">
-                      <Clock className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm">Milestone 2: PayPal REST v2 Webhook Ingestion Engine</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                          milestone2Status === "IN_REVIEW"
-                            ? "bg-amber-50 text-amber-800 border-amber-200"
-                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        }`}>
-                          {milestone2Status === "IN_REVIEW" ? "Awaiting Review" : "Approved & Released"}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Pre-funded in PayPal Sandbox Order #6DE714998H998261C · Test criteria verified
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-left sm:text-right font-mono shrink-0">
-                    <div className="text-base font-extrabold text-slate-900">$1,500.00 USD</div>
-                    <div className={`text-[11px] font-semibold ${
-                      milestone2Status === "IN_REVIEW" ? "text-amber-700" : "text-emerald-700"
-                    }`}>
-                      {milestone2Status === "IN_REVIEW" ? "In Sandbox Escrow" : "Captured & Released"}
-                    </div>
-                  </div>
-                </div>
-
-                {/* M3 */}
-                <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 opacity-75">
-                  <div className="flex items-start gap-3.5">
-                    <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 text-slate-500 grid place-items-center shrink-0 mt-0.5">
-                      <Layers className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm">Milestone 3: Dual SHA-256 State Machine & Ledger Replay</span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                          Next to Fund
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Unlocks when Milestone 2 completes · Governed by Fund-Before-Work rule
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-left sm:text-right font-mono shrink-0">
-                    <div className="text-base font-extrabold text-slate-900">$1,000.00 USD</div>
-                    <div className="text-[11px] text-slate-400">Unallocated Reserve</div>
-                  </div>
-                </div>
-
-                {/* M4 */}
-                <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 opacity-75">
-                  <div className="flex items-start gap-3.5">
-                    <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 text-slate-500 grid place-items-center shrink-0 mt-0.5">
-                      <Zap className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm">Milestone 4: Failover Simulator & Deduplication Verification</span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                          Final Stage
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Contract conclusion and bilateral verification audit
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-left sm:text-right font-mono shrink-0">
-                    <div className="text-base font-extrabold text-slate-900">$800.00 USD</div>
-                    <div className="text-[11px] text-slate-400">Unallocated Reserve</div>
-                  </div>
-                </div>
-
-              </div>
-            </div>
+            <ClientMilestonesView
+              onOpenProjectWorkspace={(projectId) => {
+                router.push(`/client/projects/${projectId}?tab=milestones`);
+              }}
+            />
           )}
 
           {/* ==============================================================

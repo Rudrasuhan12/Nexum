@@ -5,18 +5,28 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
+  Home,
+  FolderKanban,
   Layers,
-  CreditCard,
-  FileText,
-  RefreshCw,
-  LogOut,
-  ShieldCheck,
-  Settings,
-  Sparkles,
   Users,
+  Cpu,
+  CreditCard,
+  Settings,
+  HelpCircle,
+  ArrowRight,
+  LogOut,
 } from "lucide-react";
+import Logo from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
+
+export interface NavItemConfig {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  badge?: number | string;
+  badgeColor?: string;
+  href?: string;
+}
 
 interface DashboardSidebarProps {
   currentRole: "CLIENT" | "FREELANCER";
@@ -31,178 +41,194 @@ export default function DashboardSidebar({
 }: DashboardSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, loginAs, logout } = useAuth();
-
-  const handleSwitchRole = async () => {
-    if (currentRole === "CLIENT") {
-      await loginAs("FREELANCER_A");
-      router.push("/freelancer/dashboard");
-    } else {
-      await loginAs("CLIENT");
-      router.push("/client/dashboard");
-    }
-  };
+  const { user, logout } = useAuth();
 
   const handleLogout = async () => {
     await logout();
     router.push("/login");
   };
 
-  const navItems = [
-    { id: "overview", label: "Overview", icon: LayoutDashboard },
-    ...(currentRole === "CLIENT"
-      ? [
-          { id: "assistant", label: "Nexum AI", icon: Sparkles },
-          { id: "freelancers", label: "Freelancers", icon: Users },
-        ]
-      : []),
-    { id: "milestones", label: "Milestones", icon: Layers },
-    { id: "escrow", label: "PayPal Escrow", icon: CreditCard },
-    { id: "audit", label: "Audit Trail", icon: FileText },
-    ...(currentRole === "CLIENT"
-      ? [{ id: "settings", label: "Profile & Settings", icon: Settings }]
-      : []),
+  // Primary Navigation Group for Client
+  const mainNavItems: NavItemConfig[] = [
+    {
+      id: "overview",
+      label: "Overview",
+      icon: Home,
+    },
+    {
+      id: "projects",
+      label: "My Projects",
+      icon: FolderKanban,
+    },
+    {
+      id: "milestones",
+      label: "Milestones",
+      icon: Layers,
+      badge: 2,
+    },
+    {
+      id: "freelancers",
+      label: "Find Freelancers",
+      icon: Users,
+    },
+    {
+      id: "workspace",
+      label: "Workspace",
+      icon: Cpu,
+    },
+    {
+      id: "payments",
+      label: "Payments",
+      icon: CreditCard,
+    },
   ];
 
-  const handleNavClick = (itemId: string) => {
-    if (itemId === "assistant") {
-      router.push("/client/assistant");
-    } else if (itemId === "freelancers") {
-      router.push("/client/freelancers");
+  // Secondary Group (Preferences / Settings)
+  const secondaryNavItems: NavItemConfig[] = [
+    {
+      id: "settings",
+      label: "Settings",
+      icon: Settings,
+    },
+  ];
+
+  const handleNavClick = (item: NavItemConfig) => {
+    if (item.href) {
+      router.push(item.href);
+      return;
+    }
+    if (pathname === "/client/dashboard" || pathname === "/freelancer/dashboard") {
+      onTabChange(item.id);
     } else {
-      if (pathname === "/client/dashboard") {
-        onTabChange(itemId);
-      } else {
-        router.push(`/client/dashboard?tab=${itemId}`);
-      }
+      const basePath = currentRole === "CLIENT" ? "/client/dashboard" : "/freelancer/dashboard";
+      router.push(`${basePath}?tab=${item.id}`);
     }
   };
 
+  const renderNavButton = (item: NavItemConfig) => {
+    const Icon = item.icon;
+    const isActive = activeTab === item.id;
+
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => handleNavClick(item)}
+        className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-[13.5px] font-medium transition-all duration-200 cursor-pointer text-left ${
+          isActive
+            ? "bg-[#eef2ff] text-[#4f46e5] font-semibold shadow-xs"
+            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+        }`}
+      >
+        <Icon
+          className={`w-[18px] h-[18px] shrink-0 transition-colors ${
+            isActive ? "text-[#4f46e5]" : "text-slate-500"
+          }`}
+          strokeWidth={isActive ? 2.3 : 1.9}
+        />
+        <span className="flex-1 truncate">{item.label}</span>
+
+        {/* Circular Pill Badge (matching image red pill) */}
+        {item.badge !== undefined && (
+          <span className="w-5 h-5 rounded-full bg-[#ef4444] text-white text-[11px] font-bold flex items-center justify-center shrink-0 shadow-xs">
+            {item.badge}
+          </span>
+        )}
+      </button>
+    );
+  };
+
   return (
-    <aside className="w-64 shrink-0 border-r border-slate-200 bg-white flex flex-col justify-between h-screen sticky top-0 z-30 select-none">
-      
-      {/* Top Brand & Workspace Identifier */}
-      <div className="p-5 border-b border-slate-100 space-y-4">
-        {/* Nexum Brand Logo */}
-        <Link href="/" className="flex items-center gap-2.5 text-slate-900 transition hover:opacity-85">
-          <svg className="w-7 h-7" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M5 23L13 6H18L10 23H5Z" fill="#0f172a" />
-            <path d="M14 26L22 9H27L19 26H14Z" fill="#2563eb" />
-          </svg>
-          <span className="font-heading text-xl font-extrabold tracking-tight text-slate-900">nexum</span>
-        </Link>
-
-        {/* Workspace Pill */}
-        <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700">
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${currentRole === "CLIENT" ? "bg-blue-600" : "bg-emerald-500"} animate-pulse`} />
-            <span>{currentRole === "CLIENT" ? "Client Workspace" : "Freelancer Rail"}</span>
-          </div>
-          <span className="font-mono text-[10px] text-slate-400">v1.2</span>
-        </div>
-      </div>
-
-      {/* Middle Navigation Menu */}
-      <div className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
-        <div className="px-3 pb-2 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
-          Navigation
-        </div>
-
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive =
-            activeTab === item.id ||
-            (item.id === "assistant" && pathname === "/client/assistant") ||
-            (item.id === "freelancers" && pathname === "/client/freelancers");
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => handleNavClick(item.id)}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
-                isActive
-                  ? "bg-blue-50 text-blue-700 shadow-xs border border-blue-200/80"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-              }`}
-            >
-              <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-blue-600" : "text-slate-400"}`} />
-              <span>{item.label}</span>
-              {isActive && (
-                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />
-              )}
-            </button>
-          );
-        })}
-
-        {/* Consensus Verification Notice */}
-        <div className="pt-6 px-3">
-          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-600 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Dual SHA-256</span>
-            </div>
-            <p className="text-[11px] text-slate-500 leading-normal">
-              Agreement state locked on canonical hash <code>#9f8c2b7e</code>.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Profile, Role Switcher & Logout */}
-      <div className="p-3 pb-6 border-t border-slate-100 bg-slate-50/50 space-y-2.5">
-        
-        {/* User Card */}
-        {user && (
-          <button
-            type="button"
-            onClick={() => currentRole === "CLIENT" && onTabChange("settings")}
-            className={`w-full flex items-center gap-2.5 p-2 rounded-xl bg-white border border-slate-200 shadow-2xs text-left transition ${
-              currentRole === "CLIENT" ? "hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer" : "cursor-default"
-            }`}
-            title={currentRole === "CLIENT" ? "View Profile & Settings" : undefined}
+    <aside className="w-[230px] shrink-0 border-r border-slate-100 bg-white flex flex-col justify-between h-screen sticky top-0 z-30 select-none">
+      {/* Top Section: Brand Logo & Navigation Links */}
+      <div className="flex-1 flex flex-col p-4 overflow-y-auto">
+        {/* Brand Logo Header */}
+        <div className="px-2 pt-1 pb-6">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2.5 transition-transform hover:scale-[1.02] duration-200"
           >
-            <div className="w-9 h-9 rounded-full overflow-hidden shrink-0 border border-slate-200">
+            <Logo surface="light" className="h-7 w-7 object-contain" />
+            <span className="font-heading text-lg font-black tracking-tight text-slate-900 leading-none">
+              nexum
+            </span>
+          </Link>
+        </div>
+
+        {/* Main Navigation Items */}
+        <nav className="space-y-1.5" aria-label="Main menu">
+          {mainNavItems.map(renderNavButton)}
+        </nav>
+
+        {/* Subtle Separator */}
+        <div className="my-4 mx-2 h-px bg-slate-100" />
+
+        {/* Secondary Navigation Items (Settings) */}
+        <div className="space-y-1.5">
+          {secondaryNavItems.map(renderNavButton)}
+        </div>
+
+        {/* Need Help? Box at bottom of nav (exactly matching image 1) */}
+        <div className="mt-auto pt-6">
+          <Link
+            href="#help"
+            className="w-full flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-[#f5f6ff] to-[#eef2ff] hover:from-[#eef2ff] hover:to-[#e0e7ff] border border-[#4f46e5]/10 text-slate-800 transition-all duration-200 group cursor-pointer shadow-2xs"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-[#4f46e5] text-white flex items-center justify-center shrink-0 shadow-xs">
+                <HelpCircle className="w-4 h-4 stroke-[2.5]" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[12px] font-bold text-slate-900 leading-tight">Need help?</p>
+                <p className="text-[10px] text-slate-500 leading-tight truncate mt-0.5">
+                  Visit Help Center
+                </p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#4f46e5] group-hover:translate-x-0.5 transition-all shrink-0 ml-1" />
+          </Link>
+        </div>
+      </div>
+
+      {/* Bottom Section: Profile Card & Logout (matching image 2, WITHOUT switch role) */}
+      <div className="p-3 border-t border-slate-100/90 bg-white space-y-2">
+        {/* User Profile Card */}
+        {user && (
+          <div
+            onClick={() => onTabChange("settings")}
+            className="flex items-center gap-2.5 p-2 rounded-2xl bg-white border border-slate-200 shadow-2xs cursor-pointer hover:border-[#4f46e5]/40 hover:bg-[#eef2ff]/20 transition duration-150"
+            title="Profile & Settings"
+          >
+            <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-slate-100 ring-1 ring-slate-200/60">
               <Image
                 src={user.avatar}
                 alt={user.name}
-                width={36}
-                height={36}
+                width={40}
+                height={40}
                 className="w-full h-full object-cover"
               />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-bold text-slate-900 truncate">{user.name}</div>
-              <div className="text-[10px] text-slate-500 truncate">{user.companyOrHandle}</div>
+              <div className="text-[13px] font-bold text-slate-900 leading-tight truncate">
+                {user.name}
+              </div>
+              <div className="text-[11px] text-slate-500 leading-tight truncate mt-0.5">
+                {user.companyOrHandle || "Nexum Client"}
+              </div>
             </div>
-          </button>
+          </div>
         )}
 
-        {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-1.5">
-          {/* Switch Role */}
-          <button
-            type="button"
-            onClick={handleSwitchRole}
-            className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-[11px] font-semibold text-slate-700 hover:text-blue-600 transition shadow-2xs cursor-pointer"
-            title={`Switch to ${currentRole === "CLIENT" ? "Freelancer (Rohan)" : "Client (Alex)"}`}
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-            <span className="truncate">Switch Role</span>
-          </button>
-
-          {/* Logout */}
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg bg-white border border-slate-200 hover:bg-rose-50 hover:border-rose-200 text-[11px] font-semibold text-slate-700 hover:text-rose-600 transition shadow-2xs cursor-pointer"
-            title="Log out of session"
-          >
-            <LogOut className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-            <span>Log out</span>
-          </button>
-        </div>
-
+        {/* Clean Logout Button (NO Switch Role) */}
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-white border border-slate-200 hover:bg-rose-50 hover:border-rose-200 text-xs font-semibold text-slate-700 hover:text-rose-600 transition shadow-2xs cursor-pointer active:scale-98"
+          title="Log out of session"
+        >
+          <LogOut className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+          <span>Log out</span>
+        </button>
       </div>
     </aside>
   );

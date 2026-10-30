@@ -30,7 +30,7 @@ describe("Frontend to Backend Connection Client", () => {
     vi.spyOn(global, "fetch").mockResolvedValueOnce({
       ok: true,
       json: async () => mockHealth,
-    } as any);
+    } as unknown as Response);
 
     const result = await checkBackendHealth();
     expect(result.connected).toBe(true);
@@ -65,7 +65,7 @@ describe("Frontend to Backend Connection Client", () => {
     vi.spyOn(global, "fetch").mockResolvedValueOnce({
       ok: true,
       json: async () => mockProjects,
-    } as any);
+    } as unknown as Response);
 
     const res = await fetchBackendProjects();
     expect(res.success).toBe(true);
