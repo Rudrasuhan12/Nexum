@@ -20,7 +20,7 @@ const allowedOrigins = process.env.CORS_ORIGIN
 // Middlewares
 app.use(
   cors({
-    origin: (origin, callback) => {
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       // Allow requests with no origin (mobile apps, curl, Next.js server-side fetch)
       if (!origin) return callback(null, true);
       if (
@@ -45,7 +45,7 @@ app.use("/api/projects", projectsRouter);
 app.use("/api/payments", paymentsRouter);
 
 // Root fallback
-app.get("/", (_req, res) => {
+app.get("/", (_req: express.Request, res: express.Response) => {
   res.json({
     service: "nexum-backend",
     version: "0.1.0",
