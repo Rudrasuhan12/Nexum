@@ -1,36 +1,44 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import {
-  CheckCircle2,
-  Clock,
-  Layers,
-  Zap,
-} from "lucide-react";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import DashboardTopHeader from "@/components/DashboardTopHeader";
 import ClientOverview from "@/components/client/ClientOverview";
 import ClientProjectsView from "@/components/client/ClientProjectsView";
 import ClientMilestonesView from "@/components/client/ClientMilestonesView";
+import ClientFreelancersView from "@/components/client/ClientFreelancersView";
+import ClientPaymentsView from "@/components/client/ClientPaymentsView";
 import ClientSettingsView from "@/components/client/ClientSettingsView";
 import NexumAssistantPanel from "@/components/client/NexumAssistantPanel";
 import { useAuth } from "@/context/AuthContext";
 import { DEMO_USERS } from "@/lib/auth-types";
 
-export default function ClientDashboardPage() {
+const VALID_TABS = [
+  "overview",
+  "projects",
+  "milestones",
+  "freelancers",
+  "workspace",
+  "payments",
+  "settings",
+  "escrow",
+  "audit",
+] as const;
+
+function ClientDashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, isLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get("tab");
-      if (tabParam && ["overview", "projects", "milestones", "freelancers", "workspace", "payments", "settings", "escrow", "audit"].includes(tabParam)) {
-        return tabParam;
-      }
-    }
-    return "overview";
-  });
+
+  const tabParam = searchParams.get("tab");
+  const activeTab = tabParam && (VALID_TABS as readonly string[]).includes(tabParam)
+    ? tabParam
+    : "overview";
+
+  const handleTabChange = (tab: string) => {
+    router.replace(`/client/dashboard?tab=${tab}`, { scroll: false });
+  };
 
   // State for milestone 2 acceptance / release simulation
   const [milestone2Status, setMilestone2Status] = useState<"IN_REVIEW" | "APPROVED_AND_RELEASED">("IN_REVIEW");
@@ -109,7 +117,7 @@ export default function ClientDashboardPage() {
       <DashboardSidebar
         currentRole="CLIENT"
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
       />
 
       {/* 2. Main Content Area */}
@@ -147,13 +155,13 @@ export default function ClientDashboardPage() {
              ============================================================== */}
           {activeTab === "overview" && (
             <ClientOverview
-              onNavigateTab={(tab) => setActiveTab(tab)}
+              onNavigateTab={(tab) => handleTabChange(tab)}
               onReviewMilestone={() => {
-                setActiveTab("milestones");
+                handleTabChange("milestones");
                 showToast("Opening milestone submission review...");
               }}
               onApproveAgreement={() => {
-                setActiveTab("workspace");
+                handleTabChange("workspace");
                 showToast("Opening bilateral scope agreement for sign-off...");
               }}
             />
@@ -180,6 +188,17 @@ export default function ClientDashboardPage() {
             <ClientMilestonesView
               onOpenProjectWorkspace={(projectId) => {
                 router.push(`/client/projects/${projectId}?tab=milestones`);
+              }}
+            />
+          )}
+
+          {/* ==============================================================
+              TAB 3: FIND FREELANCERS (DEDICATED DIRECTORY & INVITATIONS)
+             ============================================================== */}
+          {activeTab === "freelancers" && (
+            <ClientFreelancersView
+              onOpenProjectWorkspace={(projectId) => {
+                router.push(`/client/projects/${projectId}`);
               }}
             />
           )}
@@ -281,6 +300,17 @@ export default function ClientDashboardPage() {
           )}
 
           {/* ==============================================================
+              TAB 4: PAYMENTS & ESCROW RAILS (DEDICATED FINANCIAL VIEW)
+             ============================================================== */}
+          {activeTab === "payments" && (
+            <ClientPaymentsView
+              onOpenProjectWorkspace={(projectId) => {
+                router.push(`/client/projects/${projectId}`);
+              }}
+            />
+          )}
+
+          {/* ==============================================================
               TAB 5: PROFILE & SETTINGS (DEDICATED FULL VIEW)
              ============================================================== */}
           {activeTab === "settings" && (
@@ -337,5 +367,19 @@ export default function ClientDashboardPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ClientDashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center text-xs text-slate-500 font-medium">
+          Loading client workspace...
+        </div>
+      }
+    >
+      <ClientDashboardContent />
+    </Suspense>
   );
 }
