@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -11,7 +11,6 @@ import {
   Check,
   CheckCheck,
   CreditCard,
-  GitPullRequest,
   Sparkles,
   ShieldCheck,
   CheckCircle2,
@@ -111,21 +110,24 @@ export default function DashboardTopHeader({
     TEAMS_STATUSES.find((s) => s.id === currentStatus) || TEAMS_STATUSES[0];
 
   // Fetch notifications on mount and whenever user changes
-  const loadNotifications = useCallback(async () => {
-    try {
-      const data = await fetchNotifications(user?.role, user?.id);
-      if (data && Array.isArray(data.notifications)) {
-        setNotifications(data.notifications);
-        setUnreadCount(typeof data.unreadCount === "number" ? data.unreadCount : 0);
-      }
-    } catch (err) {
-      console.warn("Could not load notifications:", err);
-    }
-  }, [user?.role, user?.id]);
-
   useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications]);
+    let active = true;
+    async function load() {
+      try {
+        const data = await fetchNotifications(user?.role, user?.id);
+        if (active && data && Array.isArray(data.notifications)) {
+          setNotifications(data.notifications);
+          setUnreadCount(typeof data.unreadCount === "number" ? data.unreadCount : 0);
+        }
+      } catch (err) {
+        console.warn("Could not load notifications:", err);
+      }
+    }
+    load();
+    return () => {
+      active = false;
+    };
+  }, [user?.role, user?.id]);
 
   // Close menus when clicked outside
   useEffect(() => {

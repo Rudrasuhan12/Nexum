@@ -67,7 +67,7 @@ router.post("/", async (req: Request, res: Response) => {
 
     res.status(201).json({
       success: true,
-      message: "Project created and registered in consensus engine",
+      message: "Project created successfully",
       data: created,
     });
   } catch (err: unknown) {

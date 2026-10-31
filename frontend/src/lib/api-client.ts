@@ -290,7 +290,7 @@ export async function publishNotificationEvent(event: {
 /**
  * Fetch Dead Letter Queue (DLQ) records for monitoring & forensics.
  */
-export async function fetchDeadLetters(): Promise<{ success: boolean; deadLetters: any[] }> {
+export async function fetchDeadLetters(): Promise<{ success: boolean; deadLetters: unknown[] }> {
   try {
     const res = await fetch(`/api/notifications/queue/dlq`, { cache: "no-store" });
     if (!res.ok) return { success: false, deadLetters: [] };
@@ -312,6 +312,9 @@ export async function replayDeadLetter(id: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+
 }
 
 /**
