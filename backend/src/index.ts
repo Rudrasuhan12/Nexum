@@ -8,6 +8,7 @@ import usersRouter from "./routes/users.js";
 import projectsRouter from "./routes/projects.js";
 import paymentsRouter from "./routes/payments.js";
 import notificationsRouter from "./routes/notifications.js";
+import clientRouter from "./routes/client.js";
 
 // Load environment variables
 dotenv.config();
@@ -45,6 +46,7 @@ app.use("/api/users", usersRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/payments", paymentsRouter);
 app.use("/api/notifications", notificationsRouter);
+app.use("/api/client", clientRouter);
 
 // Root fallback
 app.get("/", (_req: express.Request, res: express.Response) => {

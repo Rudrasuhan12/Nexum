@@ -18,6 +18,7 @@ import {
   Search,
   User,
   FileText,
+  ShieldCheck,
 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
@@ -91,6 +92,12 @@ export default function DashboardSidebar({
       label: "Payments",
       icon: CreditCard,
       href: "/client/dashboard?tab=payments",
+    },
+    {
+      id: "audit",
+      label: "Audit Logs",
+      icon: ShieldCheck,
+      href: "/client/dashboard?tab=audit",
     },
   ];
 

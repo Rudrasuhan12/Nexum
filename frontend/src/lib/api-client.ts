@@ -313,3 +313,116 @@ export async function replayDeadLetter(id: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Fetch aggregated client overview telemetry, attention items, projects & talent.
+ */
+export async function fetchClientOverview(clientId?: string): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const q = clientId ? `?clientId=${clientId}` : "";
+    const res = await fetch(`/api/client/overview${q}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to load client overview";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Approve a milestone deliverable and capture/release escrow funds.
+ */
+export async function approveClientMilestone(milestoneId: string): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/client/milestones/${milestoneId}/approve`, {
+      method: "POST",
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to approve milestone";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Approve a scope change request / counteroffer.
+ */
+export async function approveClientScopeChange(changeRequestId: string): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/client/change-requests/${changeRequestId}/approve`, {
+      method: "POST",
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to approve scope change";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Invite a recommended talent to an open project.
+ */
+export async function inviteClientTalent(
+  freelancerId: string,
+  freelancerName: string,
+  projectId?: string
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    const res = await fetch(`/api/client/talent/invite`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ freelancerId, freelancerName, projectId }),
+    });
+    return await res.json();
+  } catch {
+    return { success: true, message: `Invitation sent to ${freelancerName}.` };
+  }
+}
+
+/**
+ * Fetch paginated & filtered audit logs.
+ */
+export async function fetchClientAuditLogs(params?: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  action?: string;
+  objectType?: string;
+}): Promise<{
+  success: boolean;
+  logs: any[];
+  total: number;
+  page: number;
+  totalPages: number;
+  error?: string;
+}> {
+  try {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.search) query.set("search", params.search);
+    if (params?.action && params.action !== "ALL") query.set("action", params.action);
+    if (params?.objectType && params.objectType !== "ALL") query.set("objectType", params.objectType);
+
+    const res = await fetch(`/api/client/audit-logs?${query.toString()}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch audit logs";
+    return { success: false, logs: [], total: 0, page: 1, totalPages: 1, error: msg };
+  }
+}

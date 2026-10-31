@@ -180,6 +180,30 @@ export async function updateSessionPresence(presence: UserPresenceStatus): Promi
   return updatedUser;
 }
 
+// Update current session avatar
+export async function updateSessionAvatar(avatar: string): Promise<DemoUser | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const updatedUser: DemoUser = {
+    ...user,
+    avatar,
+  };
+  await setSession(updatedUser);
+  return updatedUser;
+}
+
+// Update current session hiring status
+export async function updateSessionHiringStatus(hiringStatus: string): Promise<DemoUser | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const updatedUser: DemoUser = {
+    ...user,
+    statusBadge: hiringStatus,
+  };
+  await setSession(updatedUser);
+  return updatedUser;
+}
+
 // Clear session cookie
 export async function clearSession() {
   const cookieStore = await cookies();

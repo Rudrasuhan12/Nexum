@@ -101,18 +101,24 @@ export default function NexumAssistantPanel() {
 
   return (
     <>
-      {/* Floating Launcher Button */}
+      {/* Floating Circular Launcher Button (Lighter Shade) */}
       <div className="fixed bottom-6 right-6 z-40 select-none">
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           aria-expanded={isOpen}
-          aria-label="Open Nexum AI Project Copilot"
-          className="flex items-center gap-2.5 px-4 py-3 rounded-full bg-slate-900 text-white shadow-xl hover:bg-slate-800 transition transform hover:scale-105 border border-slate-700/80 cursor-pointer"
+          aria-label={isOpen ? "Close Nexum AI Copilot" : "Open Nexum AI Project Copilot"}
+          title={isOpen ? "Close Nexum AI Copilot" : "Nexum AI Copilot"}
+          className="relative w-12 h-12 rounded-full bg-white hover:bg-slate-50 text-indigo-600 border border-slate-200/90 shadow-md hover:shadow-lg shadow-indigo-500/10 flex items-center justify-center transition-all transform hover:scale-105 active:scale-95 cursor-pointer group"
         >
-          <Sparkles className="w-4 h-4 text-blue-400" />
-          <span className="text-xs font-bold tracking-tight">Nexum AI</span>
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          {isOpen ? (
+            <X className="w-5 h-5 text-slate-600 group-hover:rotate-90 transition-transform duration-200" />
+          ) : (
+            <>
+              <Sparkles className="w-5 h-5 text-indigo-600 group-hover:rotate-12 transition-transform duration-300" />
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white shadow-xs animate-pulse" />
+            </>
+          )}
         </button>
       </div>
 

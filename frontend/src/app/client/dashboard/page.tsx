@@ -10,6 +10,7 @@ import ClientMilestonesView from "@/components/client/ClientMilestonesView";
 import ClientFreelancersView from "@/components/client/ClientFreelancersView";
 import ClientPaymentsView from "@/components/client/ClientPaymentsView";
 import ClientSettingsView from "@/components/client/ClientSettingsView";
+import ClientAuditLogsView from "@/components/client/ClientAuditLogsView";
 import NexumAssistantPanel from "@/components/client/NexumAssistantPanel";
 import { useAuth } from "@/context/AuthContext";
 import { DEMO_USERS } from "@/lib/auth-types";
@@ -258,45 +259,9 @@ function ClientDashboardContent() {
               TAB 4: AUDIT TRAIL (DEDICATED FULL VIEW)
              ============================================================== */}
           {activeTab === "audit" && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
-                  Immutable Consensus Audit Trail (Dual SHA-256 Ledger)
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                  Chronological tamper-evident audit log of project state machine transitions and mutual authorizations.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100 shadow-xs font-mono text-xs overflow-hidden">
-                <div className="p-4.5 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    <span className="font-bold text-slate-900">DELIVERABLE_SUBMITTED</span>
-                    <span className="text-slate-600">Rohan Verma &rarr; Milestone 2</span>
-                  </div>
-                  <span className="text-slate-400 text-[11px]">hash: 0x9f8c2b7e...</span>
-                </div>
-
-                <div className="p-4.5 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                    <span className="font-bold text-slate-900">PAYPAL_ORDER_CREATED</span>
-                    <span className="text-slate-600">Order #6DE714998H998261C ($1,500.00 USD)</span>
-                  </div>
-                  <span className="text-slate-400 text-[11px]">hash: 0x812d4a19...</span>
-                </div>
-
-                <div className="p-4.5 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    <span className="font-bold text-slate-900">AGREEMENT_LOCKED</span>
-                    <span className="text-slate-600">Dual approval confirmed by Alex Rivera & Rohan Verma</span>
-                  </div>
-                  <span className="text-slate-400 text-[11px]">hash: 0x24ff9001...</span>
-                </div>
-              </div>
-            </div>
+            <ClientAuditLogsView
+              onNavigateOverview={() => handleTabChange("overview")}
+            />
           )}
 
           {/* ==============================================================
@@ -357,8 +322,8 @@ function ClientDashboardContent() {
         </div>
       )}
 
-      {/* Floating Copilot Assistant */}
-      <NexumAssistantPanel />
+      {/* Floating Copilot Assistant (commented out for now) */}
+      {/* <NexumAssistantPanel /> */}
 
       {/* Toast Notification */}
       {toastMessage && (

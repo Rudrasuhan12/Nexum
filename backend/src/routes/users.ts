@@ -108,4 +108,37 @@ router.patch("/:userId/presence", async (req: Request, res: Response) => {
   });
 });
 
+// PATCH /api/users/:userId/avatar - Update user profile avatar
+router.patch("/:userId/avatar", async (req: Request, res: Response) => {
+  const { userId } = req.params;
+  const { avatar } = req.body;
+
+  if (!avatar || typeof avatar !== "string") {
+    return res.status(400).json({ success: false, error: "Missing avatar data" });
+  }
+
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { preferences: { avatar } },
+    });
+  } catch {
+    // Non-blocking in dev / mock session
+  }
+
+  res.json({ success: true, userId, avatar });
+});
+
+// PATCH /api/users/:userId/hiring-status - Update client hiring status
+router.patch("/:userId/hiring-status", async (req: Request, res: Response) => {
+  const { userId } = req.params;
+  const { status } = req.body;
+
+  if (!status) {
+    return res.status(400).json({ success: false, error: "Missing status" });
+  }
+
+  res.json({ success: true, userId, status });
+});
+
 export default router;

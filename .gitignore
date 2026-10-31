@@ -42,3 +42,8 @@ next-env.d.ts
 
 # documentation / local specs
 docs/
+
+# user uploaded storage (local dev)
+public/uploads/
+uploads/
+*.tmp*

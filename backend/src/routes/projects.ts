@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../prisma.js";
+import { clientOverviewService } from "../services/clientOverviewService.js";
 
 const router = Router();
 
@@ -26,6 +27,51 @@ router.get("/", async (_req: Request, res: Response) => {
     res.json({ success: true, count: projects.length, data: projects });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to fetch projects";
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// POST /api/projects - create new project with milestones and PRD
+router.post("/", async (req: Request, res: Response) => {
+  try {
+    const {
+      clientId = "usr_client_alex",
+      title,
+      description,
+      budgetCents = 0,
+      currency = "USD",
+      deadline,
+      goals,
+      milestones = [],
+      skills = [],
+    } = req.body || {};
+
+    if (!title || !description) {
+      return res.status(400).json({
+        success: false,
+        error: "Title and description are required",
+      });
+    }
+
+    const created = await clientOverviewService.createProject({
+      clientId,
+      title,
+      description,
+      budgetCents,
+      currency,
+      deadline: deadline ? new Date(deadline) : undefined,
+      goals,
+      milestones,
+      skills,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Project created and registered in consensus engine",
+      data: created,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to create project";
     res.status(500).json({ success: false, error: msg });
   }
 });
@@ -64,4 +110,3 @@ router.get("/:id", async (req: Request, res: Response) => {
 });
 
 export default router;
-
