@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { Plus, Search } from "lucide-react";
 import {
   FreelancerProposalItem,
@@ -36,6 +36,8 @@ export default function FreelancerProposalsView({
   const [proposals, setProposals] = useState<FreelancerProposalItem[]>(
     INITIAL_FREELANCER_PROPOSALS
   );
+
+  // Selected proposal ID defaults strictly to the very first proposal
   const [selectedProposalId, setSelectedProposalId] = useState<string>(
     INITIAL_FREELANCER_PROPOSALS[0].id
   );
@@ -61,24 +63,102 @@ export default function FreelancerProposalsView({
   const [showBuilderModal, setShowBuilderModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
-  // Aggregate KPIs
-  const kpis = useMemo(() => {
-    return calculateProposalSummaryKPIs(proposals);
-  }, [proposals]);
+  // Dynamic Left/Right Sticky Tracking (Sticky according to shorter column)
+  const leftPanelRef = useRef<HTMLDivElement>(null);
+  const rightPanelRef = useRef<HTMLDivElement>(null);
+  const [shorterColumn, setShorterColumn] = useState<"left" | "right" | "none">("none");
 
-  // Selected proposal object
+  // Compute filtered & sorted proposals matching active controls
+  const filteredProposals = useMemo(() => {
+    return proposals
+      .filter((p) => {
+        // Status filter
+        if (selectedStatus !== "ALL" && p.status !== selectedStatus) {
+          return false;
+        }
+
+        // Project Type filter
+        if (projectType !== "ALL" && p.offer.priceType !== projectType) {
+          return false;
+        }
+
+        // Budget filter
+        if (budgetFilter === "UNDER_50K") {
+          if (
+            p.clientBrief.budgetRange.includes("₹80,000") ||
+            p.clientBrief.budgetRange.includes("₹1,20,000")
+          ) {
+            return false;
+          }
+        } else if (budgetFilter === "ABOVE_100K") {
+          if (
+            !p.clientBrief.budgetRange.includes("₹1,20,000") &&
+            !p.clientBrief.budgetRange.includes("₹1,00,000")
+          ) {
+            return false;
+          }
+        }
+
+        // Date filter
+        if (dateFilter === "7_DAYS") {
+          if (
+            !p.submittedDate.includes("Oct 28") &&
+            !p.submittedDate.includes("Oct 26") &&
+            !p.submittedDate.includes("Oct 24")
+          ) {
+            return false;
+          }
+        } else if (dateFilter === "30_DAYS") {
+          if (!p.submittedDate.includes("Oct")) {
+            return false;
+          }
+        }
+
+        // Search query
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const matchTitle = p.projectTitle.toLowerCase().includes(q);
+          const matchClient = p.client.companyName.toLowerCase().includes(q);
+          const matchTags = p.techTags.some((t) => t.toLowerCase().includes(q));
+          return matchTitle || matchClient || matchTags;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortBy === "OLDEST") {
+          return a.submittedDate.localeCompare(b.submittedDate);
+        }
+        if (sortBy === "BUDGET_HIGH") {
+          return b.clientBrief.budgetRange.localeCompare(a.clientBrief.budgetRange);
+        }
+        if (sortBy === "BUDGET_LOW") {
+          return a.clientBrief.budgetRange.localeCompare(b.clientBrief.budgetRange);
+        }
+        // Default: NEWEST
+        return b.submittedDate.localeCompare(a.submittedDate);
+      });
+  }, [
+    proposals,
+    selectedStatus,
+    projectType,
+    budgetFilter,
+    dateFilter,
+    searchQuery,
+    sortBy,
+  ]);
+
+  // Selected proposal object - defaults strictly to 1st visible item
   const selectedProposal = useMemo(() => {
-    return (
-      proposals.find((p) => p.id === selectedProposalId) ||
-      proposals[0] ||
-      INITIAL_FREELANCER_PROPOSALS[0]
-    );
-  }, [proposals, selectedProposalId]);
+    const found = filteredProposals.find((p) => p.id === selectedProposalId);
+    if (found) return found;
+    return filteredProposals[0] || proposals[0] || INITIAL_FREELANCER_PROPOSALS[0];
+  }, [filteredProposals, selectedProposalId, proposals]);
 
-  // Selected proposal index for pagination
+  // Selected proposal index for pagination within visible proposals
   const selectedIndex = useMemo(() => {
-    return proposals.findIndex((p) => p.id === selectedProposal.id);
-  }, [proposals, selectedProposal]);
+    return filteredProposals.findIndex((p) => p.id === selectedProposal.id);
+  }, [filteredProposals, selectedProposal]);
 
   const handleSelectProposal = (id: string) => {
     setSelectedProposalId(id);
@@ -87,15 +167,60 @@ export default function FreelancerProposalsView({
 
   const handleNavigatePrev = () => {
     if (selectedIndex > 0) {
-      setSelectedProposalId(proposals[selectedIndex - 1].id);
+      setSelectedProposalId(filteredProposals[selectedIndex - 1].id);
     }
   };
 
   const handleNavigateNext = () => {
-    if (selectedIndex < proposals.length - 1) {
-      setSelectedProposalId(proposals[selectedIndex + 1].id);
+    if (selectedIndex < filteredProposals.length - 1) {
+      setSelectedProposalId(filteredProposals[selectedIndex + 1].id);
     }
   };
+
+  useEffect(() => {
+    const checkHeights = () => {
+      if (!leftPanelRef.current || !rightPanelRef.current) return;
+      if (typeof window !== "undefined" && window.innerWidth < 1024) {
+        setShorterColumn("none");
+        return;
+      }
+      const leftH = leftPanelRef.current.offsetHeight;
+      const rightH = rightPanelRef.current.offsetHeight;
+
+      // When there is a discernible difference in height (>= 30px)
+      if (leftH + 30 < rightH) {
+        setShorterColumn("left");
+      } else if (rightH + 30 < leftH) {
+        setShorterColumn("right");
+      } else {
+        setShorterColumn("none");
+      }
+    };
+
+    checkHeights();
+
+    const ro = new ResizeObserver(() => {
+      checkHeights();
+    });
+
+    if (leftPanelRef.current) ro.observe(leftPanelRef.current);
+    if (rightPanelRef.current) ro.observe(rightPanelRef.current);
+
+    window.addEventListener("resize", checkHeights);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", checkHeights);
+    };
+  }, [
+    filteredProposals,
+    selectedProposalId,
+    activeTab,
+  ]);
+
+  // Aggregate KPIs
+  const kpis = useMemo(() => {
+    return calculateProposalSummaryKPIs(proposals);
+  }, [proposals]);
 
   // Counteroffer actions
   const handleAcceptCounteroffer = () => {
@@ -256,17 +381,23 @@ export default function FreelancerProposalsView({
         onSelectStatus={(status) => setSelectedStatus(status)}
       />
 
-      {/* 3. Two-Panel Layout */}
+      {/* 3. Two-Panel Layout with Dynamic Sticky */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Panel: Proposal Directory (5 cols on desktop) */}
         <div
+          ref={leftPanelRef}
           className={`lg:col-span-5 space-y-4 ${
-            mobileView === "workspace" ? "hidden lg:block" : "block"
-          }`}
+            shorterColumn === "left" ? "lg:sticky lg:self-start" : ""
+          } ${mobileView === "workspace" ? "hidden lg:block" : "block"}`}
+          style={
+            shorterColumn === "left"
+              ? { top: "min(1.5rem, calc(100vh - 100% - 1.5rem))" }
+              : undefined
+          }
         >
           <ProposalDirectory
             proposals={proposals}
-            selectedProposalId={selectedProposalId}
+            selectedProposalId={selectedProposal.id}
             onSelectProposal={handleSelectProposal}
             selectedStatus={selectedStatus}
             onSelectStatus={setSelectedStatus}
@@ -286,15 +417,21 @@ export default function FreelancerProposalsView({
 
         {/* Right Panel: Selected Proposal Workspace (7 cols on desktop) */}
         <div
+          ref={rightPanelRef}
           className={`lg:col-span-7 space-y-4 ${
-            mobileView === "directory" ? "hidden lg:block" : "block"
-          }`}
+            shorterColumn === "right" ? "lg:sticky lg:self-start" : ""
+          } ${mobileView === "directory" ? "hidden lg:block" : "block"}`}
+          style={
+            shorterColumn === "right"
+              ? { top: "min(1.5rem, calc(100vh - 100% - 1.5rem))" }
+              : undefined
+          }
         >
           {/* Selected Proposal Header */}
           <SelectedProposalHeader
             proposal={selectedProposal}
             currentIndex={selectedIndex >= 0 ? selectedIndex : 0}
-            totalCount={proposals.length}
+            totalCount={filteredProposals.length}
             onNavigatePrev={handleNavigatePrev}
             onNavigateNext={handleNavigateNext}
             onBackToDirectory={() => setMobileView("directory")}
