@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
 
 export interface AuditEventParams {
@@ -14,9 +15,14 @@ export interface AuditEventParams {
 /**
  * Append-only audit logger.
  * Enforces requirement that every state transition records immutable audit evidence.
+ * Accepts optional Prisma TransactionClient for atomic commits within transactions.
  */
-export async function appendAuditEvent(params: AuditEventParams) {
-  return await prisma.auditEvent.create({
+export async function appendAuditEvent(
+  params: AuditEventParams,
+  tx?: Prisma.TransactionClient
+) {
+  const client = tx || prisma;
+  return await client.auditEvent.create({
     data: {
       actorId: params.actorId || null,
       action: params.action,
@@ -31,4 +37,3 @@ export async function appendAuditEvent(params: AuditEventParams) {
     },
   });
 }
-

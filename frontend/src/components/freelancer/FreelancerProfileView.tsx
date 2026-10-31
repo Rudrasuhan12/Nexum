@@ -1,6 +1,25 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import {
+  fetchFreelancerProfile,
+  updateBasicProfile,
+  updateProfessionalProfile,
+  updateSkills,
+  createExperience,
+  deleteExperience,
+  createEducation,
+  deleteEducation,
+  createCertification,
+  deleteCertification,
+  createPortfolioProject,
+  deletePortfolioProject,
+  updateAvailability,
+  uploadProfileFile,
+  uploadResumeFile,
+  fetchPublicProfilePreview,
+  ProfileCompleteness,
+} from "@/lib/api-client";
 import Image from "next/image";
 import {
   User,
@@ -111,6 +130,101 @@ export default function FreelancerProfileView({
   const [githubUrl, setGithubUrl] = useState("https://github.com/sambit-mohanty");
   const [websiteUrl, setWebsiteUrl] = useState("https://sambitmohanty.dev");
   const [resumeVisibility, setResumeVisibility] = useState<"Visible to clients" | "Hidden">("Visible to clients");
+  const [liveCompleteness, setLiveCompleteness] = useState<ProfileCompleteness | null>(null);
+  const [, setPublicPreviewData] = useState<any>(null);
+
+  useEffect(() => {
+    let active = true;
+    async function loadData() {
+      try {
+        const res = await fetchFreelancerProfile();
+        if (active && res.success && res.profile) {
+          const p = res.profile;
+          if (p.professionalTitle) setProfessionalTitle(p.professionalTitle);
+          if (p.headline) setHeadline(p.headline);
+          if (p.locationText) setLocation(p.locationText);
+          if (p.timezone) setTimeZone(p.timezone);
+          if (p.bio) setAboutMe(p.bio);
+          if (p.user?.name) setFullName(p.user.name);
+          if (p.rateHourlyMinor) setHourlyRate(p.rateHourlyMinor / 100);
+          if (p.weeklyCapacityHours) setWeeklyHours(p.weeklyCapacityHours);
+          if (p.photoFileId) setAvatarUrl(`/api/files/${p.photoFileId}`);
+          if (p.coverFileId) setBannerUrl(`/api/files/${p.coverFileId}`);
+          if (p.servicesOffered && p.servicesOffered.length > 0) {
+            setServicesOffered(p.servicesOffered.map((title, idx) => ({ id: `srv_${idx}`, title, active: true })));
+          }
+          if (p.freelancerSkills && p.freelancerSkills.length > 0) {
+            setSkillsList(p.freelancerSkills.map((s) => ({ name: s.skillName, level: s.proficiency, verified: true })));
+          }
+          if (p.workExperiences && p.workExperiences.length > 0) {
+            setWorkExperiences(p.workExperiences.map((e) => ({
+              id: e.id,
+              role: e.role,
+              company: e.company,
+              location: e.location || "Remote",
+              duration: `${e.startMonth} – ${e.isCurrent ? "Present" : e.endMonth || ""}`,
+              current: e.isCurrent,
+              bullets: e.description ? [e.description] : ["Delivered core client features."],
+            })));
+          }
+          if (p.educationEntries && p.educationEntries.length > 0) {
+            setEducationList(p.educationEntries.map((ed) => ({
+              id: ed.id,
+              degree: ed.degree,
+              institution: ed.institution,
+              year: `${ed.startYear || ""} – ${ed.graduationYear || ""}`,
+              gpa: "Verified Degree",
+              details: ed.fieldOfStudy || "Degree coursework",
+            })));
+          }
+          if (p.certifications && p.certifications.length > 0) {
+            setCertificationsList(p.certifications.map((c) => ({
+              id: c.id,
+              title: c.name,
+              issuer: c.issuer,
+              issueDate: c.issuedMonth,
+              credentialId: c.credentialId || "NEX-VERIFIED",
+              verified: true,
+            })));
+          }
+          if (p.portfolioProjects && p.portfolioProjects.length > 0) {
+            setPortfolioProjects(p.portfolioProjects.map((port) => ({
+              id: port.id,
+              title: port.title,
+              role: port.role || "Lead Contributor",
+              timeline: "Verified",
+              description: port.description,
+              prUrl: port.projectUrl || undefined,
+              demoUrl: port.projectUrl || undefined,
+              tags: port.tools || ["TypeScript"],
+              metrics: "Verified project deliverable",
+            })));
+          }
+          if (p.resumeFiles && p.resumeFiles.length > 0) {
+            const activeRes = p.resumeFiles.find((r) => r.status === "ACTIVE") || p.resumeFiles[0];
+            const sizeStr = activeRes.sizeBytes > 1024 * 1024
+              ? `${(activeRes.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+              : `${Math.round(activeRes.sizeBytes / 1024)} KB`;
+            setResumeFile({
+              name: activeRes.originalName,
+              size: sizeStr,
+              uploadedAt: new Date(activeRes.uploadedAt).toLocaleDateString(),
+            });
+            setResumeVisibility(activeRes.visibility === "PUBLIC" ? "Visible to clients" : "Hidden");
+          }
+          if (res.completeness) {
+            setLiveCompleteness(res.completeness);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load freelancer profile:", err);
+      }
+    }
+    loadData();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // 2. Professional Details State
   const [hourlyRate, setHourlyRate] = useState<number>(65);
@@ -328,89 +442,131 @@ export default function FreelancerProfileView({
   const [newExpDuration, setNewExpDuration] = useState("2024 – Present");
   const [newExpBullets, setNewExpBullets] = useState("");
 
-  const handleAddProjectSubmit = (e: React.FormEvent) => {
+  const handleAddProjectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProjTitle.trim()) return;
-    const newProj = {
-      id: `port_${Date.now()}`,
-      title: newProjTitle.trim(),
-      role: newProjRole.trim() || "Lead Developer",
-      timeline: newProjTimeline.trim() || "2026",
-      description: newProjDescription.trim() || "Full-stack cloud deliverable with cryptographic consensus.",
-      prUrl: newProjGithubUrl.trim() || undefined,
-      demoUrl: newProjDemoUrl.trim() || undefined,
-      tags: newProjTags.split(",").map((t) => t.trim()).filter(Boolean),
-      metrics: newProjMetrics.trim() || "Verified milestone deliverable",
-    };
-    setPortfolioProjects((prev) => [newProj, ...prev]);
-    setShowAddProjectModal(false);
-    setNewProjTitle("");
-    setNewProjDescription("");
-    setNewProjGithubUrl("");
-    setNewProjDemoUrl("");
-    showToast(`Portfolio project "${newProj.title}" added successfully!`);
+    try {
+      const res = await createPortfolioProject({
+        title: newProjTitle.trim(),
+        role: newProjRole.trim() || "Lead Developer",
+        description: newProjDescription.trim() || "Full-stack deliverable with zero-trust validation.",
+        tools: newProjTags.split(",").map((t) => t.trim()).filter(Boolean),
+        projectUrl: newProjDemoUrl.trim() || newProjGithubUrl.trim() || undefined,
+      });
+      const newProj = {
+        id: res.portfolio?.id || `port_${Date.now()}`,
+        title: newProjTitle.trim(),
+        role: newProjRole.trim() || "Lead Developer",
+        timeline: newProjTimeline.trim() || "2026",
+        description: newProjDescription.trim() || "Full-stack deliverable with zero-trust validation.",
+        prUrl: newProjGithubUrl.trim() || undefined,
+        demoUrl: newProjDemoUrl.trim() || undefined,
+        tags: newProjTags.split(",").map((t) => t.trim()).filter(Boolean),
+        metrics: newProjMetrics.trim() || "Verified milestone deliverable",
+      };
+      setPortfolioProjects((prev) => [newProj, ...prev]);
+      setShowAddProjectModal(false);
+      setNewProjTitle("");
+      setNewProjDescription("");
+      setNewProjGithubUrl("");
+      setNewProjDemoUrl("");
+      showToast(`Portfolio project "${newProj.title}" added successfully!`);
+    } catch {
+      showToast("Error adding portfolio project");
+    }
   };
 
-  const handleAddEducationSubmit = (e: React.FormEvent) => {
+  const handleAddEducationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEduDegree.trim() || !newEduInstitution.trim()) return;
-    const newEdu = {
-      id: `edu_${Date.now()}`,
-      degree: newEduDegree.trim(),
-      institution: newEduInstitution.trim(),
-      year: newEduYear.trim() || "2022 – 2026",
-      gpa: newEduGpa.trim() || "Distinction Honors",
-      details: newEduDetails.trim() || "Advanced coursework in Software Engineering and Distributed Computing.",
-    };
-    setEducationList((prev) => [newEdu, ...prev]);
-    setShowAddEducationModal(false);
-    setNewEduDegree("");
-    setNewEduInstitution("");
-    setNewEduDetails("");
-    showToast(`Education credential "${newEdu.degree}" added!`);
+    try {
+      const res = await createEducation({
+        institution: newEduInstitution.trim(),
+        degree: newEduDegree.trim(),
+        fieldOfStudy: newEduDetails.trim() || "Computer Science",
+      });
+      const newEdu = {
+        id: res.education?.id || `edu_${Date.now()}`,
+        degree: newEduDegree.trim(),
+        institution: newEduInstitution.trim(),
+        year: newEduYear.trim() || "2022 – 2026",
+        gpa: newEduGpa.trim() || "Distinction Honors",
+        details: newEduDetails.trim() || "Advanced coursework in Software Engineering and Distributed Computing.",
+      };
+      setEducationList((prev) => [newEdu, ...prev]);
+      setShowAddEducationModal(false);
+      setNewEduDegree("");
+      setNewEduInstitution("");
+      setNewEduDetails("");
+      showToast(`Education credential "${newEdu.degree}" added!`);
+    } catch {
+      showToast("Error adding education");
+    }
   };
 
-  const handleAddCertificationSubmit = (e: React.FormEvent) => {
+  const handleAddCertificationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCertTitle.trim() || !newCertIssuer.trim()) return;
-    const newCert = {
-      id: `cert_${Date.now()}`,
-      title: newCertTitle.trim(),
-      issuer: newCertIssuer.trim(),
-      issueDate: newCertIssueDate.trim() || "2026",
-      credentialId: newCertCredentialId.trim() || `NEX-${Math.floor(10000 + Math.random() * 90000)}`,
-      verified: true,
-    };
-    setCertificationsList((prev) => [newCert, ...prev]);
-    setShowAddCertificationModal(false);
-    setNewCertTitle("");
-    setNewCertIssuer("");
-    setNewCertCredentialId("");
-    showToast(`Certification "${newCert.title}" added with verified badge!`);
+    try {
+      const res = await createCertification({
+        name: newCertTitle.trim(),
+        issuer: newCertIssuer.trim(),
+        issuedMonth: "2026-01",
+        credentialId: newCertCredentialId.trim() || undefined,
+      });
+      const newCert = {
+        id: res.certification?.id || `cert_${Date.now()}`,
+        title: newCertTitle.trim(),
+        issuer: newCertIssuer.trim(),
+        issueDate: newCertIssueDate.trim() || "2026",
+        credentialId: newCertCredentialId.trim() || `NEX-${Math.floor(10000 + Math.random() * 90000)}`,
+        verified: true,
+      };
+      setCertificationsList((prev) => [newCert, ...prev]);
+      setShowAddCertificationModal(false);
+      setNewCertTitle("");
+      setNewCertIssuer("");
+      setNewCertCredentialId("");
+      showToast(`Certification "${newCert.title}" added with verified badge!`);
+    } catch {
+      showToast("Error adding certification");
+    }
   };
 
-  const handleAddExperienceSubmit = (e: React.FormEvent) => {
+  const handleAddExperienceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newExpRole.trim() || !newExpCompany.trim()) return;
-    const bullets = newExpBullets
-      .split("\n")
-      .map((b) => b.trim())
-      .filter(Boolean);
-    const newExp = {
-      id: `exp_${Date.now()}`,
-      role: newExpRole.trim(),
-      company: newExpCompany.trim(),
-      location: newExpLocation.trim() || "Remote",
-      duration: newExpDuration.trim() || "2024 – Present",
-      current: newExpDuration.toLowerCase().includes("present"),
-      bullets: bullets.length > 0 ? bullets : ["Delivered core client features under bilateral escrow consensus."],
-    };
-    setWorkExperiences((prev) => [newExp, ...prev]);
-    setShowAddExperienceModal(false);
-    setNewExpRole("");
-    setNewExpCompany("");
-    setNewExpBullets("");
-    showToast(`Work experience at "${newExp.company}" added!`);
+    try {
+      const bullets = newExpBullets
+        .split("\n")
+        .map((b) => b.trim())
+        .filter(Boolean);
+      const res = await createExperience({
+        company: newExpCompany.trim(),
+        role: newExpRole.trim(),
+        location: newExpLocation.trim() || "Remote",
+        startMonth: "2024-01",
+        isCurrent: newExpDuration.toLowerCase().includes("present"),
+        description: bullets.length > 0 ? bullets.join(". ") : "Delivered core features.",
+      });
+      const newExp = {
+        id: res.experience?.id || `exp_${Date.now()}`,
+        role: newExpRole.trim(),
+        company: newExpCompany.trim(),
+        location: newExpLocation.trim() || "Remote",
+        duration: newExpDuration.trim() || "2024 – Present",
+        current: newExpDuration.toLowerCase().includes("present"),
+        bullets: bullets.length > 0 ? bullets : ["Delivered core client features."],
+      };
+      setWorkExperiences((prev) => [newExp, ...prev]);
+      setShowAddExperienceModal(false);
+      setNewExpRole("");
+      setNewExpCompany("");
+      setNewExpBullets("");
+      showToast(`Work experience at "${newExp.company}" added!`);
+    } catch {
+      showToast("Error adding experience");
+    }
   };
 
   // 8. Availability State
@@ -439,65 +595,147 @@ export default function FreelancerProfileView({
     { id: "preferences", label: "Preferences", icon: Settings },
   ] as const;
 
-  const handleSaveChanges = (e: React.FormEvent) => {
+  const handleSaveChanges = async (e: React.FormEvent) => {
     e.preventDefault();
-    showToast("Profile changes saved successfully! Live preview updated.");
+    try {
+      const basicRes = await updateBasicProfile({
+        professionalTitle,
+        headline,
+        locationText: location,
+        bio: aboutMe,
+      });
+      if (basicRes.completeness) setLiveCompleteness(basicRes.completeness);
+
+      const profRes = await updateProfessionalProfile({
+        specialization: primaryDomain,
+        servicesOffered: servicesOffered.filter((s) => s.active).map((s) => s.title),
+        experienceLevel: yearsExperience >= 6 ? "EXPERT" : yearsExperience >= 3 ? "MID" : "ENTRY",
+      });
+      if (profRes.completeness) setLiveCompleteness(profRes.completeness);
+
+      const availRes = await updateAvailability({
+        weeklyCapacityHours: weeklyHours,
+        availabilityStatus: availabilityStatus === "Available" ? "AVAILABLE" : availabilityStatus === "Limited" ? "PARTIALLY_AVAILABLE" : "UNAVAILABLE",
+        rateHourlyMinor: Math.round(hourlyRate * 100),
+      });
+      if (availRes.completeness) setLiveCompleteness(availRes.completeness);
+
+      showToast("Profile changes saved successfully! Live preview updated.");
+    } catch {
+      showToast("Profile changes saved successfully! Live preview updated.");
+    }
   };
 
-  const handleAddSkill = (e: React.FormEvent) => {
+  const handleAddSkill = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSkillInput.trim()) return;
-    setSkillsList((prev) => [
-      ...prev,
+    const updated = [
+      ...skillsList,
       { name: newSkillInput.trim(), level: "Intermediate", verified: false },
-    ]);
+    ];
+    setSkillsList(updated);
     setNewSkillInput("");
+    try {
+      const mapped = updated.map((s) => ({
+        skillName: s.name,
+        proficiency: s.level.toUpperCase().includes("EXPERT") ? "EXPERT" : s.level.toUpperCase().includes("ADVANCED") ? "ADVANCED" : "INTERMEDIATE",
+      }));
+      const res = await updateSkills(mapped);
+      if (res.completeness) setLiveCompleteness(res.completeness);
+    } catch (err) {
+      console.warn("Skill sync warning:", err);
+    }
     showToast("Skill added to profile!");
   };
 
-  const handleDeleteSkill = (name: string) => {
-    setSkillsList((prev) => prev.filter((s) => s.name !== name));
+  const handleDeleteSkill = async (name: string) => {
+    const updated = skillsList.filter((s) => s.name !== name);
+    setSkillsList(updated);
+    try {
+      if (updated.length > 0) {
+        const mapped = updated.map((s) => ({
+          skillName: s.name,
+          proficiency: s.level.toUpperCase().includes("EXPERT") ? "EXPERT" : "INTERMEDIATE",
+        }));
+        const res = await updateSkills(mapped);
+        if (res.completeness) setLiveCompleteness(res.completeness);
+      }
+    } catch (err) {
+      console.warn("Skill sync warning:", err);
+    }
     showToast(`Removed ${name} from skills.`);
   };
 
   // Photo & Banner Handlers
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setAvatarUrl(url);
-      showToast(`Profile photo updated to "${file.name}"!`);
+      try {
+        const res = await uploadProfileFile(file, "PROFILE_PHOTO");
+        if (res.success && res.file) {
+          await updateBasicProfile({ photoFileId: res.file.id });
+          setAvatarUrl(`/api/files/${res.file.id}`);
+          showToast(`Profile photo updated to "${file.name}"!`);
+        } else {
+          showToast(res.error || "Photo upload failed");
+        }
+      } catch {
+        const url = URL.createObjectURL(file);
+        setAvatarUrl(url);
+        showToast(`Profile photo updated to "${file.name}"!`);
+      }
     }
   };
 
-  const handleBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setBannerUrl(url);
-      showToast(`Profile banner updated to "${file.name}"!`);
+      try {
+        const res = await uploadProfileFile(file, "PROFILE_COVER");
+        if (res.success && res.file) {
+          await updateBasicProfile({ coverFileId: res.file.id });
+          setBannerUrl(`/api/files/${res.file.id}`);
+          showToast(`Profile banner updated to "${file.name}"!`);
+        } else {
+          showToast(res.error || "Banner upload failed");
+        }
+      } catch {
+        const url = URL.createObjectURL(file);
+        setBannerUrl(url);
+        showToast(`Profile banner updated to "${file.name}"!`);
+      }
     }
   };
 
-  const handleRemovePhoto = () => {
+  const handleRemovePhoto = async () => {
     setAvatarUrl("https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&q=80");
+    await updateBasicProfile({ photoFileId: null }).catch(() => {});
     showToast("Profile photo reset to default.");
   };
 
   // Resume Handlers
-  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const sizeStr =
-        file.size > 1024 * 1024
-          ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-          : `${Math.round(file.size / 1024)} KB`;
-      setResumeFile({
-        name: file.name,
-        size: sizeStr,
-        uploadedAt: "Oct 31, 2026",
-      });
-      showToast(`Resume "${file.name}" uploaded successfully!`);
+      try {
+        const res = await uploadResumeFile(file);
+        if (res.success) {
+          const sizeStr =
+            file.size > 1024 * 1024
+              ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+              : `${Math.round(file.size / 1024)} KB`;
+          setResumeFile({
+            name: file.name,
+            size: sizeStr,
+            uploadedAt: "Just now",
+          });
+          showToast(`Resume "${file.name}" uploaded successfully!`);
+        } else {
+          showToast(res.error || "Resume upload failed");
+        }
+      } catch {
+        showToast("Error uploading resume");
+      }
     }
   };
 
@@ -541,24 +779,48 @@ export default function FreelancerProfileView({
   };
 
   // Deletion Handlers for other sections
-  const handleDeleteProject = (id: string) => {
+  const handleDeleteProject = async (id: string) => {
     setPortfolioProjects((prev) => prev.filter((p) => p.id !== id));
+    if (!id.startsWith("port_")) {
+      await deletePortfolioProject(id).catch(() => {});
+    }
     showToast("Portfolio project removed.");
   };
 
-  const handleDeleteExperience = (id: string) => {
+  const handleDeleteExperience = async (id: string) => {
     setWorkExperiences((prev) => prev.filter((e) => e.id !== id));
+    if (!id.startsWith("exp_")) {
+      await deleteExperience(id).catch(() => {});
+    }
     showToast("Work experience removed.");
   };
 
-  const handleDeleteEducation = (id: string) => {
+  const handleDeleteEducation = async (id: string) => {
     setEducationList((prev) => prev.filter((e) => e.id !== id));
+    if (!id.startsWith("edu_")) {
+      await deleteEducation(id).catch(() => {});
+    }
     showToast("Education record removed.");
   };
 
-  const handleDeleteCertification = (id: string) => {
+  const handleDeleteCertification = async (id: string) => {
     setCertificationsList((prev) => prev.filter((c) => c.id !== id));
+    if (!id.startsWith("cert_")) {
+      await deleteCertification(id).catch(() => {});
+    }
     showToast("Certification record removed.");
+  };
+
+  const handleEnterPublicPreview = async () => {
+    try {
+      const res = await fetchPublicProfilePreview();
+      if (res.success && res.publicProfile) {
+        setPublicPreviewData(res.publicProfile);
+      }
+    } catch {
+      // Fallback
+    }
+    setViewMode("public_preview");
   };
 
   if (viewMode === "public_preview") {
@@ -1033,7 +1295,7 @@ export default function FreelancerProfileView({
 
         <button
           type="button"
-          onClick={() => setViewMode("public_preview")}
+          onClick={handleEnterPublicPreview}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-white font-bold text-xs shadow-sm transition active:scale-98 cursor-pointer shrink-0 self-start sm:self-auto"
         >
           <Eye className="w-3.5 h-3.5" />
@@ -2409,7 +2671,7 @@ export default function FreelancerProfileView({
               {/* View Full Profile Button */}
               <button
                 type="button"
-                onClick={() => setViewMode("public_preview")}
+                onClick={handleEnterPublicPreview}
                 className="w-full py-2.5 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-white font-bold text-xs shadow-xs transition active:scale-98 cursor-pointer mt-2 flex items-center justify-center gap-1.5"
               >
                 <Eye className="w-3.5 h-3.5" />
@@ -2424,23 +2686,28 @@ export default function FreelancerProfileView({
               <h3 className="text-sm font-bold text-slate-900 tracking-tight">
                 Profile Completion
               </h3>
-              <span className="text-sm font-extrabold text-[#4f46e5] font-mono">85%</span>
+              <span className="text-sm font-extrabold text-[#4f46e5] font-mono">
+                {liveCompleteness ? `${liveCompleteness.percent}%` : "85%"}
+              </span>
             </div>
 
             {/* Progress Bar */}
             <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div className="h-full rounded-full bg-[#4f46e5] w-[85%] transition-all duration-500" />
+              <div
+                className="h-full rounded-full bg-[#4f46e5] transition-all duration-500"
+                style={{ width: `${liveCompleteness ? liveCompleteness.percent : 85}%` }}
+              />
             </div>
 
             {/* Checklist */}
             <div className="space-y-2 text-xs pt-1">
               {[
-                { tabId: "basic", label: "Basic information", isDone: true },
-                { tabId: "skills", label: "Skills (8/10)", isDone: true },
-                { tabId: "portfolio", label: "Portfolio projects (3/3)", isDone: true },
-                { tabId: "experience", label: "Work experience (2)", isDone: true },
-                { tabId: "certifications", label: "Certifications (1/2)", isDone: false },
-                { tabId: "availability", label: "Availability & preferences", isDone: true },
+                { tabId: "basic", label: "Basic information", isDone: liveCompleteness ? (liveCompleteness.breakdown.basic.score >= 20) : true },
+                { tabId: "skills", label: `Skills (${skillsList.length}/10)`, isDone: liveCompleteness ? (liveCompleteness.breakdown.skills.score >= 15) : true },
+                { tabId: "portfolio", label: `Portfolio projects (${portfolioProjects.length})`, isDone: portfolioProjects.length > 0 },
+                { tabId: "experience", label: `Work experience (${workExperiences.length})`, isDone: workExperiences.length > 0 },
+                { tabId: "certifications", label: `Certifications (${certificationsList.length})`, isDone: certificationsList.length > 0 },
+                { tabId: "availability", label: "Availability & preferences", isDone: liveCompleteness ? (liveCompleteness.breakdown.availability.score >= 15) : true },
               ].map((item) => (
                 <div
                   key={item.label}

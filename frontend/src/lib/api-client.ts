@@ -315,6 +315,565 @@ export async function replayDeadLetter(id: string): Promise<boolean> {
 }
 
 
+// ---------------------------------------------------------------------------
+// Phase 2: Freelancer Profile & Portfolio API Client
+// ---------------------------------------------------------------------------
+
+export interface FreelancerProfileData {
+  id: string;
+  userId: string;
+  professionalTitle?: string | null;
+  headline?: string | null;
+  locationText?: string | null;
+  countryCode?: string | null;
+  timezone?: string | null;
+  bio?: string | null;
+  photoFileId?: string | null;
+  coverFileId?: string | null;
+  specialization?: string | null;
+  servicesOffered?: string[];
+  preferredProjectTypes?: string[];
+  tools?: string[];
+  experienceLevel?: string | null;
+  availabilityStatus?: string;
+  weeklyCapacityHours?: number | null;
+  preferredEngagement?: string | null;
+  rateHourlyMinor?: number | null;
+  rateCurrency?: string;
+  workArrangement?: string | null;
+  searchVisibility?: string;
+  user?: {
+    id: string;
+    email: string;
+    name: string | null;
+    role: string | null;
+  };
+  freelancerSkills?: Array<{
+    id: string;
+    skillName: string;
+    proficiency: string;
+    displayOrder: number;
+  }>;
+  workExperiences?: Array<{
+    id: string;
+    company: string;
+    role: string;
+    location?: string | null;
+    startMonth: string;
+    endMonth?: string | null;
+    isCurrent: boolean;
+    description?: string | null;
+  }>;
+  educationEntries?: Array<{
+    id: string;
+    institution: string;
+    degree: string;
+    fieldOfStudy?: string | null;
+    startYear?: number | null;
+    graduationYear?: number | null;
+  }>;
+  certifications?: Array<{
+    id: string;
+    name: string;
+    issuer: string;
+    issuedMonth: string;
+    expiryMonth?: string | null;
+    credentialId?: string | null;
+    credentialUrl?: string | null;
+  }>;
+  portfolioProjects?: Array<{
+    id: string;
+    title: string;
+    description: string;
+    role?: string | null;
+    tools?: string[];
+    projectUrl?: string | null;
+    coverFileId?: string | null;
+    displayOrder: number;
+  }>;
+  resumeFiles?: Array<{
+    id: string;
+    originalName: string;
+    sizeBytes: number;
+    status: string;
+    visibility: string;
+    uploadedAt: string;
+  }>;
+}
+
+export interface ProfileCompleteness {
+  percent: number;
+  breakdown: {
+    basic: { score: number; max: number };
+    skills: { score: number; max: number };
+    experienceOrEducation: { score: number; max: number };
+    availability: { score: number; max: number };
+    resumeOrPortfolio: { score: number; max: number };
+  };
+  missing: string[];
+}
+
+export async function fetchFreelancerProfile(): Promise<{
+  success: boolean;
+  profile?: FreelancerProfileData;
+  completeness?: ProfileCompleteness;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      return { success: false, error: errJson.error?.message || `HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    return { success: true, profile: data.profile, completeness: data.completeness };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to fetch profile" };
+  }
+}
+
+export async function updateBasicProfile(data: {
+  professionalTitle?: string;
+  headline?: string;
+  locationText?: string;
+  countryCode?: string;
+  timezone?: string;
+  bio?: string;
+  photoFileId?: string | null;
+  coverFileId?: string | null;
+}): Promise<{ success: boolean; profile?: FreelancerProfileData; completeness?: ProfileCompleteness; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/basic`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, profile: json.profile, completeness: json.completeness };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Update failed" };
+  }
+}
+
+export async function updateProfessionalProfile(data: {
+  specialization?: string;
+  servicesOffered?: string[];
+  preferredProjectTypes?: string[];
+  tools?: string[];
+  experienceLevel?: string;
+}): Promise<{ success: boolean; profile?: FreelancerProfileData; completeness?: ProfileCompleteness; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/professional`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, profile: json.profile, completeness: json.completeness };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Update failed" };
+  }
+}
+
+export async function updateSkills(skills: Array<{ skillName: string; proficiency: string }>): Promise<{
+  success: boolean;
+  skills?: any[];
+  completeness?: ProfileCompleteness;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/skills`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ skills }),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, skills: json.skills, completeness: json.completeness };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Skills update failed" };
+  }
+}
+
+export async function createExperience(data: {
+  company: string;
+  role: string;
+  location?: string;
+  startMonth: string;
+  endMonth?: string;
+  isCurrent?: boolean;
+  description?: string;
+}): Promise<{ success: boolean; experience?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/experiences`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, experience: json.experience };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to create experience" };
+  }
+}
+
+export async function updateExperience(
+  id: string,
+  data: Partial<{
+    company: string;
+    role: string;
+    location: string;
+    startMonth: string;
+    endMonth: string;
+    isCurrent: boolean;
+    description: string;
+  }>
+): Promise<{ success: boolean; experience?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/experiences/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, experience: json.experience };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to update experience" };
+  }
+}
+
+export async function deleteExperience(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/experiences/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function createEducation(data: {
+  institution: string;
+  degree: string;
+  fieldOfStudy?: string;
+  startYear?: number;
+  graduationYear?: number;
+}): Promise<{ success: boolean; education?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/educations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, education: json.education };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to create education" };
+  }
+}
+
+export async function updateEducation(
+  id: string,
+  data: Partial<{
+    institution: string;
+    degree: string;
+    fieldOfStudy: string;
+    startYear: number;
+    graduationYear: number;
+  }>
+): Promise<{ success: boolean; education?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/educations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, education: json.education };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to update education" };
+  }
+}
+
+export async function deleteEducation(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/educations/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function createCertification(data: {
+  name: string;
+  issuer: string;
+  issuedMonth: string;
+  expiryMonth?: string;
+  credentialId?: string;
+  credentialUrl?: string;
+}): Promise<{ success: boolean; certification?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/certifications`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, certification: json.certification };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to create certification" };
+  }
+}
+
+export async function updateCertification(
+  id: string,
+  data: Partial<{
+    name: string;
+    issuer: string;
+    issuedMonth: string;
+    expiryMonth: string;
+    credentialId: string;
+    credentialUrl: string;
+  }>
+): Promise<{ success: boolean; certification?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/certifications/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, certification: json.certification };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to update certification" };
+  }
+}
+
+export async function deleteCertification(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/certifications/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function createPortfolioProject(data: {
+  title: string;
+  description: string;
+  role?: string;
+  tools?: string[];
+  projectUrl?: string;
+  coverFileId?: string;
+}): Promise<{ success: boolean; portfolio?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/portfolio`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, portfolio: json.portfolio };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to create portfolio" };
+  }
+}
+
+export async function updatePortfolioProject(
+  id: string,
+  data: Partial<{
+    title: string;
+    description: string;
+    role: string;
+    tools: string[];
+    projectUrl: string;
+    coverFileId: string;
+  }>
+): Promise<{ success: boolean; portfolio?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/portfolio/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, portfolio: json.portfolio };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to update portfolio" };
+  }
+}
+
+export async function deletePortfolioProject(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/portfolio/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function updateAvailability(data: {
+  availabilityStatus?: string;
+  weeklyCapacityHours?: number;
+  preferredEngagement?: string;
+  rateHourlyMinor?: number;
+  rateCurrency?: string;
+  workArrangement?: string;
+  searchVisibility?: string;
+}): Promise<{ success: boolean; profile?: FreelancerProfileData; completeness?: ProfileCompleteness; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/availability`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, profile: json.profile, completeness: json.completeness };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Availability update failed" };
+  }
+}
+
+export async function uploadProfileFile(
+  file: File,
+  purpose: "PROFILE_PHOTO" | "PROFILE_COVER" | "PORTFOLIO_IMAGE"
+): Promise<{ success: boolean; file?: any; error?: string }> {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("purpose", purpose);
+
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/files`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, file: json.file };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "File upload failed" };
+  }
+}
+
+export async function fetchResumeMetadata(): Promise<{
+  success: boolean;
+  resume?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/resume`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, resume: json.resume };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to fetch resume" };
+  }
+}
+
+export async function uploadResumeFile(file: File): Promise<{
+  success: boolean;
+  resumeId?: string;
+  extractionId?: string;
+  jobId?: string;
+  error?: string;
+}> {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/resume`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, resumeId: json.resumeId, extractionId: json.extractionId, jobId: json.jobId };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Resume upload failed" };
+  }
+}
+
+export async function updateResumeVisibility(
+  visibility: "PRIVATE" | "PROPOSAL_CLIENTS" | "PUBLIC"
+): Promise<{ success: boolean; resume?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/resume/visibility`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ visibility }),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, resume: json.resume };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Visibility update failed" };
+  }
+}
+
+export async function fetchPublicProfilePreview(): Promise<{
+  success: boolean;
+  publicProfile?: any;
+  completeness?: ProfileCompleteness;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/public-preview`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, publicProfile: json.publicProfile, completeness: json.completeness };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Preview fetch failed" };
+  }
 }
 
 /**

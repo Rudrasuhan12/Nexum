@@ -14,6 +14,12 @@ import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { csrfProtection } from "./middleware/csrf.js";
 import { backgroundWorker } from "./jobs/worker.js";
 import "./jobs/resumeExtractor.js";
+import freelancerProfileRouter from "./routes/freelancer/profile.js";
+import {
+  freelancerFilesRouter,
+  publicFilesRouter,
+  publicFreelancersRouter,
+} from "./routes/freelancer/files.js";
 import clientRouter from "./routes/client.js";
 
 const app = express();
@@ -59,6 +65,12 @@ app.use("/api/auth", authRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/payments", paymentsRouter);
+
+// Freelancer Profile, Portfolio & Files Routes
+app.use("/api/freelancer/profile", freelancerProfileRouter);
+app.use("/api/freelancer", freelancerFilesRouter);
+app.use("/api/files", publicFilesRouter);
+app.use("/api/public/freelancers", publicFreelancersRouter);
 
 // Freelancer Onboarding & Resume Routes
 app.use("/api/freelancer", freelancerOnboardingRouter);

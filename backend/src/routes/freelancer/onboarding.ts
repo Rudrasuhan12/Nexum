@@ -176,6 +176,19 @@ router.post(
         },
       });
 
+      // 7. Append audit event
+      await appendAuditEvent({
+        actorId: user.id,
+        action: "RESUME_UPLOADED",
+        objectType: "RESUME_FILE",
+        objectId: resumeFile.id,
+        metadata: {
+          originalName: file.originalname,
+          sizeBytes: file.size,
+          mimeType: file.mimetype,
+        },
+      });
+
       res.status(202).json({
         success: true,
         resumeId: resumeFile.id,

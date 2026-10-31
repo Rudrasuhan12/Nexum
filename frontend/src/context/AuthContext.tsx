@@ -20,6 +20,8 @@ interface AuthContextType {
   isLoading: boolean;
   presence: UserPresenceStatus;
   updatePresence: (status: UserPresenceStatus) => Promise<boolean>;
+  updateAvatar: (avatarUrl: string) => Promise<boolean>;
+  updateHiringStatus: (status: string) => Promise<boolean>;
   loginAs: (roleOrKey: "CLIENT" | "FREELANCER_A" | string) => Promise<boolean>;
   loginWithCredentials: (
     email: string,
@@ -35,12 +37,18 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<DemoUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [customPresence, setCustomPresence] = useState<UserPresenceStatus | null>(null);
-  const presence: UserPresenceStatus = customPresence || user?.presenceStatus || "available";
+  const [presence, setPresence] = useState<UserPresenceStatus>("available");
+
+  // Synchronize presence with user data if session specifies one
+  useEffect(() => {
+    if (user?.presenceStatus) {
+      setPresence(user.presenceStatus);
+    }
+  }, [user?.presenceStatus]);
 
   const updatePresence = useCallback(
     async (status: UserPresenceStatus): Promise<boolean> => {
-      setCustomPresence(status);
+      setPresence(status);
       setUser((prev) => (prev ? { ...prev, presenceStatus: status } : prev));
       try {
         const res = await fetch("/api/users/presence", {
@@ -61,13 +69,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updateAvatar = useCallback(async (avatarUrl: string): Promise<boolean> => {
+    // Optimistically set avatar for instant visual feedback
+    setUser((prev) => (prev ? { ...prev, avatar: avatarUrl } : prev));
+    try {
+      const res = await fetch("/api/users/avatar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar: avatarUrl }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.avatarUrl) {
+          setUser((prev) => (prev ? { ...prev, avatar: data.avatarUrl } : prev));
+        }
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error("Error saving avatar:", err);
+      return false;
+    }
+  }, []);
+
+  const updateHiringStatus = useCallback(async (status: string): Promise<boolean> => {
+    setUser((prev) => (prev ? { ...prev, statusBadge: status } : prev));
+    try {
+      const res = await fetch("/api/users/hiring-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      return res.ok;
+    } catch (err) {
+      console.error("Error saving hiring status:", err);
+      return false;
+    }
+  }, []);
+
   // Network offline/online listeners
   useEffect(() => {
     const handleOffline = () => {
       updatePresence("offline");
     };
     const handleOnline = () => {
-      updatePresence("available");
+      setPresence((current) => {
+        if (current === "offline") {
+          updatePresence("available");
+          return "available";
+        }
+        return current;
+      });
     };
 
     window.addEventListener("offline", handleOffline);
@@ -220,6 +272,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         presence,
         updatePresence,
+        updateAvatar,
+        updateHiringStatus,
         loginAs,
         loginWithCredentials,
         signup,
