@@ -33,7 +33,7 @@ describe("Nexum AI-Mediated Workspace Suite", () => {
     const replyCard = INITIAL_TIMELINE_TECHKART.find((t) => t.type === "freelancer_reply_card");
     expect(replyCard).toBeDefined();
     expect(replyCard?.badgeText).toBe("Reply from Sambit");
-    expect(replyCard?.metrics?.priceChange).toBe("+₹6,000");
+    expect(replyCard?.metrics?.priceChange).toBe("+$600");
     expect(replyCard?.metrics?.scheduleChange).toBe("+4 days");
     expect(replyCard?.metrics?.agreementVersion).toBe("v3 to v4");
     expect(replyCard?.rawMessage).toBeDefined();
@@ -48,7 +48,7 @@ describe("Nexum AI-Mediated Workspace Suite", () => {
     expect(draftCard).toBeDefined();
     expect(draftCard?.badgeText).toBe("Draft, not sent yet");
     expect(draftCard?.counterofferDetails?.title).toBe("v5 · CR-2 best-selling section");
-    expect(draftCard?.counterofferDetails?.priceChange).toBe("+₹5,000 (was +₹6,000)");
+    expect(draftCard?.counterofferDetails?.priceChange).toBe("+$500 (was +$600)");
   });
 
   it("enforces private AI session isolation and scope metadata", () => {
@@ -87,4 +87,3 @@ describe("Nexum AI-Mediated Workspace Suite", () => {
     expect(scopeRule?.approvalNeeded).toBe("Client sends, then both approve the same version");
   });
 });
-

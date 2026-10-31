@@ -82,7 +82,7 @@ export default function ReviewVersionModal({
               <div className="space-y-1.5 text-slate-600">
                 <div className="flex justify-between">
                   <span>Base Price:</span>
-                  <span className="font-semibold text-slate-900">₹80,000</span>
+                  <span className="font-semibold text-slate-900">$8,000</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Scope:</span>
@@ -108,7 +108,7 @@ export default function ReviewVersionModal({
               <div className="space-y-1.5 text-slate-600">
                 <div className="flex justify-between">
                   <span>New Price:</span>
-                  <span className="font-bold text-slate-900">₹86,000 (+₹6,000)</span>
+                  <span className="font-bold text-slate-900">$8,600 (+$600)</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Scope delta:</span>

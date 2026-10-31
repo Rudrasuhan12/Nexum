@@ -16,7 +16,7 @@ export default function ReadOriginalMessageModal({
   onClose,
   senderName = "Sambit Kumar",
   timestamp = "10:24 AM",
-  rawMessage = "Hey Alex, I checked the request for the best-selling products carousel with dynamic category pills. It requires an additional database query index and 2 custom components. I can do it for an additional ₹6,000 and 4 days on the timeline. Let me know if that works for you.",
+  rawMessage = "Hey Alex, I checked the request for the best-selling products carousel with dynamic category pills. It requires an additional database query index and 2 custom components. I can do it for an additional $600 and 4 days on the timeline. Let me know if that works for you.",
 }: ReadOriginalMessageModalProps) {
   if (!isOpen) return null;
 
