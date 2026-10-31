@@ -1,0 +1,271 @@
+"use client";
+
+import React, { useState } from "react";
+import {
+  Edit3,
+  Calendar,
+  Code2,
+  Download,
+  Lightbulb,
+  Send,
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
+} from "lucide-react";
+import { FreelancerProposalItem } from "@/lib/freelancer-proposals-types";
+
+interface ProposalOfferTabProps {
+  proposal: FreelancerProposalItem;
+  onEditProposal: () => void;
+  onReviewCounteroffer: () => void;
+  onSendFollowUp: () => void;
+  showToast: (msg: string) => void;
+}
+
+export default function ProposalOfferTab({
+  proposal,
+  onEditProposal,
+  onReviewCounteroffer,
+  onSendFollowUp,
+  showToast,
+}: ProposalOfferTabProps) {
+  const [showFullCoverLetter, setShowFullCoverLetter] = useState(false);
+
+  const handleDownloadAll = () => {
+    showToast("Downloading all proposal attachments in a single zip archive...");
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* 1. Counteroffer Banner if counteroffer exists */}
+      {proposal.counteroffer && (
+        <div className="p-5 rounded-2xl bg-orange-50/80 border border-orange-200/90 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse" />
+              <h3 className="text-xs font-bold text-orange-950 uppercase tracking-wider">
+                Counteroffer Received from Client
+              </h3>
+            </div>
+            <span className="text-[10px] font-bold text-orange-700 bg-orange-100/70 px-2 py-0.5 rounded-full">
+              Expires {proposal.counteroffer.expiresAt}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+            <div className="p-2.5 rounded-xl bg-white border border-orange-100">
+              <p className="text-[10px] text-slate-400 font-medium">Your Offer</p>
+              <p className="text-xs font-bold text-slate-900 mt-0.5">
+                {proposal.counteroffer.originalPrice}
+              </p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white border border-orange-200">
+              <p className="text-[10px] text-orange-700 font-bold">Client Counter</p>
+              <p className="text-xs font-extrabold text-orange-600 mt-0.5">
+                {proposal.counteroffer.proposedPrice}
+              </p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white border border-orange-100">
+              <p className="text-[10px] text-slate-400 font-medium">Timeline</p>
+              <p className="text-xs font-bold text-slate-900 mt-0.5">
+                {proposal.counteroffer.originalDuration}
+              </p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white border border-orange-200">
+              <p className="text-[10px] text-orange-700 font-bold">Proposed Timeline</p>
+              <p className="text-xs font-extrabold text-orange-600 mt-0.5">
+                {proposal.counteroffer.proposedDuration}
+              </p>
+            </div>
+          </div>
+
+          <p className="text-xs text-orange-900 italic">
+            &quot;{proposal.counteroffer.scopeNotes}&quot;
+          </p>
+
+          <div className="pt-1 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onReviewCounteroffer}
+              className="py-1.5 px-3.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-xs font-bold text-white transition shadow-xs cursor-pointer flex items-center gap-1.5"
+            >
+              <span>Review Counteroffer</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Your Proposal Header & Summary */}
+      <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">
+            Your Proposal
+          </h3>
+          <button
+            type="button"
+            onClick={onEditProposal}
+            className="flex items-center gap-1.5 text-xs font-bold text-[#4f46e5] hover:text-[#4338ca] transition cursor-pointer"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+            <span>Edit Proposal</span>
+          </button>
+        </div>
+
+        <p className="text-xs text-slate-600 leading-relaxed">
+          {proposal.offer.summary}
+        </p>
+
+        {/* 3 KPI Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+          {/* Approach */}
+          <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4f46e5] shrink-0">
+              <Code2 className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Development Approach
+              </p>
+              <p className="text-xs font-bold text-slate-900 truncate mt-0.5">
+                {proposal.offer.approach}
+              </p>
+            </div>
+          </div>
+
+          {/* Timeline */}
+          <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shrink-0">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Timeline
+              </p>
+              <p className="text-xs font-bold text-slate-900 truncate mt-0.5">
+                {proposal.offer.duration}
+              </p>
+            </div>
+          </div>
+
+          {/* Price */}
+          <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4f46e5] font-extrabold text-xs shrink-0">
+              ₹
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Price
+              </p>
+              <p className="text-xs font-extrabold text-slate-900 truncate mt-0.5">
+                {proposal.offer.priceDisplay}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Attachments */}
+      <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">
+            Attachments
+          </h3>
+          {proposal.offer.attachments.length > 0 && (
+            <button
+              type="button"
+              onClick={handleDownloadAll}
+              className="flex items-center gap-1.5 text-xs font-bold text-[#4f46e5] hover:text-[#4338ca] transition cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download All</span>
+            </button>
+          )}
+        </div>
+
+        {proposal.offer.attachments.length === 0 ? (
+          <p className="text-xs text-slate-400 italic">No attachments uploaded with this proposal.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {proposal.offer.attachments.map((att) => (
+              <div
+                key={att.id}
+                className="p-3 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition flex items-center justify-between gap-2 shadow-2xs"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shrink-0 font-bold text-[9px]">
+                    PDF
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-900 truncate">
+                      {att.name}
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      PDF · {att.fileSize}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => showToast(`Downloading ${att.name}...`)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer shrink-0"
+                  title="Download File"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 4. Cover Letter */}
+      <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3">
+        <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">
+          Cover Letter
+        </h3>
+
+        <div className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">
+          {showFullCoverLetter
+            ? proposal.offer.coverLetter
+            : proposal.offer.coverLetter.slice(0, 240) + "..."}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowFullCoverLetter(!showFullCoverLetter)}
+          className="text-xs font-bold text-[#4f46e5] hover:underline flex items-center gap-1 cursor-pointer"
+        >
+          <span>{showFullCoverLetter ? "Show Less" : "Show More"}</span>
+          {showFullCoverLetter ? (
+            <ChevronUp className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5" />
+          )}
+        </button>
+      </div>
+
+      {/* 5. Bottom Tip & Action Bar */}
+      <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="p-1.5 rounded-xl bg-white text-[#4f46e5] shadow-2xs shrink-0 mt-0.5">
+            <Lightbulb className="w-4 h-4" />
+          </div>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            <strong className="text-slate-800">Tip:</strong> Keep following up professionally if you don&apos;t hear back in a few days. You can also send a message to the client to answer any additional questions.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onSendFollowUp}
+          className="flex items-center gap-1.5 py-2 px-3.5 rounded-xl border border-indigo-200 bg-white hover:bg-indigo-50 text-xs font-bold text-[#4f46e5] transition shadow-2xs whitespace-nowrap cursor-pointer shrink-0 self-start sm:self-auto"
+        >
+          <Send className="w-3.5 h-3.5" />
+          <span>Send Follow-up</span>
+        </button>
+      </div>
+    </div>
+  );
+}
