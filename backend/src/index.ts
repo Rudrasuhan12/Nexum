@@ -96,9 +96,17 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 if (env.NODE_ENV !== "test") {
-  app.listen(Number(port), "0.0.0.0", () => {
+  const server = app.listen(Number(port), "0.0.0.0", () => {
     console.log(`🚀 Nexum Express Backend running on port ${port}`);
     console.log(`📡 Health endpoint: http://localhost:${port}/health`);
+  });
+
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.warn(`⚠️  Port ${port} in use; skipping standalone listen.`);
+    } else {
+      console.error("Server listen error:", err);
+    }
   });
 
   // Start persistent PostgreSQL-backed background job worker unless explicitly disabled (e.g. in test suites)
