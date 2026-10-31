@@ -988,3 +988,188 @@ export async function fetchClientAuditLogs(params?: {
     return { success: false, logs: [], total: 0, page: 1, totalPages: 1, error: msg };
   }
 }
+
+
+// ===========================================================================
+// Phase 3: Project Opportunities, Search & Bookmarks API Client
+// ===========================================================================
+
+export interface SearchProjectsParams {
+  q?: string;
+  location?: string;
+  category?: string;
+  experienceLevel?: "BEGINNER" | "JUNIOR" | "MID" | "SENIOR" | "EXPERT";
+  budgetType?: "HOURLY" | "FIXED_PRICE" | "ALL";
+  minBudgetCents?: number;
+  maxBudgetCents?: number;
+  skills?: string;
+  sortBy?: "newest" | "budget_high" | "budget_low" | "match_high" | "fewest_proposals";
+  page?: number;
+  limit?: number;
+}
+
+export interface ApiProjectOpportunity {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  skills: string[];
+  experienceLevel: "BEGINNER" | "JUNIOR" | "MID" | "SENIOR" | "EXPERT" | "Entry Level" | "Intermediate" | "Expert";
+  budgetType: "Hourly" | "Fixed Price";
+  budgetAmount: number;
+  budgetCents: number;
+  currency: string;
+  location: string;
+  postedAt: string;
+  proposalsCount: number;
+  isSaved: boolean;
+  client: {
+    id: string;
+    name: string;
+    company: string;
+    location: string;
+    isVerified: boolean;
+  };
+}
+
+export interface SearchProjectsResponse {
+  success: boolean;
+  projects: ApiProjectOpportunity[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  error?: string;
+}
+
+export async function searchFreelancerProjects(
+  params?: SearchProjectsParams
+): Promise<SearchProjectsResponse> {
+  try {
+    const query = new URLSearchParams();
+    if (params?.q) query.set("q", params.q);
+    if (params?.location) query.set("location", params.location);
+    if (params?.category) query.set("category", params.category);
+    if (params?.experienceLevel) query.set("experienceLevel", params.experienceLevel);
+    if (params?.budgetType) query.set("budgetType", params.budgetType);
+    if (params?.minBudgetCents !== undefined) query.set("minBudgetCents", String(params.minBudgetCents));
+    if (params?.maxBudgetCents !== undefined) query.set("maxBudgetCents", String(params.maxBudgetCents));
+    if (params?.skills) query.set("skills", params.skills);
+    if (params?.sortBy) query.set("sortBy", params.sortBy);
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/search?${query.toString()}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        success: false,
+        projects: [],
+        pagination: { page: 1, limit: 10, total: 0, totalPages: 1 },
+        error: json.error?.message || `HTTP ${res.status}`,
+      };
+    }
+
+    return {
+      success: true,
+      projects: json.projects || [],
+      pagination: json.pagination || { page: 1, limit: 10, total: 0, totalPages: 1 },
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      projects: [],
+      pagination: { page: 1, limit: 10, total: 0, totalPages: 1 },
+      error: err instanceof Error ? err.message : "Search failed",
+    };
+  }
+}
+
+export async function getFreelancerProjectDetails(
+  id: string
+): Promise<{ success: boolean; project?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${id}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, project: json.project };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to load project details" };
+  }
+}
+
+export async function saveFreelancerProject(
+  id: string
+): Promise<{ success: boolean; isSaved: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${id}/save`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, isSaved: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, isSaved: true };
+  } catch (err: unknown) {
+    return { success: false, isSaved: false, error: err instanceof Error ? err.message : "Failed to save project" };
+  }
+}
+
+export async function unsaveFreelancerProject(
+  id: string
+): Promise<{ success: boolean; isSaved: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${id}/save`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, isSaved: true, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, isSaved: false };
+  } catch (err: unknown) {
+    return { success: false, isSaved: true, error: err instanceof Error ? err.message : "Failed to unsave project" };
+  }
+}
+
+export async function getSavedFreelancerProjects(): Promise<{
+  success: boolean;
+  savedProjects: ApiProjectOpportunity[];
+  total: number;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/saved`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, savedProjects: [], total: 0, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      savedProjects: json.savedProjects || [],
+      total: json.total || 0,
+    };
+  } catch (err: unknown) {
+    return { success: false, savedProjects: [], total: 0, error: err instanceof Error ? err.message : "Failed to fetch saved projects" };
+  }
+}

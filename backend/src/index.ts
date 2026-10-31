@@ -20,6 +20,7 @@ import {
   publicFilesRouter,
   publicFreelancersRouter,
 } from "./routes/freelancer/files.js";
+import freelancerProjectsRouter from "./routes/freelancer/projects.js";
 import clientRouter from "./routes/client.js";
 
 const app = express();
@@ -68,6 +69,7 @@ app.use("/api/payments", paymentsRouter);
 
 // Freelancer Profile, Portfolio & Files Routes
 app.use("/api/freelancer/profile", freelancerProfileRouter);
+app.use("/api/freelancer/projects", freelancerProjectsRouter);
 app.use("/api/freelancer", freelancerFilesRouter);
 app.use("/api/files", publicFilesRouter);
 app.use("/api/public/freelancers", publicFreelancersRouter);

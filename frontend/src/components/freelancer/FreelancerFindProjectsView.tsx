@@ -1,6 +1,11 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import {
+  searchFreelancerProjects,
+  saveFreelancerProject,
+  unsaveFreelancerProject,
+} from "@/lib/api-client";
 import {
   Search,
   MapPin,
@@ -240,6 +245,60 @@ export default function FreelancerFindProjectsView({
   // Interaction state
   const [savedProjectIds, setSavedProjectIds] = useState<string[]>(["opp_1", "opp_4"]);
   const [appliedProjectIds, setAppliedProjectIds] = useState<string[]>(["opp_3"]);
+  const [backendProjects, setBackendProjects] = useState<ProjectOpportunity[]>([]);
+  const [isLiveLoaded, setIsLiveLoaded] = useState(false);
+
+  // Load live projects from Express backend
+  useEffect(() => {
+    let isCurrent = true;
+    searchFreelancerProjects({
+      q: searchQuery,
+      location: locationQuery,
+      category: selectedCategory === "All Categories" ? undefined : selectedCategory,
+      sortBy,
+    })
+      .then((res) => {
+        if (!isCurrent) return;
+        if (res.success && res.projects && res.projects.length > 0) {
+          const mapped: ProjectOpportunity[] = res.projects.map((p) => ({
+            id: p.id,
+            title: p.title,
+            clientName: p.client.name,
+            clientCompany: p.client.company,
+            location: p.location,
+            experienceLevel: (p.experienceLevel === "EXPERT"
+              ? "Expert"
+              : p.experienceLevel === "MID"
+              ? "Intermediate"
+              : "Entry Level") as any,
+            category: p.category as any,
+            budget:
+              p.budgetType === "Hourly"
+                ? `$${(p.budgetCents / 100).toFixed(2)}/hour`
+                : `$${(p.budgetCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} fixed`,
+            budgetAmount: p.budgetAmount,
+            budgetType: p.budgetType,
+            proposalsCount: p.proposalsCount,
+            hiringState:
+              p.proposalsCount > 10 ? "Urgent Need" : p.proposalsCount > 5 ? "1 Interviewing" : "Still Selecting",
+            postedTime: p.postedAt ? new Date(p.postedAt).toLocaleDateString() : "Recently",
+            matchScore: 92,
+            description: p.description,
+            skills: p.skills,
+            isVerified: p.client.isVerified,
+            escrowStatus: p.client.isVerified ? "Pre-Funded in Escrow" : "Verified Payment Method",
+          }));
+          setBackendProjects(mapped);
+          setSavedProjectIds(res.projects.filter((p) => p.isSaved).map((p) => p.id));
+          setIsLiveLoaded(true);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [searchQuery, locationQuery, selectedCategory, sortBy]);
 
   // Reset all filters
   const handleResetFilters = () => {
@@ -254,14 +313,16 @@ export default function FreelancerFindProjectsView({
     showToast("Filters reset to default.");
   };
 
-  const toggleSave = (id: string, e: React.MouseEvent) => {
+  const toggleSave = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (savedProjectIds.includes(id)) {
       setSavedProjectIds((prev) => prev.filter((i) => i !== id));
       showToast("Project removed from saved bookmarks.");
+      await unsaveFreelancerProject(id).catch(() => {});
     } else {
       setSavedProjectIds((prev) => [...prev, id]);
       showToast("Project saved to your saved opportunities!");
+      await saveFreelancerProject(id).catch(() => {});
     }
   };
 
@@ -278,7 +339,8 @@ export default function FreelancerFindProjectsView({
 
   // Filter & Sort Logic
   const filteredProjects = useMemo(() => {
-    return OPPORTUNITIES.filter((opp) => {
+    const baseList = isLiveLoaded && backendProjects.length > 0 ? backendProjects : OPPORTUNITIES;
+    return baseList.filter((opp) => {
       // 1. Text Search (title, company, description, skills)
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
@@ -364,6 +426,8 @@ export default function FreelancerFindProjectsView({
     selectedProposalsTier,
     verifiedEscrowOnly,
     sortBy,
+    backendProjects,
+    isLiveLoaded,
   ]);
 
   return (

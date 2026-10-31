@@ -205,6 +205,7 @@ model User {
   educationEntries       EducationEntry[]
   certifications         Certification[]
   portfolioProjects      PortfolioProject[]
+  savedProjects          SavedProject[]          @relation("FreelancerSavedProjects")
 }
 
 model FreelancerProfile {
@@ -291,6 +292,17 @@ model Project {
   opportunities  Opportunity[]
   messages       ConversationMessage[]
   changeRequests ChangeRequest[]
+  savedProjects  SavedProject[]        @relation("SavedProjects")
+
+  category        String?
+  skills          String[]         @default([])
+  experienceLevel ExperienceLevel?
+  budgetType      String           @default("FIXED_PRICE")
+  location        String?          @default("Remote")
+
+  @@index([state, visibility])
+  @@index([budgetCents])
+  @@index([category])
 }
 
 model ProjectBriefVersion {
@@ -780,4 +792,21 @@ model PortfolioProject {
 
   @@index([userId])
   @@index([profileId, displayOrder])
+}
+
+// ===========================================================================
+// Phase 3: Saved Projects (Bookmarks)
+// ===========================================================================
+
+model SavedProject {
+  id           String   @id @default(cuid())
+  freelancerId String
+  freelancer   User     @relation("FreelancerSavedProjects", fields: [freelancerId], references: [id], onDelete: Cascade)
+  projectId    String
+  project      Project  @relation("SavedProjects", fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@unique([freelancerId, projectId])
+  @@index([freelancerId])
+  @@index([projectId])
 }
