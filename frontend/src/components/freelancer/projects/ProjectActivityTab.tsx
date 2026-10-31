@@ -26,6 +26,7 @@ export default function ProjectActivityTab({ project }: ProjectActivityTabProps)
       icon: UploadCloud,
       iconColor: "text-amber-600 bg-amber-50 border-amber-200",
       badge: "In Review",
+      badgeColor: "bg-amber-50 text-amber-700 border-amber-200/80",
     },
     {
       id: "act-2",
@@ -36,6 +37,7 @@ export default function ProjectActivityTab({ project }: ProjectActivityTabProps)
       icon: CreditCard,
       iconColor: "text-[#4f46e5] bg-indigo-50 border-indigo-200",
       badge: "Escrow Locked",
+      badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200/80",
     },
     {
       id: "act-3",
@@ -46,6 +48,7 @@ export default function ProjectActivityTab({ project }: ProjectActivityTabProps)
       icon: CheckCircle2,
       iconColor: "text-emerald-600 bg-emerald-50 border-emerald-200",
       badge: "Completed",
+      badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200/80",
     },
     {
       id: "act-4",
@@ -56,6 +59,7 @@ export default function ProjectActivityTab({ project }: ProjectActivityTabProps)
       icon: FileCode,
       iconColor: "text-blue-600 bg-blue-50 border-blue-200",
       badge: "Delivered",
+      badgeColor: "bg-blue-50 text-blue-700 border-blue-200/80",
     },
     {
       id: "act-5",
@@ -66,6 +70,7 @@ export default function ProjectActivityTab({ project }: ProjectActivityTabProps)
       icon: FileCheck,
       iconColor: "text-purple-600 bg-purple-50 border-purple-200",
       badge: "Contract Active",
+      badgeColor: "bg-purple-50 text-purple-700 border-purple-200/80",
     },
   ];
 
@@ -83,39 +88,48 @@ export default function ProjectActivityTab({ project }: ProjectActivityTabProps)
 
       {/* Timeline */}
       <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
-        <div className="relative pl-6 space-y-6 before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
-          {events.map((ev) => {
+        <div className="space-y-0">
+          {events.map((ev, idx) => {
             const Icon = ev.icon;
+            const isLast = idx === events.length - 1;
+
             return (
-              <div key={ev.id} className="relative group">
-                {/* Node icon */}
-                <div
-                  className={`absolute -left-6 top-0 w-6 h-6 rounded-full border flex items-center justify-center -translate-x-1/2 ${ev.iconColor}`}
-                >
-                  <Icon className="w-3 h-3" />
+              <div key={ev.id} className="relative flex items-start gap-4 group">
+                {/* Left rail: Centered node icon + continuous connecting vertical line */}
+                <div className="flex flex-col items-center shrink-0 self-stretch">
+                  <div
+                    className={`w-9 h-9 rounded-xl border flex items-center justify-center shadow-2xs shrink-0 z-10 transition group-hover:scale-105 ${ev.iconColor}`}
+                  >
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  {!isLast && (
+                    <div className="w-0.5 grow bg-slate-200 my-1 rounded-full group-hover:bg-slate-300 transition" />
+                  )}
                 </div>
 
-                {/* Content */}
-                <div className="space-y-1">
+                {/* Right content */}
+                <div className={`flex-1 min-w-0 pt-0.5 ${!isLast ? "pb-6" : "pb-1"}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-bold text-slate-900">
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
                       {ev.title}
-                    </p>
-                    <span className="text-[10px] font-semibold text-slate-400">
+                    </h4>
+                    <span className="text-[11px] font-semibold text-slate-400 shrink-0">
                       {ev.timestamp}
                     </span>
                   </div>
 
-                  <p className="text-xs text-slate-600 leading-relaxed">
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                     {ev.description}
                   </p>
 
-                  <div className="flex items-center gap-2 pt-1">
-                    <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1.5 bg-slate-50 px-2.5 py-0.5 rounded-lg border border-slate-200/60">
                       <User className="w-3 h-3 text-slate-400" />
-                      {ev.actor}
+                      <span>{ev.actor}</span>
                     </span>
-                    <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${ev.badgeColor}`}
+                    >
                       {ev.badge}
                     </span>
                   </div>

@@ -30,7 +30,6 @@ export default function ProposalSummaryCards({
       icon: FileText,
       iconColor: "text-indigo-600",
       iconBg: "bg-indigo-50 border-indigo-100",
-      activeRing: "ring-2 ring-indigo-500",
     },
     {
       id: "UNDER_REVIEW",
@@ -39,7 +38,6 @@ export default function ProposalSummaryCards({
       icon: Clock,
       iconColor: "text-amber-600",
       iconBg: "bg-amber-50 border-amber-100",
-      activeRing: "ring-2 ring-amber-500",
     },
     {
       id: "SHORTLISTED",
@@ -48,7 +46,6 @@ export default function ProposalSummaryCards({
       icon: UserCheck,
       iconColor: "text-emerald-600",
       iconBg: "bg-emerald-50 border-emerald-100",
-      activeRing: "ring-2 ring-emerald-500",
     },
     {
       id: "INTERVIEW",
@@ -57,7 +54,6 @@ export default function ProposalSummaryCards({
       icon: MessageSquare,
       iconColor: "text-purple-600",
       iconBg: "bg-purple-50 border-purple-100",
-      activeRing: "ring-2 ring-purple-500",
     },
     {
       id: "ACCEPTED",
@@ -66,7 +62,6 @@ export default function ProposalSummaryCards({
       icon: CheckCircle2,
       iconColor: "text-emerald-600",
       iconBg: "bg-emerald-50 border-emerald-100",
-      activeRing: "ring-2 ring-emerald-500",
     },
     {
       id: "REJECTED",
@@ -75,7 +70,6 @@ export default function ProposalSummaryCards({
       icon: XCircle,
       iconColor: "text-rose-500",
       iconBg: "bg-rose-50 border-rose-100",
-      activeRing: "ring-2 ring-rose-500",
     },
   ];
 
@@ -89,13 +83,15 @@ export default function ProposalSummaryCards({
           <button
             key={c.id}
             type="button"
-            onClick={() => onSelectStatus(c.id)}
-            className={`p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs transition text-left cursor-pointer flex items-center gap-3.5 ${
-              isSelected ? c.activeRing : ""
+            onClick={() => onSelectStatus(c.id === selectedStatus && c.id !== "ALL" ? "ALL" : c.id)}
+            className={`p-4 rounded-2xl bg-white border transition text-left cursor-pointer flex items-center gap-3.5 group shadow-2xs hover:shadow-xs ${
+              isSelected && c.id !== "ALL"
+                ? "border-indigo-400 bg-indigo-50/20 shadow-xs ring-1 ring-indigo-400/30"
+                : "border-slate-200/90 hover:border-slate-300"
             }`}
           >
             <div
-              className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${c.iconBg}`}
+              className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border transition-transform group-hover:scale-105 ${c.iconBg}`}
             >
               <Icon className={`w-5 h-5 ${c.iconColor}`} />
             </div>
@@ -113,4 +109,3 @@ export default function ProposalSummaryCards({
     </div>
   );
 }
-

@@ -46,9 +46,10 @@ export default function FreelancerEarningsPaymentsView({
   // State for Payout Settings & Preferences
   const [payoutSettings, setPayoutSettings] = useState<PayoutSettings>({
     ...INITIAL_PAYOUT_SETTINGS,
-    accountEmail: user?.email && user.role === "FREELANCER"
-      ? user.email
-      : INITIAL_PAYOUT_SETTINGS.accountEmail,
+    accountEmail:
+      user?.email && user.role === "FREELANCER"
+        ? user.email
+        : INITIAL_PAYOUT_SETTINGS.accountEmail,
   });
   const [payoutPreferences, setPayoutPreferences] = useState<PayoutPreferences>(
     INITIAL_PAYOUT_PREFERENCES
@@ -100,10 +101,10 @@ export default function FreelancerEarningsPaymentsView({
       {/* 2. Top 4 Financial KPI Cards */}
       <EarningsKpiCards kpis={kpis} />
 
-      {/* 3. Main Two-Column Layout (Left: Charts & Transactions, Right: Settings & Help) */}
+      {/* 3. Main Two-Column Layout (Expanded 9-Col Left Side for wide table visibility, 3-Col Right Side) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left 8 Columns on Desktop */}
-        <div className="lg:col-span-8 space-y-6">
+        {/* Left Side: Charts & Wide Transactions Table (9 columns / 75% width) */}
+        <div className="lg:col-span-9 space-y-6 min-w-0 w-full">
           {/* Top Charts Row: Overview & Categories */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <EarningsOverviewChart data={monthlyData} />
@@ -123,8 +124,8 @@ export default function FreelancerEarningsPaymentsView({
           />
         </div>
 
-        {/* Right 4 Columns on Desktop */}
-        <div className="lg:col-span-4 space-y-6">
+        {/* Right Side: Payouts & Settings Sidebar (3 columns / 25% width) */}
+        <div className="lg:col-span-3 space-y-4 min-w-0 w-full">
           {/* Payout Settings Card */}
           <PayoutSettingsCard
             settings={payoutSettings}

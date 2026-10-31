@@ -41,6 +41,10 @@ function FreelancerDashboardContent() {
     : "overview";
 
   const handleTabChange = (tab: string) => {
+    if (tab === "workspace") {
+      router.push("/freelancer/workspace");
+      return;
+    }
     router.replace(`/freelancer/dashboard?tab=${tab}`, { scroll: false });
   };
 

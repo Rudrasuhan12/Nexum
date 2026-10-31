@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Search } from "lucide-react";
 import {
   FreelancerProjectItem,
@@ -78,6 +78,11 @@ export default function FreelancerProjectsMilestonesView({
     useState<ProjectMilestone | null>(null);
   const [showProposeModal, setShowProposeModal] = useState(false);
 
+  // Dynamic Left/Right Sticky Tracking (Sticky according to shorter column)
+  const leftPanelRef = useRef<HTMLDivElement>(null);
+  const rightPanelRef = useRef<HTMLDivElement>(null);
+  const [shorterColumn, setShorterColumn] = useState<"left" | "right" | "none">("none");
+
   // Fetch real projects from backend if available
   useEffect(() => {
     let mounted = true;
@@ -86,7 +91,6 @@ export default function FreelancerProjectsMilestonesView({
         const res = await fetchBackendProjects();
         if (mounted && res.success && res.data && res.data.length > 0) {
           // If backend has projects, we merge or enrich our project list
-          // Preserving the visual fidelity of the reference projects
         }
       } catch {
         // Fallback gracefully to INITIAL_FREELANCER_PROJECTS
@@ -103,14 +107,83 @@ export default function FreelancerProjectsMilestonesView({
     return calculateSummaryKPIs(projects);
   }, [projects]);
 
-  // Selected project
+  // Filtered and sorted projects
+  const filteredProjects = useMemo(() => {
+    return projects
+      .filter((p) => {
+        if (selectedStatus !== "ALL" && p.state !== selectedStatus) {
+          return false;
+        }
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const matchTitle = p.title.toLowerCase().includes(q);
+          const matchClient = p.client.companyName.toLowerCase().includes(q);
+          const matchTags = p.techTags.some((t) => t.toLowerCase().includes(q));
+          return matchTitle || matchClient || matchTags;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortBy === "PROGRESS") {
+          return b.progressPercent - a.progressPercent;
+        }
+        if (sortBy === "DEADLINE") {
+          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        }
+        if (sortBy === "OLDEST") {
+          return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+        }
+        // Default: NEWEST
+        return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
+      });
+  }, [projects, selectedStatus, searchQuery, sortBy]);
+
+  // Selected project - defaults strictly to the 1st visible item if not matched
   const selectedProject = useMemo(() => {
-    return (
-      projects.find((p) => p.id === selectedProjectId) ||
-      projects[0] ||
-      INITIAL_FREELANCER_PROJECTS[0]
-    );
-  }, [projects, selectedProjectId]);
+    const found = filteredProjects.find((p) => p.id === selectedProjectId);
+    if (found) return found;
+    return filteredProjects[0] || projects[0] || INITIAL_FREELANCER_PROJECTS[0];
+  }, [filteredProjects, selectedProjectId, projects]);
+
+  // Dynamic sticky height detection between directory and workspace columns
+  useEffect(() => {
+    const checkHeights = () => {
+      if (!leftPanelRef.current || !rightPanelRef.current) return;
+
+      // On mobile / tablet screens (< 1024px), columns stack vertically so disable sticky
+      if (window.innerWidth < 1024) {
+        setShorterColumn("none");
+        return;
+      }
+
+      const leftH = leftPanelRef.current.offsetHeight;
+      const rightH = rightPanelRef.current.offsetHeight;
+
+      // When there is a discernible difference in height (>= 30px)
+      if (leftH + 30 < rightH) {
+        setShorterColumn("left");
+      } else if (rightH + 30 < leftH) {
+        setShorterColumn("right");
+      } else {
+        setShorterColumn("none");
+      }
+    };
+
+    checkHeights();
+
+    const ro = new ResizeObserver(() => {
+      checkHeights();
+    });
+
+    if (leftPanelRef.current) ro.observe(leftPanelRef.current);
+    if (rightPanelRef.current) ro.observe(rightPanelRef.current);
+
+    window.addEventListener("resize", checkHeights);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", checkHeights);
+    };
+  }, [filteredProjects, selectedProject.id, activeTab]);
 
   // Handle project selection
   const handleSelectProject = (projId: string) => {
@@ -251,13 +324,20 @@ export default function FreelancerProjectsMilestonesView({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Panel: Project Directory (5 cols on desktop) */}
         <div
+          ref={leftPanelRef}
           className={`lg:col-span-5 space-y-4 ${
-            mobileView === "workspace" ? "hidden lg:block" : "block"
-          }`}
+            shorterColumn === "left" ? "lg:sticky lg:self-start" : ""
+          } ${mobileView === "workspace" ? "hidden lg:block" : "block"}`}
+          style={
+            shorterColumn === "left"
+              ? { top: "min(1.5rem, calc(100vh - 100% - 1.5rem))" }
+              : undefined
+          }
         >
           <ProjectDirectory
             projects={projects}
-            selectedProjectId={selectedProjectId}
+            filteredProjects={filteredProjects}
+            selectedProjectId={selectedProject.id}
             onSelectProject={handleSelectProject}
             selectedStatus={selectedStatus}
             onSelectStatus={setSelectedStatus}
@@ -271,9 +351,15 @@ export default function FreelancerProjectsMilestonesView({
 
         {/* Right Panel: Selected Project Workspace (7 cols on desktop) */}
         <div
+          ref={rightPanelRef}
           className={`lg:col-span-7 space-y-4 ${
-            mobileView === "directory" ? "hidden lg:block" : "block"
-          }`}
+            shorterColumn === "right" ? "lg:sticky lg:self-start" : ""
+          } ${mobileView === "directory" ? "hidden lg:block" : "block"}`}
+          style={
+            shorterColumn === "right"
+              ? { top: "min(1.5rem, calc(100vh - 100% - 1.5rem))" }
+              : undefined
+          }
         >
           {/* Project Header */}
           <SelectedProjectHeader

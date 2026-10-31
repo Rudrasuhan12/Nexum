@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Search, ChevronDown, ArrowUpDown } from "lucide-react";
+import { Search, ChevronDown, ArrowUpDown, X, RotateCcw } from "lucide-react";
 import { ProposalSummaryKPIs } from "@/lib/freelancer-proposals-types";
 
 interface ProposalFilterToolbarProps {
@@ -44,10 +44,23 @@ export default function ProposalFilterToolbar({
     { id: "REJECTED", label: "Rejected", count: kpis.rejected },
   ];
 
+  const hasActiveFilters =
+    projectType !== "ALL" ||
+    budgetFilter !== "ALL" ||
+    dateFilter !== "ALL" ||
+    sortBy !== "NEWEST";
+
+  const handleResetFilters = () => {
+    onProjectTypeChange("ALL");
+    onBudgetFilterChange("ALL");
+    onDateFilterChange("ALL");
+    onSortChange("NEWEST");
+  };
+
   return (
-    <div className="space-y-3">
-      {/* 1. Status Filter Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-slate-100">
+    <div className="space-y-3.5">
+      {/* 1. Status Filter Strip with Clean Active Underline */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200/80">
         {tabs.map((tab) => {
           const isActive = selectedStatus === tab.id;
           return (
@@ -55,95 +68,143 @@ export default function ProposalFilterToolbar({
               key={tab.id}
               type="button"
               onClick={() => onSelectStatus(tab.id)}
-              className={`pb-2.5 px-1 text-xs font-bold transition whitespace-nowrap border-b-2 -mb-[1px] cursor-pointer ${
+              className={`pb-2.5 px-2 text-xs font-bold transition whitespace-nowrap border-b-2 -mb-[1px] cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 isActive
-                  ? "border-[#4f46e5] text-[#4f46e5]"
+                  ? "border-indigo-600 text-indigo-600"
                   : "border-transparent text-slate-500 hover:text-slate-800"
               }`}
             >
-              {tab.label} ({tab.count})
+              <span>{tab.label}</span>
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                  isActive
+                    ? "bg-indigo-100 text-indigo-700"
+                    : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {tab.count}
+              </span>
             </button>
           );
         })}
       </div>
 
-      {/* 2. Filter Toolbar (Search + 4 Dropdowns + Sort) */}
-      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-        {/* Search */}
-        <div className="sm:col-span-4 relative">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search your proposals..."
-            className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 placeholder:text-slate-400 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5] shadow-2xs"
-          />
-        </div>
-
-        {/* Project Type */}
-        <div className="sm:col-span-2 relative">
-          <select
-            value={projectType}
-            onChange={(e) => onProjectTypeChange(e.target.value)}
-            className="w-full appearance-none bg-white border border-slate-200 text-xs font-semibold text-slate-700 py-1.5 pl-2.5 pr-7 rounded-xl shadow-2xs outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 cursor-pointer"
+      {/* 2. Search Bar - Full Width, Prominent & Clean */}
+      <div className="relative">
+        <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search by project title, client, or tech..."
+          className="w-full pl-9 pr-9 py-2 rounded-xl border border-slate-200/90 bg-white text-xs text-slate-900 placeholder:text-slate-400 outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs transition"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => onSearchChange("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+            title="Clear search"
           >
-            <option value="ALL">Project Type</option>
-            <option value="FIXED">Fixed Price</option>
-            <option value="HOURLY">Hourly</option>
-          </select>
-          <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-        </div>
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
 
-        {/* Budget */}
-        <div className="sm:col-span-2 relative">
-          <select
-            value={budgetFilter}
-            onChange={(e) => onBudgetFilterChange(e.target.value)}
-            className="w-full appearance-none bg-white border border-slate-200 text-xs font-semibold text-slate-700 py-1.5 pl-2.5 pr-7 rounded-xl shadow-2xs outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 cursor-pointer"
-          >
-            <option value="ALL">Budget</option>
-            <option value="UNDER_50K">&lt; ₹50,000</option>
-            <option value="50K_100K">₹50k – ₹100k</option>
-            <option value="ABOVE_100K">&gt; ₹100,000</option>
-          </select>
-          <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-        </div>
+      {/* 3. Filter Controls - Clean 2-Column Responsive Grid (No Cramping/Truncation) */}
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {/* Project Type */}
+          <div className="relative">
+            <select
+              value={projectType}
+              onChange={(e) => onProjectTypeChange(e.target.value)}
+              className={`w-full appearance-none bg-white border text-xs font-semibold py-2 pl-3 pr-8 rounded-xl shadow-2xs outline-hidden focus:ring-2 focus:ring-indigo-500/20 cursor-pointer transition ${
+                projectType !== "ALL"
+                  ? "border-indigo-400 text-indigo-700 bg-indigo-50/20 font-bold"
+                  : "border-slate-200/90 text-slate-700 hover:border-slate-300"
+              }`}
+            >
+              <option value="ALL">Project Type: All</option>
+              <option value="FIXED">Fixed Price</option>
+              <option value="HOURLY">Hourly Rate</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
 
-        {/* Date */}
-        <div className="sm:col-span-2 relative">
-          <select
-            value={dateFilter}
-            onChange={(e) => onDateFilterChange(e.target.value)}
-            className="w-full appearance-none bg-white border border-slate-200 text-xs font-semibold text-slate-700 py-1.5 pl-2.5 pr-7 rounded-xl shadow-2xs outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 cursor-pointer"
-          >
-            <option value="ALL">Date</option>
-            <option value="7_DAYS">Past 7 days</option>
-            <option value="30_DAYS">Past 30 days</option>
-            <option value="OLDER">Older</option>
-          </select>
-          <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-        </div>
+          {/* Budget */}
+          <div className="relative">
+            <select
+              value={budgetFilter}
+              onChange={(e) => onBudgetFilterChange(e.target.value)}
+              className={`w-full appearance-none bg-white border text-xs font-semibold py-2 pl-3 pr-8 rounded-xl shadow-2xs outline-hidden focus:ring-2 focus:ring-indigo-500/20 cursor-pointer transition ${
+                budgetFilter !== "ALL"
+                  ? "border-indigo-400 text-indigo-700 bg-indigo-50/20 font-bold"
+                  : "border-slate-200/90 text-slate-700 hover:border-slate-300"
+              }`}
+            >
+              <option value="ALL">Budget: All</option>
+              <option value="UNDER_50K">&lt; ₹50,000</option>
+              <option value="50K_100K">₹50k – ₹100k</option>
+              <option value="ABOVE_100K">&gt; ₹100,000</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
 
-        {/* Sort */}
-        <div className="sm:col-span-2 relative">
-          <div className="relative flex items-center">
-            <ArrowUpDown className="w-3 h-3 absolute left-2.5 text-slate-400 pointer-events-none" />
+          {/* Date */}
+          <div className="relative">
+            <select
+              value={dateFilter}
+              onChange={(e) => onDateFilterChange(e.target.value)}
+              className={`w-full appearance-none bg-white border text-xs font-semibold py-2 pl-3 pr-8 rounded-xl shadow-2xs outline-hidden focus:ring-2 focus:ring-indigo-500/20 cursor-pointer transition ${
+                dateFilter !== "ALL"
+                  ? "border-indigo-400 text-indigo-700 bg-indigo-50/20 font-bold"
+                  : "border-slate-200/90 text-slate-700 hover:border-slate-300"
+              }`}
+            >
+              <option value="ALL">Date: All</option>
+              <option value="7_DAYS">Past 7 days</option>
+              <option value="30_DAYS">Past 30 days</option>
+              <option value="OLDER">Older</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* Sort */}
+          <div className="relative">
             <select
               value={sortBy}
               onChange={(e) => onSortChange(e.target.value)}
-              className="w-full appearance-none bg-white border border-slate-200 text-xs font-semibold text-slate-700 py-1.5 pl-7 pr-6 rounded-xl shadow-2xs outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 cursor-pointer"
+              className={`w-full appearance-none bg-white border text-xs font-semibold py-2 pl-3 pr-8 rounded-xl shadow-2xs outline-hidden focus:ring-2 focus:ring-indigo-500/20 cursor-pointer transition ${
+                sortBy !== "NEWEST"
+                  ? "border-indigo-400 text-indigo-700 bg-indigo-50/20 font-bold"
+                  : "border-slate-200/90 text-slate-700 hover:border-slate-300"
+              }`}
             >
-              <option value="NEWEST">Newest First</option>
-              <option value="OLDEST">Oldest First</option>
+              <option value="NEWEST">Sort: Newest</option>
+              <option value="OLDEST">Sort: Oldest</option>
               <option value="BUDGET_HIGH">Budget: High to Low</option>
               <option value="BUDGET_LOW">Budget: Low to High</option>
             </select>
-            <ChevronDown className="w-3 h-3 absolute right-2 pointer-events-none text-slate-400" />
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
         </div>
+
+        {/* Quick Reset Filter Indicator */}
+        {hasActiveFilters && (
+          <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500">
+            <span className="font-medium">Filters applied</span>
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="inline-flex items-center gap-1 font-bold text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset all filters</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
