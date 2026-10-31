@@ -1,23 +1,34 @@
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
+import crypto from "crypto";
+import cookieParser from "cookie-parser";
+import { env } from "./lib/env.js";
 
 import healthRouter from "./routes/health.js";
 import authRouter from "./routes/auth.js";
 import usersRouter from "./routes/users.js";
 import projectsRouter from "./routes/projects.js";
 import paymentsRouter from "./routes/payments.js";
-import notificationsRouter from "./routes/notifications.js";
+import freelancerOnboardingRouter from "./routes/freelancer/onboarding.js";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
+import { csrfProtection } from "./middleware/csrf.js";
+import { backgroundWorker } from "./jobs/worker.js";
+import "./jobs/resumeExtractor.js";
 import clientRouter from "./routes/client.js";
 
-// Load environment variables
-dotenv.config();
-
 const app = express();
-const port = process.env.PORT || 4000;
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
+const port = env.PORT || 4000;
+const allowedOrigins = env.CORS_ORIGIN
+  ? env.CORS_ORIGIN.split(",").map((s) => s.trim())
   : ["http://localhost:3000", "http://127.0.0.1:3000"];
+
+// Request ID and Basic Audit Logging Middleware
+app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const requestId = (req.headers["x-request-id"] as string) || crypto.randomUUID();
+  res.setHeader("X-Request-Id", requestId);
+  (req as express.Request & { id?: string }).id = requestId;
+  next();
+});
 
 // Middlewares
 app.use(
@@ -38,14 +49,22 @@ app.use(
   })
 );
 app.use(express.json());
+app.use(cookieParser());
+app.use(csrfProtection);
 
 // Routes
 app.use("/health", healthRouter);
+app.use("/api/health", healthRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/payments", paymentsRouter);
-app.use("/api/notifications", notificationsRouter);
+
+// Freelancer Onboarding & Resume Routes
+app.use("/api/freelancer", freelancerOnboardingRouter);
+app.use("/api/freelancer/onboarding", freelancerOnboardingRouter);
+
+// Client Overview Routes
 app.use("/api/client", clientRouter);
 
 // Root fallback
@@ -58,28 +77,24 @@ app.get("/", (_req: express.Request, res: express.Response) => {
   });
 });
 
-// Error handling middleware
-app.use(
-  (
-    err: Error,
-    _req: express.Request,
-    res: express.Response,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _next: express.NextFunction
-  ) => {
-    console.error("Unhandled error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message || "Internal server error",
-    });
-  }
-);
+// 404 handler for unregistered routes
+app.use(notFoundHandler);
 
-if (process.env.NODE_ENV !== "test") {
+// Global Standardized Error Handler: { error: { code, message, details } }
+app.use(errorHandler);
+
+if (env.NODE_ENV !== "test") {
   app.listen(Number(port), "0.0.0.0", () => {
     console.log(`🚀 Nexum Express Backend running on port ${port}`);
     console.log(`📡 Health endpoint: http://localhost:${port}/health`);
   });
+
+  // Start persistent PostgreSQL-backed background job worker unless explicitly disabled (e.g. in test suites)
+  if (process.env.DISABLE_BACKGROUND_WORKER !== "true") {
+    backgroundWorker.start(2000);
+    console.log("⚙️  PostgreSQL background worker started (polling interval: 2000ms)");
+  }
 }
 
+export { app };
 export default app;

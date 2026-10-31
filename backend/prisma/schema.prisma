@@ -127,7 +127,7 @@ enum LedgerType {
 
 model User {
   id           String   @id @default(cuid())
-  role         Role
+  role         Role?
   email        String   @unique
   name         String
   passwordHash String?
@@ -146,6 +146,8 @@ model User {
   disputesOpened       DisputeHold[]         @relation("DisputeOpener")
   opportunities        Opportunity[]
   assistantConversations AssistantConversation[]
+  sessions             Session[]
+  resumeFiles          ResumeFile[]
 }
 
 model FreelancerProfile {
@@ -165,6 +167,8 @@ model FreelancerProfile {
   workExperience        String?
   resumeUrl             String?
   isDemoData            Boolean            @default(false)
+  onboardingStatus      String             @default("NOT_STARTED")
+  onboardingStep        String?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 }
@@ -500,91 +504,65 @@ model AssistantMessage {
 
 
 // ---------------------------------------------------------------------------
-// Nexum Notification System & Resilient Event Queue with DLQ
+// Phase 1: Sessions, Jobs & Resume Management
 // ---------------------------------------------------------------------------
 
-enum NotificationType {
-  DELIVERABLE
-  PAYMENT
-  CHANGE_REQUEST
-  CONSENSUS
-  MILESTONE
-  DISPUTE
-  PROPOSAL
-  SYSTEM
-  MESSAGE
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  userAgent  String?
+  ipAddress  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([tokenHash])
 }
 
-enum NotificationPriority {
-  LOW
-  NORMAL
-  HIGH
-  URGENT
+model Job {
+  id        String   @id @default(cuid())
+  type      String
+  payload   Json
+  result    Json?
+  status    String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  attempts  Int      @default(0)
+  lastError String?
+  runAt     DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, runAt])
 }
 
-enum NotificationJobStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-  DEAD_LETTER
+model ResumeFile {
+  id           String             @id @default(cuid())
+  userId       String
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storageKey   String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  sha256       String
+  status       String             @default("ACTIVE") // ACTIVE, REPLACED
+  uploadedAt   DateTime           @default(now())
+  extractions  ResumeExtraction[]
+
+  @@index([userId, status])
 }
 
-model Notification {
-  id          String               @id @default(cuid())
-  userId      String?              // specific user or null for broadcast
-  role        Role?                // CLIENT, FREELANCER, OPERATOR
-  type        NotificationType     @default(SYSTEM)
-  priority    NotificationPriority @default(NORMAL)
-  title       String
-  message     String
-  projectName String?
-  projectId   String?
-  actionUrl   String?
-  metadata    Json?                // Arbitrary future event payload data
-  read        Boolean              @default(false)
-  readAt      DateTime?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+model ResumeExtraction {
+  id            String     @id @default(cuid())
+  resumeId      String
+  resume        ResumeFile @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  status        String     @default("PENDING") // PENDING, READY, FAILED
+  extractedJson Json?
+  failureReason String?
+  model         String?
+  promptVersion String?
+  createdAt     DateTime   @default(now())
 
-  @@index([userId, read])
-  @@index([role, read])
-  @@index([createdAt])
-}
-
-model NotificationJob {
-  id              String                @id @default(cuid())
-  eventName       String
-  recipientUserId String?
-  recipientRole   String?               // "CLIENT" | "FREELANCER" | "ALL"
-  payload         Json
-  status          NotificationJobStatus @default(PENDING)
-  attempts        Int                   @default(0)
-  maxAttempts     Int                   @default(3)
-  nextRunAt       DateTime              @default(now())
-  lastError       String?
-  lockedAt        DateTime?
-  lockedBy        String?
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-
-  @@index([status, nextRunAt])
-}
-
-model NotificationDeadLetter {
-  id              String   @id @default(cuid())
-  originalJobId   String
-  eventName       String
-  recipientUserId String?
-  recipientRole   String?
-  payload         Json
-  errorReason     String
-  stackTrace      String?
-  attempts        Int
-  failedAt        DateTime @default(now())
-  replayedAt      DateTime?
-  replayedBy      String?
-
-  @@index([eventName])
-  @@index([failedAt])
+  @@index([resumeId, status])
 }
