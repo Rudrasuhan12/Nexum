@@ -23,7 +23,6 @@ export default function ProjectSummaryCards({
       icon: Folder,
       iconColor: "text-indigo-600",
       iconBg: "bg-indigo-50 border-indigo-100",
-      activeRing: "ring-2 ring-indigo-500",
     },
     {
       id: "ACTIVE",
@@ -32,7 +31,6 @@ export default function ProjectSummaryCards({
       icon: CheckCircle2,
       iconColor: "text-emerald-600",
       iconBg: "bg-emerald-50 border-emerald-100",
-      activeRing: "ring-2 ring-emerald-500",
     },
     {
       id: "AWAITING_APPROVAL",
@@ -41,7 +39,6 @@ export default function ProjectSummaryCards({
       icon: Clock,
       iconColor: "text-amber-600",
       iconBg: "bg-amber-50 border-amber-100",
-      activeRing: "ring-2 ring-amber-500",
     },
     {
       id: "COMPLETED",
@@ -50,7 +47,6 @@ export default function ProjectSummaryCards({
       icon: Check,
       iconColor: "text-purple-600",
       iconBg: "bg-purple-50 border-purple-100",
-      activeRing: "ring-2 ring-purple-500",
     },
     {
       id: "CANCELLED",
@@ -59,7 +55,6 @@ export default function ProjectSummaryCards({
       icon: XCircle,
       iconColor: "text-rose-500",
       iconBg: "bg-rose-50 border-rose-100",
-      activeRing: "ring-2 ring-rose-500",
     },
   ];
 
@@ -73,9 +68,13 @@ export default function ProjectSummaryCards({
           <button
             key={c.id}
             type="button"
-            onClick={() => onSelectFilter(c.id)}
-            className={`p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs transition text-left cursor-pointer flex items-center gap-3.5 ${
-              isSelected ? c.activeRing : ""
+            onClick={() =>
+              onSelectFilter(c.id === selectedFilter && c.id !== "ALL" ? "ALL" : c.id)
+            }
+            className={`p-4 rounded-2xl bg-white border transition text-left cursor-pointer flex items-center gap-3.5 group shadow-2xs hover:shadow-xs ${
+              isSelected && c.id !== "ALL"
+                ? "border-indigo-400 bg-indigo-50/20 shadow-xs ring-1 ring-indigo-400/30"
+                : "border-slate-200/90 hover:border-slate-300"
             }`}
           >
             <div
@@ -97,4 +96,3 @@ export default function ProjectSummaryCards({
     </div>
   );
 }
-

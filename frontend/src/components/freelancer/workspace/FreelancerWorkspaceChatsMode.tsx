@@ -1242,7 +1242,7 @@ export default function FreelancerWorkspaceChatsMode({
               </div>
 
               <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
-                <div className="relative pl-6 space-y-6 before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                <div className="space-y-0">
                   {[
                     {
                       id: "act-1",
@@ -1253,6 +1253,7 @@ export default function FreelancerWorkspaceChatsMode({
                       icon: MessageSquare,
                       color: "text-indigo-600 bg-indigo-50 border-indigo-200",
                       badge: "Under Review",
+                      badgeStyle: "bg-indigo-50 text-indigo-700 border-indigo-200/80",
                     },
                     {
                       id: "act-2",
@@ -1263,6 +1264,7 @@ export default function FreelancerWorkspaceChatsMode({
                       icon: UploadCloud,
                       color: "text-amber-600 bg-amber-50 border-amber-200",
                       badge: "In Client Review",
+                      badgeStyle: "bg-amber-50 text-amber-700 border-amber-200/80",
                     },
                     {
                       id: "act-3",
@@ -1273,6 +1275,7 @@ export default function FreelancerWorkspaceChatsMode({
                       icon: CreditCard,
                       color: "text-indigo-600 bg-indigo-50 border-indigo-200",
                       badge: "Escrow Locked",
+                      badgeStyle: "bg-indigo-50 text-indigo-700 border-indigo-200/80",
                     },
                     {
                       id: "act-4",
@@ -1283,6 +1286,7 @@ export default function FreelancerWorkspaceChatsMode({
                       icon: CheckCircle2,
                       color: "text-emerald-600 bg-emerald-50 border-emerald-200",
                       badge: "Completed",
+                      badgeStyle: "bg-emerald-50 text-emerald-700 border-emerald-200/80",
                     },
                     {
                       id: "act-5",
@@ -1293,24 +1297,39 @@ export default function FreelancerWorkspaceChatsMode({
                       icon: FileCheck,
                       color: "text-purple-600 bg-purple-50 border-purple-200",
                       badge: "Baseline Active",
+                      badgeStyle: "bg-purple-50 text-purple-700 border-purple-200/80",
                     },
-                  ].map((ev) => {
+                  ].map((ev, idx, arr) => {
                     const Icon = ev.icon;
+                    const isLast = idx === arr.length - 1;
                     return (
-                      <div key={ev.id} className="relative group text-xs">
-                        <div className={`absolute -left-6 top-0 w-6 h-6 rounded-full border flex items-center justify-center -translate-x-1/2 ${ev.color} shadow-2xs`}>
-                          <Icon className="w-3 h-3" />
+                      <div key={ev.id} className="relative flex items-start gap-4 group text-xs">
+                        {/* Rail node + line */}
+                        <div className="flex flex-col items-center shrink-0 self-stretch">
+                          <div
+                            className={`w-8 h-8 rounded-xl border flex items-center justify-center ${ev.color} shadow-2xs shrink-0 z-10 transition group-hover:scale-105`}
+                          >
+                            <Icon className="w-3.5 h-3.5" />
+                          </div>
+                          {!isLast && (
+                            <div className="w-0.5 grow bg-slate-200 my-1 rounded-full group-hover:bg-slate-300 transition" />
+                          )}
                         </div>
-                        <div className="space-y-1">
+
+                        {/* Content */}
+                        <div className={`space-y-1 min-w-0 flex-1 pt-0.5 ${!isLast ? "pb-5" : "pb-1"}`}>
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-bold text-slate-900">{ev.title}</span>
                             <span className="text-[10px] text-slate-400 font-medium">{ev.time}</span>
                           </div>
                           <p className="text-[11px] text-slate-600 leading-relaxed">{ev.description}</p>
-                          <div className="flex items-center gap-2 pt-0.5">
-                            <span className="text-[10px] text-slate-400">Actor: {ev.actor}</span>
-                            <span className="text-slate-300">•</span>
-                            <span className="text-[10px] font-bold text-slate-600">{ev.badge}</span>
+                          <div className="flex items-center gap-2 pt-1">
+                            <span className="text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200/60">
+                              Actor: {ev.actor}
+                            </span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ev.badgeStyle}`}>
+                              {ev.badge}
+                            </span>
                           </div>
                         </div>
                       </div>
