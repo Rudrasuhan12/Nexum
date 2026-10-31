@@ -18,6 +18,8 @@ export async function POST(request: Request) {
 
         // 1. Primary Universal Extractor: unpdf (Mozilla PDF.js standards)
         try {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
           const { extractText } = await import("unpdf");
           const result = await extractText(uint8);
           extractedText = Array.isArray(result.text) ? result.text.join("\n") : (result.text || "");

@@ -122,14 +122,14 @@ export default function DashboardSidebar({
     },
     {
       id: "proposals",
-      label: "Proposals",
+      label: "My Proposals",
       icon: FileText,
       badge: 2,
       href: "/freelancer/dashboard?tab=proposals",
     },
     {
       id: "projects",
-      label: "My Projects & Milestones",
+      label: "My Projects",
       icon: FolderKanban,
       badge: 1,
       href: "/freelancer/dashboard?tab=projects",

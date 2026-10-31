@@ -1,73 +1,27 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
+import { Plus, Search } from "lucide-react";
 import {
-  Sparkles,
-  Send,
-  Check,
-} from "lucide-react";
-
-interface Proposal {
-  id: string;
-  projectTitle: string;
-  clientCompany: string;
-  clientName: string;
-  proposedAmount: string;
-  proposedTimeline: string;
-  status: "counteroffer_received" | "under_review" | "accepted" | "draft";
-  statusLabel: string;
-  submittedDate: string;
-  counteroffer?: {
-    clientAmount: string;
-    originalAmount: string;
-    clientSchedule: string;
-    originalSchedule: string;
-    note: string;
-  };
-}
-
-const INITIAL_PROPOSALS: Proposal[] = [
-  {
-    id: "prop_1",
-    projectTitle: "Enterprise Smart Escrow Integration for Solana Pay",
-    clientCompany: "FinTech Labs Inc.",
-    clientName: "David Sterling",
-    proposedAmount: "$5,000.00 USD",
-    proposedTimeline: "3 Weeks",
-    status: "counteroffer_received",
-    statusLabel: "Counteroffer Received",
-    submittedDate: "Oct 29, 2026",
-    counteroffer: {
-      clientAmount: "$4,500.00 USD",
-      originalAmount: "$5,000.00 USD",
-      clientSchedule: "3.5 Weeks (+4 days)",
-      originalSchedule: "3 Weeks",
-      note: "We would love to move forward with Sambit. Would you be open to $4,500 USD with a slightly relaxed 3.5 week deadline?",
-    },
-  },
-  {
-    id: "prop_2",
-    projectTitle: "Multi-Tenant PDF Invoice Rendering Pipeline",
-    clientCompany: "Apex Retail Group",
-    clientName: "Elena Rostova",
-    proposedAmount: "$2,800.00 USD",
-    proposedTimeline: "2 Weeks",
-    status: "under_review",
-    statusLabel: "Under Client Review",
-    submittedDate: "Oct 30, 2026",
-  },
-  {
-    id: "prop_3",
-    projectTitle: "Bilateral E-Commerce Payment Rails",
-    clientCompany: "Horizon Commerce LLC",
-    clientName: "Alex Rivera",
-    proposedAmount: "$5,700.00 USD",
-    proposedTimeline: "6 Weeks",
-    status: "accepted",
-    statusLabel: "Accepted & Signed (v1.2)",
-    submittedDate: "Oct 10, 2026",
-  },
-];
+  FreelancerProposalItem,
+  ProposalDetailTab,
+} from "@/lib/freelancer-proposals-types";
+import {
+  INITIAL_FREELANCER_PROPOSALS,
+  calculateProposalSummaryKPIs,
+} from "@/lib/freelancer-proposals-data";
+import ProposalSummaryCards from "./proposals/ProposalSummaryCards";
+import ProposalDirectory from "./proposals/ProposalDirectory";
+import SelectedProposalHeader from "./proposals/SelectedProposalHeader";
+import ProposalTabs from "./proposals/ProposalTabs";
+import ProposalOfferTab from "./proposals/ProposalOfferTab";
+import ProjectDetailsTab from "./proposals/ProjectDetailsTab";
+import ClientProfileTab from "./proposals/ClientProfileTab";
+import ProposalMessagesTab from "./proposals/ProposalMessagesTab";
+import ProposalActivityTab from "./proposals/ProposalActivityTab";
+import CounterofferComparisonModal from "./proposals/CounterofferComparisonModal";
+import ProposalBuilderModal from "./proposals/ProposalBuilderModal";
+import EditProposalModal from "./proposals/EditProposalModal";
 
 interface FreelancerProposalsViewProps {
   showToast: (msg: string) => void;
@@ -78,184 +32,350 @@ export default function FreelancerProposalsView({
   showToast,
   onNavigateTab,
 }: FreelancerProposalsViewProps) {
-  const [proposals, setProposals] = useState<Proposal[]>(INITIAL_PROPOSALS);
-  const [filter, setFilter] = useState<"all" | "counteroffer" | "under_review" | "accepted">("all");
+  // Proposals dataset state
+  const [proposals, setProposals] = useState<FreelancerProposalItem[]>(
+    INITIAL_FREELANCER_PROPOSALS
+  );
+  const [selectedProposalId, setSelectedProposalId] = useState<string>(
+    INITIAL_FREELANCER_PROPOSALS[0].id
+  );
 
-  const handleAcceptCounteroffer = (propId: string) => {
-    setProposals((prev) =>
-      prev.map((p) =>
-        p.id === propId
-          ? {
-              ...p,
-              status: "accepted",
-              statusLabel: "Accepted & Bilateral Hash Generated",
-              proposedAmount: p.counteroffer?.clientAmount || p.proposedAmount,
-            }
-          : p
-      )
+  // Filters & Search
+  const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [projectType, setProjectType] = useState<string>("ALL");
+  const [budgetFilter, setBudgetFilter] = useState<string>("ALL");
+  const [dateFilter, setDateFilter] = useState<string>("ALL");
+  const [sortBy, setSortBy] = useState<string>("NEWEST");
+
+  // Active tab in selected proposal panel
+  const [activeTab, setActiveTab] = useState<ProposalDetailTab>("proposal");
+
+  // Mobile navigation state
+  const [mobileView, setMobileView] = useState<"directory" | "workspace">(
+    "workspace"
+  );
+
+  // Modals
+  const [showCounterofferModal, setShowCounterofferModal] = useState(false);
+  const [showBuilderModal, setShowBuilderModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // Aggregate KPIs
+  const kpis = useMemo(() => {
+    return calculateProposalSummaryKPIs(proposals);
+  }, [proposals]);
+
+  // Selected proposal object
+  const selectedProposal = useMemo(() => {
+    return (
+      proposals.find((p) => p.id === selectedProposalId) ||
+      proposals[0] ||
+      INITIAL_FREELANCER_PROPOSALS[0]
     );
-    showToast("Counteroffer accepted! Bilateral agreement hash generated for escrow funding.");
+  }, [proposals, selectedProposalId]);
+
+  // Selected proposal index for pagination
+  const selectedIndex = useMemo(() => {
+    return proposals.findIndex((p) => p.id === selectedProposal.id);
+  }, [proposals, selectedProposal]);
+
+  const handleSelectProposal = (id: string) => {
+    setSelectedProposalId(id);
+    setMobileView("workspace");
   };
 
-  const filteredProposals = proposals.filter((p) => {
-    if (filter === "counteroffer") return p.status === "counteroffer_received";
-    if (filter === "under_review") return p.status === "under_review";
-    if (filter === "accepted") return p.status === "accepted";
-    return true;
-  });
+  const handleNavigatePrev = () => {
+    if (selectedIndex > 0) {
+      setSelectedProposalId(proposals[selectedIndex - 1].id);
+    }
+  };
+
+  const handleNavigateNext = () => {
+    if (selectedIndex < proposals.length - 1) {
+      setSelectedProposalId(proposals[selectedIndex + 1].id);
+    }
+  };
+
+  // Counteroffer actions
+  const handleAcceptCounteroffer = () => {
+    setProposals((prev) =>
+      prev.map((p) => {
+        if (p.id !== selectedProposal.id || !p.counteroffer) return p;
+        return {
+          ...p,
+          status: "ACCEPTED",
+          statusLabel: "Accepted",
+          statusBadgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200/80",
+          offer: {
+            ...p.offer,
+            priceDisplay: `${p.counteroffer.proposedPrice} (fixed)`,
+            duration: p.counteroffer.proposedDuration,
+          },
+          counteroffer: undefined,
+          activityTrail: [
+            {
+              id: `act-acc-${Date.now()}`,
+              title: "Counteroffer Accepted by Freelancer",
+              description: `Agreed to client's revised terms. Moving to agreement ratification.`,
+              actor: "Sambit Mohanty (Freelancer)",
+              timestamp: "Just now",
+              type: "ACCEPTED",
+            },
+            ...p.activityTrail,
+          ],
+        };
+      })
+    );
+    setShowCounterofferModal(false);
+    showToast(
+      "Counteroffer accepted! Moving to formal agreement drafting."
+    );
+  };
+
+  const handleCounterProposal = (
+    newPrice: string,
+    newDuration: string,
+    note: string
+  ) => {
+    setProposals((prev) =>
+      prev.map((p) => {
+        if (p.id !== selectedProposal.id) return p;
+        return {
+          ...p,
+          status: "SUBMITTED",
+          statusLabel: "Counterproposal Sent",
+          statusBadgeColor: "bg-blue-50 text-blue-700 border-blue-200/80",
+          offer: {
+            ...p.offer,
+            priceDisplay: newPrice,
+            duration: newDuration,
+          },
+          counteroffer: undefined,
+          activityTrail: [
+            {
+              id: `act-cnt-${Date.now()}`,
+              title: "Counterproposal Sent to Client",
+              description: `Submitted adjusted offer of ${newPrice} with note: "${note}"`,
+              actor: "Sambit Mohanty (Freelancer)",
+              timestamp: "Just now",
+              type: "COUNTEROFFER",
+            },
+            ...p.activityTrail,
+          ],
+        };
+      })
+    );
+    setShowCounterofferModal(false);
+    showToast("Counterproposal submitted to client with updated terms.");
+  };
+
+  const handleDeclineCounteroffer = () => {
+    setProposals((prev) =>
+      prev.map((p) => {
+        if (p.id !== selectedProposal.id) return p;
+        return {
+          ...p,
+          status: "WITHDRAWN",
+          statusLabel: "Withdrawn",
+          statusBadgeColor: "bg-slate-100 text-slate-600 border-slate-200",
+          counteroffer: undefined,
+          activityTrail: [
+            {
+              id: `act-dec-${Date.now()}`,
+              title: "Counteroffer Declined",
+              description: "Declined client counteroffer and withdrew proposal.",
+              actor: "Sambit Mohanty (Freelancer)",
+              timestamp: "Just now",
+              type: "REJECTED",
+            },
+            ...p.activityTrail,
+          ],
+        };
+      })
+    );
+    setShowCounterofferModal(false);
+    showToast("Counteroffer declined. Proposal marked as Withdrawn.");
+  };
+
+  // Create new proposal
+  const handleAddNewProposal = (newProposal: FreelancerProposalItem) => {
+    setProposals((prev) => [newProposal, ...prev]);
+    setSelectedProposalId(newProposal.id);
+    setShowBuilderModal(false);
+    showToast(`Proposal sent for "${newProposal.projectTitle}"!`);
+  };
+
+  // Edit proposal
+  const handleSaveEditedProposal = (updated: FreelancerProposalItem) => {
+    setProposals((prev) =>
+      prev.map((p) => (p.id === updated.id ? updated : p))
+    );
+    setShowEditModal(false);
+    showToast("Proposal terms updated successfully.");
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header & Filter Pills */}
+      {/* 1. Top Header with Title, Subtitle, and Two Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2 p-1 rounded-xl bg-slate-100/90 border border-slate-200/70 text-xs">
-          <button
-            type="button"
-            onClick={() => setFilter("all")}
-            className={`py-1.5 px-3 rounded-lg font-semibold transition cursor-pointer ${
-              filter === "all" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            All Proposals ({proposals.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter("counteroffer")}
-            className={`py-1.5 px-3 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-              filter === "counteroffer" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <span>Counteroffers</span>
-            <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center">
-              1
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter("under_review")}
-            className={`py-1.5 px-3 rounded-lg font-semibold transition cursor-pointer ${
-              filter === "under_review" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            Under Review (1)
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter("accepted")}
-            className={`py-1.5 px-3 rounded-lg font-semibold transition cursor-pointer ${
-              filter === "accepted" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            Accepted (1)
-          </button>
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+            My Proposals
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Track your proposals, manage discussions and increase your chances of getting hired.
+          </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => onNavigateTab("find_projects")}
-          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
+        <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowBuilderModal(true)}
+            className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-xs font-bold text-white transition shadow-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create New Proposal</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateTab("find_projects")}
+            className="flex items-center gap-1.5 py-2.5 px-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition shadow-2xs cursor-pointer"
+          >
+            <Search className="w-3.5 h-3.5 text-slate-400" />
+            <span>Find More Projects</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Six Overview KPI Cards across top */}
+      <ProposalSummaryCards
+        kpis={kpis}
+        selectedStatus={selectedStatus}
+        onSelectStatus={(status) => setSelectedStatus(status)}
+      />
+
+      {/* 3. Two-Panel Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Panel: Proposal Directory (5 cols on desktop) */}
+        <div
+          className={`lg:col-span-5 space-y-4 ${
+            mobileView === "workspace" ? "hidden lg:block" : "block"
+          }`}
         >
-          <Send className="w-3.5 h-3.5" />
-          <span>Find & Submit New Proposal</span>
-        </button>
+          <ProposalDirectory
+            proposals={proposals}
+            selectedProposalId={selectedProposalId}
+            onSelectProposal={handleSelectProposal}
+            selectedStatus={selectedStatus}
+            onSelectStatus={setSelectedStatus}
+            kpis={kpis}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            projectType={projectType}
+            onProjectTypeChange={setProjectType}
+            budgetFilter={budgetFilter}
+            onBudgetFilterChange={setBudgetFilter}
+            dateFilter={dateFilter}
+            onDateFilterChange={setDateFilter}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
+          />
+        </div>
+
+        {/* Right Panel: Selected Proposal Workspace (7 cols on desktop) */}
+        <div
+          className={`lg:col-span-7 space-y-4 ${
+            mobileView === "directory" ? "hidden lg:block" : "block"
+          }`}
+        >
+          {/* Selected Proposal Header */}
+          <SelectedProposalHeader
+            proposal={selectedProposal}
+            currentIndex={selectedIndex >= 0 ? selectedIndex : 0}
+            totalCount={proposals.length}
+            onNavigatePrev={handleNavigatePrev}
+            onNavigateNext={handleNavigateNext}
+            onBackToDirectory={() => setMobileView("directory")}
+            onViewProject={() => {
+              setActiveTab("project_details");
+            }}
+          />
+
+          {/* Proposal Tabs */}
+          <ProposalTabs
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            messagesCount={selectedProposal.messagesCount}
+          />
+
+          {/* Selected Tab Content */}
+          <div className="pt-1">
+            {activeTab === "proposal" && (
+              <ProposalOfferTab
+                proposal={selectedProposal}
+                onEditProposal={() => setShowEditModal(true)}
+                onReviewCounteroffer={() => setShowCounterofferModal(true)}
+                onSendFollowUp={() => {
+                  setActiveTab("messages");
+                  showToast(
+                    `Opened discussion thread for ${selectedProposal.client.companyName}.`
+                  );
+                }}
+                showToast={showToast}
+              />
+            )}
+
+            {activeTab === "project_details" && (
+              <ProjectDetailsTab proposal={selectedProposal} />
+            )}
+
+            {activeTab === "client" && (
+              <ClientProfileTab proposal={selectedProposal} />
+            )}
+
+            {activeTab === "messages" && (
+              <ProposalMessagesTab
+                proposal={selectedProposal}
+                onOpenWorkspace={() => onNavigateTab("workspace")}
+                showToast={showToast}
+              />
+            )}
+
+            {activeTab === "activity" && (
+              <ProposalActivityTab proposal={selectedProposal} />
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Proposals Stream */}
-      <div className="space-y-4">
-        {filteredProposals.map((p) => {
-          return (
-            <div
-              key={p.id}
-              className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-4"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs mb-1">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        p.status === "counteroffer_received"
-                          ? "bg-amber-50 text-amber-700 border border-amber-200/80"
-                          : p.status === "accepted"
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
-                          : "bg-blue-50 text-blue-700 border border-blue-200/80"
-                      }`}
-                    >
-                      {p.statusLabel}
-                    </span>
-                    <span className="text-slate-400">· Submitted on {p.submittedDate}</span>
-                  </div>
+      {/* Modals */}
+      {showCounterofferModal && selectedProposal.counteroffer && (
+        <CounterofferComparisonModal
+          proposal={selectedProposal}
+          counteroffer={selectedProposal.counteroffer}
+          onClose={() => setShowCounterofferModal(false)}
+          onAccept={handleAcceptCounteroffer}
+          onCounter={handleCounterProposal}
+          onDecline={handleDeclineCounteroffer}
+        />
+      )}
 
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                    {p.projectTitle}
-                  </h3>
-                </div>
+      {showBuilderModal && (
+        <ProposalBuilderModal
+          onClose={() => setShowBuilderModal(false)}
+          onSubmitNewProposal={handleAddNewProposal}
+        />
+      )}
 
-                <div className="text-left sm:text-right font-mono">
-                  <div className="text-sm font-bold text-slate-900">{p.proposedAmount}</div>
-                  <div className="text-xs text-slate-500">{p.proposedTimeline}</div>
-                </div>
-              </div>
-
-              {/* Counteroffer Highlight Card */}
-              {p.status === "counteroffer_received" && p.counteroffer && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3 text-xs">
-                  <div className="flex items-center gap-2 text-amber-900 font-bold uppercase tracking-wider text-[11px]">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Client Counteroffer from {p.clientName} ({p.clientCompany})</span>
-                  </div>
-
-                  <p className="text-slate-700 italic bg-white p-3 rounded-lg border border-amber-100">
-                    &ldquo;{p.counteroffer.note}&rdquo;
-                  </p>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">Original Quote:</span>
-                      <span className="line-through text-slate-500">{p.counteroffer.originalAmount}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">Client Counter:</span>
-                      <strong className="text-emerald-700">{p.counteroffer.clientAmount}</strong>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">Original Schedule:</span>
-                      <span className="text-slate-600">{p.counteroffer.originalSchedule}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">New Delivery:</span>
-                      <strong className="text-indigo-700">{p.counteroffer.clientSchedule}</strong>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleAcceptCounteroffer(p.id)}
-                      className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer shadow-xs flex items-center gap-1.5"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Accept Counteroffer</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => showToast("Opened counter-proposal draft editor.")}
-                      className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer shadow-2xs"
-                    >
-                      Propose Revision ($4,800)
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Meta row */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
-                <div>Client: <strong className="text-slate-800">{p.clientCompany}</strong> ({p.clientName})</div>
-                <div className="text-emerald-700 font-semibold">✓ Dual Consensus Ready</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {showEditModal && (
+        <EditProposalModal
+          proposal={selectedProposal}
+          onClose={() => setShowEditModal(false)}
+          onSave={handleSaveEditedProposal}
+        />
+      )}
     </div>
   );
 }

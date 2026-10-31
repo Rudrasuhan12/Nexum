@@ -123,12 +123,12 @@ function FreelancerDashboardContent() {
               : activeTab === "workspace"
               ? "Freelancer Workspace"
               : activeTab === "proposals"
-              ? "Proposals & Counteroffers"
+              ? "My Proposals"
               : activeTab === "projects" || activeTab === "milestones"
-              ? "My Projects & Milestones"
+              ? "My Projects"
               : activeTab === "earnings" || activeTab === "payments"
               ? "Earnings & Payments"
-              : "Settings & Preferences"
+              : "Settings"
           }
           subtitle={
             activeTab === "dashboard" || activeTab === "overview"
@@ -140,12 +140,12 @@ function FreelancerDashboardContent() {
               : activeTab === "workspace"
               ? "Active collaboration, code delivery, and bilateral mediation"
               : activeTab === "proposals"
-              ? "Draft proposals, counteroffers, and scope consensus"
+              ? "Track your proposals, manage discussions and increase your chances of getting hired."
               : activeTab === "projects" || activeTab === "milestones"
-              ? "Agreed scope, deliverables, submissions, and milestone releases"
+              ? "Manage your active projects, track milestones, communicate with clients and deliver successfully."
               : activeTab === "earnings" || activeTab === "payments"
-              ? "Confirmed PayPal payouts, escrow holds, and transaction ledger"
-              : "Account preferences, payout setup, and consensus credentials"
+              ? "Track your earnings, manage payouts, and view transaction history."
+              : "Manage your account, preferences and platform settings."
           }
           placeholder="Search projects, proposals, contracts, client messages..."
           onHelpClick={() => showToast("Opening Freelancer Escrow & Mediation Guide...")}
