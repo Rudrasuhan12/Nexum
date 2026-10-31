@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -47,7 +47,8 @@ type SettingsSection =
 
 export default function ClientSettingsView({ client: initialClient }: ClientSettingsViewProps) {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, updateAvatar } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const client = initialClient || user || {
     id: "usr_client_alex",
     name: "Alex Rivera",
@@ -65,6 +66,35 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3800);
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+    if (file.size > MAX_SIZE) {
+      const actualMb = (file.size / (1024 * 1024)).toFixed(1);
+      showToast(`Photo exceeds 2MB limit (selected: ${actualMb}MB). Please choose a smaller photo.`);
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      showToast("Please select a valid image file (PNG, JPG, WEBP).");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64Data = reader.result as string;
+      const ok = await updateAvatar(base64Data);
+      if (ok) {
+        showToast("Profile photo updated successfully across workspace!");
+      } else {
+        showToast("Failed to save avatar image.");
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   // --------------------------------------------------------------------------
@@ -329,14 +359,29 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
 
               {/* Profile Photo & Quick Info */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-5 p-4 rounded-xl bg-slate-50/70 border border-slate-200/80">
-                <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-slate-200 shrink-0 border border-slate-300">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleAvatarUpload}
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                />
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="relative w-16 h-16 rounded-2xl overflow-hidden bg-slate-200 shrink-0 border border-slate-300 cursor-pointer group"
+                  title="Click to change photo (< 2MB)"
+                >
                   <Image
-                    src={client.avatar}
+                    src={user?.avatar || client.avatar}
                     alt={profileForm.name}
                     fill
                     sizes="64px"
                     className="object-cover"
+                    unoptimized={(user?.avatar || client.avatar)?.startsWith("data:")}
                   />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
+                    Edit
+                  </div>
                 </div>
                 <div className="space-y-1 flex-1">
                   <div className="flex items-center gap-2">
@@ -350,8 +395,8 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => showToast("Simulated avatar upload file picker.")}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer shadow-xs"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer shadow-xs active:scale-98 transition"
                   >
                     Change Photo
                   </button>
