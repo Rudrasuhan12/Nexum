@@ -1,5 +1,7 @@
 export type UserRole = "CLIENT" | "FREELANCER";
 
+export type UserPresenceStatus = "available" | "busy" | "away" | "offline";
+
 export interface DemoUser {
   id: string;
   role: UserRole;
@@ -16,6 +18,7 @@ export interface DemoUser {
   budgetCeilingCents?: number;
   canLogin: boolean;
   isDemoData: boolean;
+  presenceStatus?: UserPresenceStatus;
 }
 
 export const DEMO_USERS: Record<string, DemoUser> = {
@@ -34,6 +37,7 @@ export const DEMO_USERS: Record<string, DemoUser> = {
     budgetCeilingCents: 450000, // $4,500.00 USD
     canLogin: true,
     isDemoData: true,
+    presenceStatus: "available",
   },
   FREELANCER_A: {
     id: "usr_freelancer_rohan",
@@ -50,6 +54,7 @@ export const DEMO_USERS: Record<string, DemoUser> = {
     hourlyRateCents: 6500, // $65.00/hr
     canLogin: true,
     isDemoData: true,
+    presenceStatus: "available",
   },
   FREELANCER_B: {
     id: "usr_freelancer_priya",
@@ -66,6 +71,7 @@ export const DEMO_USERS: Record<string, DemoUser> = {
     hourlyRateCents: 5500,
     canLogin: false,
     isDemoData: true,
+    presenceStatus: "available",
   },
   FREELANCER_C: {
     id: "usr_freelancer_marcus",
@@ -82,5 +88,6 @@ export const DEMO_USERS: Record<string, DemoUser> = {
     hourlyRateCents: 7500,
     canLogin: false,
     isDemoData: true,
+    presenceStatus: "available",
   },
 };

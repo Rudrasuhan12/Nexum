@@ -3,6 +3,8 @@
  * Provides typed connectivity between the Next.js frontend and the Express/Prisma backend.
  */
 
+import { AppNotification } from "./notifications-data";
+
 export const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   process.env.BACKEND_URL ||
@@ -29,6 +31,7 @@ export interface ApiUser {
   locale: string;
   timezone: string;
   status: string;
+  presence?: string;
   createdAt: string;
   freelancerProfile?: {
     id: string;
@@ -170,3 +173,143 @@ export async function fetchBackendPaymentAttempts(): Promise<{
   }
 }
 
+/**
+ * Fetch notifications from API.
+ */
+export async function fetchNotifications(role?: string, userId?: string): Promise<{
+  success: boolean;
+  notifications: AppNotification[];
+  unreadCount: number;
+}> {
+  try {
+    const params = new URLSearchParams();
+    if (role) params.set("role", role);
+    if (userId) params.set("userId", userId);
+
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const res = await fetch(`/api/notifications${query}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch {
+    return { success: false, notifications: [], unreadCount: 0 };
+  }
+}
+
+/**
+ * Mark a single notification as read.
+ */
+export async function markNotificationAsRead(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/notifications/${id}`, {
+      method: "PATCH",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mark all notifications as read.
+ */
+export async function markAllNotificationsAsRead(role?: string, userId?: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/notifications/read-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role, userId }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fetch user presence status.
+ */
+export async function fetchUserPresence(): Promise<string> {
+  try {
+    const res = await fetch(`/api/users/presence`, { cache: "no-store" });
+    if (!res.ok) return "available";
+    const data = await res.json();
+    return data.presence || "available";
+  } catch {
+    return "available";
+  }
+}
+
+/**
+ * Update user presence status in backend and session.
+ */
+export async function updateUserPresence(presence: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/users/presence`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ presence }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Enqueue an event notification via the resilient backend queue.
+ */
+export async function publishNotificationEvent(event: {
+  eventName: string;
+  recipientUserId?: string;
+  recipientRole?: string;
+  type?: string;
+  priority?: string;
+  title: string;
+  message: string;
+  projectName?: string;
+  projectId?: string;
+  actionUrl?: string;
+  metadata?: Record<string, unknown>;
+  maxAttempts?: number;
+}): Promise<{ success: boolean; jobId?: string; error?: string }> {
+  try {
+    const res = await fetch(`/api/notifications`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(event),
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to publish notification";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Fetch Dead Letter Queue (DLQ) records for monitoring & forensics.
+ */
+export async function fetchDeadLetters(): Promise<{ success: boolean; deadLetters: any[] }> {
+  try {
+    const res = await fetch(`/api/notifications/queue/dlq`, { cache: "no-store" });
+    if (!res.ok) return { success: false, deadLetters: [] };
+    return await res.json();
+  } catch {
+    return { success: false, deadLetters: [] };
+  }
+}
+
+/**
+ * Replay a dead-lettered event back into the processing queue.
+ */
+export async function replayDeadLetter(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/notifications/queue/dlq/${id}/replay`, {
+      method: "POST",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

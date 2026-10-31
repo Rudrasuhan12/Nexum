@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
-import { UserRole, DemoUser, DEMO_USERS } from "./auth-types";
+import { UserRole, DemoUser, DEMO_USERS, UserPresenceStatus } from "./auth-types";
 
-export type { UserRole, DemoUser };
+export type { UserRole, DemoUser, UserPresenceStatus };
 export { DEMO_USERS };
 
 export const AUTH_COOKIE_NAME = "nexum_session";
@@ -72,6 +72,7 @@ export interface SessionPayload {
   avatar: string;
   companyOrHandle: string;
   statusBadge: string;
+  presenceStatus?: UserPresenceStatus;
   exp: number; // Expiry epoch seconds
 }
 
@@ -86,6 +87,7 @@ export async function createSessionToken(user: DemoUser): Promise<string> {
     avatar: user.avatar,
     companyOrHandle: user.companyOrHandle,
     statusBadge: user.statusBadge,
+    presenceStatus: user.presenceStatus || "available",
     exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
   };
 
@@ -113,7 +115,12 @@ export async function verifySessionToken(token: string): Promise<DemoUser | null
 
     // Find full user object if possible, else reconstruct
     const foundUser = Object.values(DEMO_USERS).find((u) => u.id === data.userId);
-    if (foundUser) return foundUser;
+    if (foundUser) {
+      return {
+        ...foundUser,
+        presenceStatus: data.presenceStatus || foundUser.presenceStatus || "available",
+      };
+    }
 
     return {
       id: data.userId,
@@ -129,6 +136,7 @@ export async function verifySessionToken(token: string): Promise<DemoUser | null
       summary: "",
       canLogin: true,
       isDemoData: true,
+      presenceStatus: data.presenceStatus || "available",
     };
   } catch {
     return null;
@@ -158,6 +166,18 @@ export async function setSession(user: DemoUser) {
     path: "/",
     maxAge: 7 * 24 * 60 * 60, // 7 days
   });
+}
+
+// Update current session presence status
+export async function updateSessionPresence(presence: UserPresenceStatus): Promise<DemoUser | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const updatedUser: DemoUser = {
+    ...user,
+    presenceStatus: presence,
+  };
+  await setSession(updatedUser);
+  return updatedUser;
 }
 
 // Clear session cookie
