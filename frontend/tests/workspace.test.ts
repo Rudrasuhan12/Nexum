@@ -6,6 +6,12 @@ import {
   BASED_ON_CHIPS,
   MEDIATION_TABLE_DATA,
 } from "../src/lib/workspace-data";
+import {
+  INITIAL_FREELANCER_PROJECTS,
+  INITIAL_FREELANCER_TIMELINE_TECHKART,
+  INITIAL_FREELANCER_AI_CHAT_HISTORY,
+  FREELANCER_BASED_ON_CHIPS,
+} from "../src/lib/freelancer-workspace-data";
 
 describe("Nexum AI-Mediated Workspace Suite", () => {
   it("initializes three distinct multi-modal projects matching specification", () => {
@@ -85,5 +91,58 @@ describe("Nexum AI-Mediated Workspace Suite", () => {
     // Rule for scope change
     const scopeRule = MEDIATION_TABLE_DATA.find((r) => r.clientSays === "A new feature or scope change");
     expect(scopeRule?.approvalNeeded).toBe("Client sends, then both approve the same version");
+  });
+
+  it("verifies freelancer-perspective workspace projects, clients, and escrow state", () => {
+    expect(INITIAL_FREELANCER_PROJECTS.length).toBe(3);
+    const techkart = INITIAL_FREELANCER_PROJECTS.find((p) => p.id === "techkart");
+    expect(techkart).toBeDefined();
+    expect(techkart?.clientName).toBe("Alex Chen");
+    expect(techkart?.clientCompany).toBe("TechKart Inc.");
+    expect(techkart?.escrowFundedAmount).toContain("in PayPal Escrow");
+    expect(techkart?.decisionRequired?.version).toBe("v5");
+    expect(techkart?.milestones.length).toBe(3);
+
+    const fitlife = INITIAL_FREELANCER_PROJECTS.find((p) => p.id === "fitlife");
+    expect(fitlife?.clientName).toBe("Sarah Jenkins");
+    expect(fitlife?.status).toBe("Active project");
+
+    const nexa = INITIAL_FREELANCER_PROJECTS.find((p) => p.id === "nexa_ai");
+    expect(nexa?.clientName).toBe("Marcus Vance");
+  });
+
+  it("verifies freelancer timeline mediation and deliverable consensus cards", () => {
+    expect(INITIAL_FREELANCER_TIMELINE_TECHKART.length).toBeGreaterThanOrEqual(4);
+
+    // Client bubble
+    const clientBubble = INITIAL_FREELANCER_TIMELINE_TECHKART.find((t) => t.type === "client_bubble");
+    expect(clientBubble?.senderName).toContain("Alex Chen");
+
+    // Freelancer reply quote card
+    const quoteCard = INITIAL_FREELANCER_TIMELINE_TECHKART.find((t) => t.type === "freelancer_reply_card");
+    expect(quoteCard?.metrics?.priceChange).toBe("+$600");
+    expect(quoteCard?.metrics?.scheduleChange).toBe("+4 days");
+
+    // Client counteroffer card
+    const counterCard = INITIAL_FREELANCER_TIMELINE_TECHKART.find((t) => t.type === "draft_counteroffer_card");
+    expect(counterCard?.counterofferDetails?.priceChange).toContain("$500.00 USD");
+    expect(counterCard?.actions?.primaryLabel).toBe("Accept & Update Agreement v5");
+
+    // Milestone 2 deliverable comparison card
+    const deliverableCard = INITIAL_FREELANCER_TIMELINE_TECHKART.find((t) => t.type === "agreement_comparison_card");
+    expect(deliverableCard?.badgeText).toBe("Milestone 2 Deliverables Active");
+    expect(deliverableCard?.rawMessage).toContain("GitHub Pull Request");
+  });
+
+  it("verifies freelancer private AI consultations and verified citation chips", () => {
+    expect(INITIAL_FREELANCER_AI_CHAT_HISTORY.length).toBeGreaterThanOrEqual(4);
+    const scopeConsultation = INITIAL_FREELANCER_AI_CHAT_HISTORY.find((c) => c.id === "fchat_scope_cr2");
+    expect(scopeConsultation?.title).toContain("carousel request scope creep");
+
+    expect(FREELANCER_BASED_ON_CHIPS.length).toBe(5);
+    const chipLabels = FREELANCER_BASED_ON_CHIPS.map((c) => c.label);
+    expect(chipLabels).toContain("Agreement v3 Canonical");
+    expect(chipLabels).toContain("CR-2 Scope Spec");
+    expect(chipLabels).toContain("GitHub PR #42");
   });
 });

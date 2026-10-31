@@ -410,16 +410,16 @@ export default function WorkspaceChatsMode({
                 {selectedProject.iconType === "chart" && <BarChart2 className="w-3.5 h-3.5" />}
               </div>
 
-              <div className="flex items-center gap-2 min-w-0 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0 whitespace-nowrap">
                 <h2 className="text-sm font-bold text-slate-900 tracking-tight truncate">
                   {selectedProject.name}
                 </h2>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/70 shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   <span>Active</span>
                 </span>
-                <span className="text-slate-300 hidden sm:inline">·</span>
-                <span className="text-xs text-slate-500 hidden sm:inline truncate">
+                <span className="text-slate-300 hidden sm:inline shrink-0">·</span>
+                <span className="text-xs text-slate-500 hidden sm:inline truncate shrink-0">
                   with {selectedProject.freelancerName}
                 </span>
               </div>

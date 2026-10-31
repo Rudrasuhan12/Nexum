@@ -118,7 +118,7 @@ export default function DashboardSidebar({
       id: "workspace",
       label: "Workspace",
       icon: Cpu,
-      href: "/freelancer/dashboard?tab=workspace",
+      href: "/freelancer/workspace",
     },
     {
       id: "proposals",
@@ -163,7 +163,10 @@ export default function DashboardSidebar({
 
   const handleNavClick = (item: NavItemConfig) => {
     if (item.href) {
-      if (item.id === "workspace" && pathname === "/client/workspace") {
+      if (
+        item.id === "workspace" &&
+        (pathname === "/client/workspace" || pathname === "/freelancer/workspace")
+      ) {
         onTabChange("workspace");
         return;
       }
