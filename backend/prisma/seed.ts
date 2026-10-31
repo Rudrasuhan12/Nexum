@@ -14,6 +14,7 @@ async function main() {
       name: "Alex Rivera",
       role: Role.CLIENT,
       status: "ACTIVE",
+      passwordHash: defaultPasswordHash,
     },
     create: {
       id: "usr_client_alex",
@@ -23,6 +24,7 @@ async function main() {
       locale: "en-US",
       timezone: "America/New_York",
       status: "ACTIVE",
+      passwordHash: defaultPasswordHash,
     },
   });
   console.log(`✅ Seeded Client: ${client.name} (${client.email})`);
@@ -85,6 +87,7 @@ async function main() {
         name: f.name,
         role: Role.FREELANCER,
         status: "ACTIVE",
+        passwordHash: defaultPasswordHash,
       },
       create: {
         id: f.id,
@@ -94,6 +97,7 @@ async function main() {
         locale: "en-US",
         timezone: "America/Los_Angeles",
         status: "ACTIVE",
+        passwordHash: defaultPasswordHash,
       },
     });
 
