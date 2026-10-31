@@ -15,6 +15,9 @@ import {
   HelpCircle,
   ArrowRight,
   LogOut,
+  Search,
+  User,
+  FileText,
 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
@@ -51,7 +54,7 @@ export default function DashboardSidebar({
   };
 
   // Primary Navigation Group for Client
-  const mainNavItems: NavItemConfig[] = [
+  const clientNavItems: NavItemConfig[] = [
     {
       id: "overview",
       label: "Overview",
@@ -91,13 +94,70 @@ export default function DashboardSidebar({
     },
   ];
 
+  // Primary Navigation Group for Freelancer (exactly matching proposed structure)
+  const freelancerNavItems: NavItemConfig[] = [
+    {
+      id: "overview",
+      label: "Overview",
+      icon: Home,
+      href: "/freelancer/dashboard",
+    },
+    {
+      id: "find_projects",
+      label: "Find Projects",
+      icon: Search,
+      href: "/freelancer/dashboard?tab=find_projects",
+    },
+    {
+      id: "profile",
+      label: "My Profile & Portfolio",
+      icon: User,
+      href: "/freelancer/dashboard?tab=profile",
+    },
+    {
+      id: "workspace",
+      label: "Workspace",
+      icon: Cpu,
+      href: "/freelancer/dashboard?tab=workspace",
+    },
+    {
+      id: "proposals",
+      label: "Proposals",
+      icon: FileText,
+      badge: 2,
+      href: "/freelancer/dashboard?tab=proposals",
+    },
+    {
+      id: "projects",
+      label: "My Projects & Milestones",
+      icon: FolderKanban,
+      badge: 1,
+      href: "/freelancer/dashboard?tab=projects",
+    },
+    {
+      id: "earnings",
+      label: "Earnings & Payments",
+      icon: CreditCard,
+      href: "/freelancer/dashboard?tab=earnings",
+    },
+  ];
+
+  const isFreelancer =
+    currentRole === "FREELANCER" ||
+    (user?.role === "FREELANCER" && !pathname?.startsWith("/client")) ||
+    pathname?.startsWith("/freelancer");
+
+  const mainNavItems = isFreelancer ? freelancerNavItems : clientNavItems;
+
   // Secondary Group (Preferences / Settings)
   const secondaryNavItems: NavItemConfig[] = [
     {
       id: "settings",
       label: "Settings",
       icon: Settings,
-      href: "/client/dashboard?tab=settings",
+      href: isFreelancer
+        ? "/freelancer/dashboard?tab=settings"
+        : "/client/dashboard?tab=settings",
     },
   ];
 
@@ -107,8 +167,12 @@ export default function DashboardSidebar({
         onTabChange("workspace");
         return;
       }
-      if (item.id === "overview" && pathname === "/client/dashboard" && !window.location.search) {
-        onTabChange("overview");
+      if (
+        (item.id === "overview" || item.id === "dashboard") &&
+        (pathname === "/client/dashboard" || pathname === "/freelancer/dashboard") &&
+        !window.location.search
+      ) {
+        onTabChange(item.id);
         return;
       }
       router.push(item.href);
@@ -117,21 +181,25 @@ export default function DashboardSidebar({
     if (pathname === "/client/dashboard" || pathname === "/freelancer/dashboard") {
       onTabChange(item.id);
     } else {
-      const basePath = currentRole === "CLIENT" ? "/client/dashboard" : "/freelancer/dashboard";
+      const basePath = isFreelancer ? "/freelancer/dashboard" : "/client/dashboard";
       router.push(`${basePath}?tab=${item.id}`);
     }
   };
 
   const renderNavButton = (item: NavItemConfig) => {
     const Icon = item.icon;
-    const isActive = activeTab === item.id;
+    const isActive =
+      activeTab === item.id ||
+      (item.id === "dashboard" && (activeTab === "overview" || !activeTab)) ||
+      (item.id === "overview" && (activeTab === "dashboard" || !activeTab)) ||
+      (item.id === "projects" && activeTab === "milestones" && isFreelancer);
 
     return (
       <button
         key={item.id}
         type="button"
         onClick={() => handleNavClick(item)}
-        className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-[13.5px] font-medium transition-all duration-200 cursor-pointer text-left ${
+        className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer text-left ${
           isActive
             ? "bg-[#eef2ff] text-[#4f46e5] font-semibold shadow-xs"
             : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
@@ -145,7 +213,7 @@ export default function DashboardSidebar({
         />
         <span className="flex-1 truncate">{item.label}</span>
 
-        {/* Circular Pill Badge (matching image red pill) */}
+        {/* Circular Pill Badge */}
         {item.badge !== undefined && (
           <span className="w-5 h-5 rounded-full bg-[#ef4444] text-white text-[11px] font-bold flex items-center justify-center shrink-0 shadow-xs">
             {item.badge}
@@ -156,7 +224,7 @@ export default function DashboardSidebar({
   };
 
   return (
-    <aside className="w-[230px] shrink-0 border-r border-slate-100 bg-white flex flex-col justify-between h-screen sticky top-0 z-30 select-none">
+    <aside className="w-[240px] shrink-0 border-r border-slate-100 bg-white flex flex-col justify-between h-screen sticky top-0 z-30 select-none">
       {/* Top Section: Brand Logo & Navigation Links */}
       <div className="flex-1 flex flex-col p-4 overflow-y-auto">
         {/* Brand Logo Header */}
@@ -169,27 +237,32 @@ export default function DashboardSidebar({
             <span className="font-heading text-lg font-black tracking-tight text-slate-900 leading-none">
               nexum
             </span>
+            {isFreelancer && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200/80">
+                Freelancer
+              </span>
+            )}
           </Link>
         </div>
 
         {/* Main Navigation Items */}
-        <nav className="space-y-1.5" aria-label="Main menu">
+        <nav className="space-y-1" aria-label="Main menu">
           {mainNavItems.map(renderNavButton)}
         </nav>
 
         {/* Subtle Separator */}
-        <div className="my-4 mx-2 h-px bg-slate-100" />
+        <div className="my-3 mx-2 h-px bg-slate-100" />
 
         {/* Secondary Navigation Items (Settings) */}
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {secondaryNavItems.map(renderNavButton)}
         </div>
 
-        {/* Need Help? Box at bottom of nav (opens Mode 3 or Help Center) */}
+        {/* Need Help? Box at bottom of nav */}
         <div className="mt-auto pt-6">
           <button
             type="button"
-            onClick={onHelpClick || (() => router.push("/client/workspace?help=mediation"))}
+            onClick={onHelpClick || (() => router.push(isFreelancer ? "/freelancer/dashboard?tab=settings" : "/client/workspace?help=mediation"))}
             className="w-full flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-[#f5f6ff] to-[#eef2ff] hover:from-[#eef2ff] hover:to-[#e0e7ff] border border-[#4f46e5]/10 text-slate-800 transition-all duration-200 group cursor-pointer shadow-2xs text-left"
           >
             <div className="flex items-center gap-2.5 min-w-0">
@@ -208,12 +281,12 @@ export default function DashboardSidebar({
         </div>
       </div>
 
-      {/* Bottom Section: Profile Card & Logout (matching image 2, WITHOUT switch role) */}
+      {/* Bottom Section: Profile Card & Logout */}
       <div className="p-3 border-t border-slate-100/90 bg-white space-y-2">
         {/* User Profile Card */}
         {user && (
           <div
-            onClick={() => onTabChange("settings")}
+            onClick={() => handleNavClick(secondaryNavItems[0])}
             className="flex items-center gap-2.5 p-2 rounded-2xl bg-white border border-slate-200 shadow-2xs cursor-pointer hover:border-[#4f46e5]/40 hover:bg-[#eef2ff]/20 transition duration-150"
             title="Profile & Settings"
           >
@@ -231,13 +304,15 @@ export default function DashboardSidebar({
                 {user.name}
               </div>
               <div className="text-[11px] text-slate-500 leading-tight truncate mt-0.5">
-                {user.companyOrHandle || "Nexum Client"}
+                {isFreelancer
+                  ? (user.title || user.companyOrHandle || "Full Stack Developer")
+                  : (user.companyOrHandle || "Nexum Client")}
               </div>
             </div>
           </div>
         )}
 
-        {/* Clean Logout Button (NO Switch Role) */}
+        {/* Clean Logout Button */}
         <button
           type="button"
           onClick={handleLogout}
