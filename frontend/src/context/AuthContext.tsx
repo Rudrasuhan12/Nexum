@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { DemoUser } from "@/lib/auth-types";
+import { DemoUser, UserPresenceStatus } from "@/lib/auth-types";
 
 export interface SignupPayload {
   email: string;
@@ -18,6 +18,8 @@ export interface SignupPayload {
 interface AuthContextType {
   user: DemoUser | null;
   isLoading: boolean;
+  presence: UserPresenceStatus;
+  updatePresence: (status: UserPresenceStatus) => Promise<boolean>;
   loginAs: (roleOrKey: "CLIENT" | "FREELANCER_A" | string) => Promise<boolean>;
   loginWithCredentials: (
     email: string,
@@ -33,6 +35,61 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<DemoUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [presence, setPresence] = useState<UserPresenceStatus>("available");
+
+  // Synchronize presence with user data if session specifies one
+  useEffect(() => {
+    if (user?.presenceStatus) {
+      setPresence(user.presenceStatus);
+    }
+  }, [user?.presenceStatus]);
+
+  const updatePresence = useCallback(
+    async (status: UserPresenceStatus): Promise<boolean> => {
+      setPresence(status);
+      setUser((prev) => (prev ? { ...prev, presenceStatus: status } : prev));
+      try {
+        const res = await fetch("/api/users/presence", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ presence: status }),
+        });
+        if (!res.ok) {
+          console.warn("Failed to persist presence to server");
+          return false;
+        }
+        return true;
+      } catch (err) {
+        console.error("Error updating presence:", err);
+        return false;
+      }
+    },
+    []
+  );
+
+  // Network offline/online listeners
+  useEffect(() => {
+    const handleOffline = () => {
+      updatePresence("offline");
+    };
+    const handleOnline = () => {
+      setPresence((current) => {
+        if (current === "offline") {
+          updatePresence("available");
+          return "available";
+        }
+        return current;
+      });
+    };
+
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [updatePresence]);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -170,7 +227,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, loginAs, loginWithCredentials, signup, logout, refreshUser }}
+      value={{
+        user,
+        isLoading,
+        presence,
+        updatePresence,
+        loginAs,
+        loginWithCredentials,
+        signup,
+        logout,
+        refreshUser,
+      }}
     >
       {children}
     </AuthContext.Provider>

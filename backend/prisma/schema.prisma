@@ -497,3 +497,94 @@ model AssistantMessage {
   @@index([conversationId, createdAt])
 }
 
+
+
+// ---------------------------------------------------------------------------
+// Nexum Notification System & Resilient Event Queue with DLQ
+// ---------------------------------------------------------------------------
+
+enum NotificationType {
+  DELIVERABLE
+  PAYMENT
+  CHANGE_REQUEST
+  CONSENSUS
+  MILESTONE
+  DISPUTE
+  PROPOSAL
+  SYSTEM
+  MESSAGE
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum NotificationJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  DEAD_LETTER
+}
+
+model Notification {
+  id          String               @id @default(cuid())
+  userId      String?              // specific user or null for broadcast
+  role        Role?                // CLIENT, FREELANCER, OPERATOR
+  type        NotificationType     @default(SYSTEM)
+  priority    NotificationPriority @default(NORMAL)
+  title       String
+  message     String
+  projectName String?
+  projectId   String?
+  actionUrl   String?
+  metadata    Json?                // Arbitrary future event payload data
+  read        Boolean              @default(false)
+  readAt      DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([userId, read])
+  @@index([role, read])
+  @@index([createdAt])
+}
+
+model NotificationJob {
+  id              String                @id @default(cuid())
+  eventName       String
+  recipientUserId String?
+  recipientRole   String?               // "CLIENT" | "FREELANCER" | "ALL"
+  payload         Json
+  status          NotificationJobStatus @default(PENDING)
+  attempts        Int                   @default(0)
+  maxAttempts     Int                   @default(3)
+  nextRunAt       DateTime              @default(now())
+  lastError       String?
+  lockedAt        DateTime?
+  lockedBy        String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([status, nextRunAt])
+}
+
+model NotificationDeadLetter {
+  id              String   @id @default(cuid())
+  originalJobId   String
+  eventName       String
+  recipientUserId String?
+  recipientRole   String?
+  payload         Json
+  errorReason     String
+  stackTrace      String?
+  attempts        Int
+  failedAt        DateTime @default(now())
+  replayedAt      DateTime?
+  replayedBy      String?
+
+  @@index([eventName])
+  @@index([failedAt])
+}
