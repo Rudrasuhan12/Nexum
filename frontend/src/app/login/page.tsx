@@ -114,10 +114,10 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       if (persona === "client" && email.trim() === client.email) {
-        const ok = await loginAs("CLIENT");
+        const ok = (await loginWithCredentials(client.email, password || "demo1234")).success;
         if (ok) return router.push("/client/dashboard");
       } else if (persona === "freelancer" && email.trim() === freelancerA.email) {
-        const ok = await loginAs("FREELANCER_A");
+        const ok = (await loginWithCredentials(freelancerA.email, password || "demo1234")).success;
         if (ok) return router.push("/freelancer/dashboard");
       }
 
