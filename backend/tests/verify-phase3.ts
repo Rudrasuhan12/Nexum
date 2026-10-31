@@ -1,18 +1,29 @@
+process.env.DISABLE_BACKGROUND_WORKER = "true";
+process.env.NODE_ENV = "test";
+
 /**
- * NEXUM FREELANCER BACKEND — PHASE 3 VERIFICATION SUITE
+ * NEXUM FREELANCER BACKEND — PHASE 3 COMPREHENSIVE VERIFICATION SUITE
  *
- * Verifies:
- * 1. Full-text search over title, description, and skills
- * 2. Multi-tag skill filtering
- * 3. Budget range filtering in integer minor units (cents)
- * 4. Category and experience level filtering
- * 5. Pagination with real proposal count queries
- * 6. Single project details inspection
- * 7. Idempotent project bookmarking with AuditEvent logging
- * 8. Bookmark removal with AuditEvent logging
- * 9. Cross-user isolation: Freelancer B cannot see Freelancer A's bookmarks
- * 10. 404 NOT_FOUND on non-existent project save/read
- * 11. Role boundary isolation: CLIENT calling freelancer projects receives 403 FORBIDDEN
+ * Implements all 18 checks specified in the Freelancer Backend Build Guide (Pages 20-22):
+ *
+ * Check 1:  Seed verification — count listings in DB (>= 14 across variety)
+ * Check 2:  Browse as demo freelancer — only open/accessible projects (0 private, 0 draft, 0 closed)
+ * Check 3:  Text search & SQL injection — keyword search, SQL injection safety, empty search
+ * Check 4:  Filter combinations — multi-skill + budget range + payment model
+ * Check 5:  Sort options — newest, budget_high (nulls at end), budget_low, fewest_proposals
+ * Check 6:  Pagination consistency & Limit <= 50 (returns 422 if > 50)
+ * Check 7:  Project detail JSON — client email omitted, null budget preserved, integer proposals
+ * Check 8:  Detail 404 for PRIVATE, DRAFT, and closed projects
+ * Check 9:  INVITE_ONLY visibility — 404 without invitation, 200 with invitation
+ * Check 10: Save / bookmark flow — idempotent save, list saved, unsave, audit logging
+ * Check 11: Closed saved project degradation — degraded { availability: "CLOSED" } view
+ * Check 12: Recommendation ranking — AI skills rank AI project #1 with honest match reasons
+ * Check 13: Deterministic recommendations without profile rate — no fabricated rate match
+ * Check 14: Decline invitation — PENDING -> DECLINED, repeat -> 409 INVALID_STATE, audit event
+ * Check 15: Cross-role protection — CLIENT role receives 403 FORBIDDEN
+ * Check 16: Browse query performance — browse query response time < 200ms locally
+ * Check 17: Cross-user bookmark isolation — Freelancer B cannot see Freelancer A's bookmarks
+ * Check 18: Full suite completion summary — 18/18 checks passed
  */
 
 import http from "http";
@@ -20,9 +31,10 @@ import net from "net";
 import { app } from "../src/index.js";
 import { prisma } from "../src/prisma.js";
 import { createSession } from "../src/lib/auth.js";
-import { Role } from "@prisma/client";
+import { Role, ProjectState } from "@prisma/client";
 
 interface CheckResult {
+  num: number;
   name: string;
   passed: boolean;
   details?: string;
@@ -30,10 +42,10 @@ interface CheckResult {
 
 const results: CheckResult[] = [];
 
-function record(name: string, passed: boolean, details?: string) {
-  results.push({ name, passed, details });
+function record(num: number, name: string, passed: boolean, details?: string) {
+  results.push({ num, name, passed, details });
   const icon = passed ? "✅ PASS" : "❌ FAIL";
-  console.log(`${icon} — ${name}${details ? ` (${details})` : ""}`);
+  console.log(`${icon} — [Check ${num}] ${name}${details ? ` (${details})` : ""}`);
 }
 
 async function run() {
@@ -49,29 +61,75 @@ async function run() {
   const timestamp = Date.now();
   let freelancerAId = "";
   let freelancerBId = "";
+  let freelancerAiId = "";
+  let freelancerNoRateId = "";
   let clientId = "";
+  let testProjectId = "";
+  let testInvitationId = "";
+
   let tokenA = "";
   let tokenB = "";
+  let tokenAi = "";
+  let tokenNoRate = "";
   let tokenClient = "";
 
   try {
-    // Setup isolated test users
-    const userA = await prisma.user.create({
-      data: {
-        email: `phase3_freelancer_a_${timestamp}@test.nexum`,
-        name: "Test Freelancer A",
-        role: Role.FREELANCER,
-        status: "ACTIVE",
-        freelancerProfile: {
-          create: {
-            title: "Phase 3 Tester A",
-            skills: ["TypeScript", "Next.js"],
+    const dummyReq = {
+      headers: { "user-agent": "Phase3Verify" },
+      ip: "127.0.0.1",
+      socket: { remoteAddress: "127.0.0.1" },
+    } as any;
+
+    // 1. Find demo freelancer Elena or create test user A
+    const elena = await prisma.user.findUnique({
+      where: { email: "elena.rostova@nexum.demo" },
+      include: { freelancerProfile: true },
+    });
+
+    if (elena) {
+      freelancerAId = elena.id;
+    } else {
+      const userA = await prisma.user.create({
+        data: {
+          email: `elena_${timestamp}@test.nexum`,
+          name: "Elena Rostova",
+          role: Role.FREELANCER,
+          status: "ACTIVE",
+          freelancerProfile: {
+            create: {
+              title: "Senior Full-Stack & AI Engineer",
+              skills: ["React", "Next.js", "TypeScript", "Node.js", "Tailwind CSS", "GraphQL"],
+            },
           },
         },
-      },
-    });
-    freelancerAId = userA.id;
+      });
+      freelancerAId = userA.id;
+    }
 
+    const sA = await createSession(freelancerAId, dummyReq);
+    tokenA = sA.rawToken;
+
+    // Ensure Elena has invitation for opp_11
+    const opp11 = await prisma.project.findUnique({ where: { id: "opp_11" } });
+    if (opp11) {
+      await prisma.projectInvitation.upsert({
+        where: {
+          projectId_freelancerId: {
+            projectId: "opp_11",
+            freelancerId: freelancerAId,
+          },
+        },
+        create: {
+          projectId: "opp_11",
+          freelancerId: freelancerAId,
+          status: "PENDING",
+          message: "You are invited to this private opportunity.",
+        },
+        update: {},
+      });
+    }
+
+    // 2. Freelancer B (isolated for cross-user tests)
     const userB = await prisma.user.create({
       data: {
         email: `phase3_freelancer_b_${timestamp}@test.nexum`,
@@ -87,7 +145,10 @@ async function run() {
       },
     });
     freelancerBId = userB.id;
+    const sB = await createSession(freelancerBId, dummyReq);
+    tokenB = sB.rawToken;
 
+    // 3. Client User (for role check)
     const userClient = await prisma.user.create({
       data: {
         email: `phase3_client_${timestamp}@test.nexum`,
@@ -97,20 +158,51 @@ async function run() {
       },
     });
     clientId = userClient.id;
-
-    const dummyReq = {
-      headers: { "user-agent": "Phase3Verify" },
-      ip: "127.0.0.1",
-      socket: { remoteAddress: "127.0.0.1" },
-    } as any;
-
-    const sA = await createSession(freelancerAId, dummyReq);
-    tokenA = sA.rawToken;
-    const sB = await createSession(freelancerBId, dummyReq);
-    tokenB = sB.rawToken;
     const sC = await createSession(clientId, dummyReq);
     tokenClient = sC.rawToken;
 
+    // 4. AI Freelancer (for recommendations check)
+    const userAi = await prisma.user.create({
+      data: {
+        email: `phase3_ai_${timestamp}@test.nexum`,
+        name: "AI Specialist",
+        role: Role.FREELANCER,
+        status: "ACTIVE",
+        freelancerProfile: {
+          create: {
+            title: "AI & ML Specialist",
+            skills: ["Python", "FastAPI", "OpenAI API", "LangChain", "Vector DB"],
+            rateHourlyMinor: 8000, // $80/hr
+            rateCurrency: "USD",
+          },
+        },
+      },
+    });
+    freelancerAiId = userAi.id;
+    const sAi = await createSession(freelancerAiId, dummyReq);
+    tokenAi = sAi.rawToken;
+
+    // 5. Freelancer with no rate (for rate preference check)
+    const userNoRate = await prisma.user.create({
+      data: {
+        email: `phase3_norate_${timestamp}@test.nexum`,
+        name: "No Rate Specialist",
+        role: Role.FREELANCER,
+        status: "ACTIVE",
+        freelancerProfile: {
+          create: {
+            title: "General Developer",
+            skills: ["TypeScript", "React"],
+            rateHourlyMinor: null,
+          },
+        },
+      },
+    });
+    freelancerNoRateId = userNoRate.id;
+    const sNoRate = await createSession(freelancerNoRateId, dummyReq);
+    tokenNoRate = sNoRate.rawToken;
+
+    // Request headers
     const headersA = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${tokenA}`,
@@ -125,6 +217,20 @@ async function run() {
       Origin: "http://localhost:3000",
     };
 
+    const headersAi = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${tokenAi}`,
+      Cookie: `sessionId=${tokenAi}`,
+      Origin: "http://localhost:3000",
+    };
+
+    const headersNoRate = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${tokenNoRate}`,
+      Cookie: `sessionId=${tokenNoRate}`,
+      Origin: "http://localhost:3000",
+    };
+
     const headersClient = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${tokenClient}`,
@@ -132,200 +238,552 @@ async function run() {
       Origin: "http://localhost:3000",
     };
 
-    // [Check 1] Full-text search
-    const res1 = await fetch(`${baseUrl}/api/freelancer/projects/search?q=Solana`, { headers: headersA });
-    const data1 = await res1.json();
-    const pass1 = res1.status === 200 && data1.projects?.some((p: any) => p.id === "opp_5");
+    // =========================================================================
+    // Check 1: Seed verification (>= 14 listings across variety)
+    // =========================================================================
+    const projectCount = await prisma.project.count();
+    const categories = await prisma.project.findMany({ select: { category: true }, distinct: ["category"] });
+    const budgetTypes = await prisma.project.findMany({ select: { budgetType: true }, distinct: ["budgetType"] });
+    const visibilities = await prisma.project.findMany({ select: { visibility: true }, distinct: ["visibility"] });
+
+    const pass1 =
+      projectCount >= 14 &&
+      categories.length >= 6 &&
+      budgetTypes.some((b) => b.budgetType === "FIXED_PRICE") &&
+      budgetTypes.some((b) => b.budgetType === "HOURLY") &&
+      visibilities.some((v) => v.visibility === "PUBLIC") &&
+      visibilities.some((v) => v.visibility === "INVITE_ONLY") &&
+      visibilities.some((v) => v.visibility === "PRIVATE");
+
     record(
-      "[Check 1] Full-text keyword search matches title/description",
+      1,
+      "Seed verification — >= 14 listings with rich categories, budget types, states & visibility",
       pass1,
-      `status: ${res1.status}, count: ${data1.projects?.length || 0}`
+      `count: ${projectCount}, categories: ${categories.length}, visibilities: ${visibilities.map((v) => v.visibility).join(",")}`
     );
 
-    // [Check 2] Skill tag filtering
-    const res2 = await fetch(`${baseUrl}/api/freelancer/projects/search?skills=Figma`, { headers: headersA });
+    // =========================================================================
+    // Check 2: Browse as demo freelancer (only public in matching/active + invited)
+    // =========================================================================
+    const res2 = await fetch(`${baseUrl}/api/freelancer/projects/search?limit=50`, { headers: headersA });
     const data2 = await res2.json();
-    const pass2 = res2.status === 200 && data2.projects?.every((p: any) => p.skills.includes("Figma"));
+
+    const allMatchingOrActive = data2.projects?.every(
+      (p: any) => p.state === "MATCHING" || p.state === "ACTIVE"
+    );
+    const zeroDraft = !data2.projects?.some((p: any) => p.state === "DRAFT");
+    const zeroPrivate = !data2.projects?.some((p: any) => p.visibility === "PRIVATE");
+    const zeroClosed = !data2.projects?.some((p: any) => p.state === "NEGOTIATING" || p.state === "COMPLETED");
+    const hasInvitedOpp11 = data2.projects?.some((p: any) => p.id === "opp_11");
+    const noUninvitedOpp12 = !data2.projects?.some((p: any) => p.id === "opp_12");
+
+    const pass2 =
+      res2.status === 200 &&
+      allMatchingOrActive &&
+      zeroDraft &&
+      zeroPrivate &&
+      zeroClosed &&
+      hasInvitedOpp11 &&
+      noUninvitedOpp12;
+
     record(
-      "[Check 2] Multi-tag skill filtering matches required skills",
+      2,
+      "Browse as demo freelancer — only open/accessible projects (0 private, 0 draft, 0 closed)",
       pass2,
-      `status: ${res2.status}, count: ${data2.projects?.length || 0}`
+      `status: ${res2.status}, returned: ${data2.projects?.length || 0}, opp_11 included: ${hasInvitedOpp11}, opp_12 excluded: ${noUninvitedOpp12}`
     );
 
-    // [Check 3] Budget range filtering in minor units
-    const res3 = await fetch(`${baseUrl}/api/freelancer/projects/search?minBudgetCents=350000&maxBudgetCents=500000`, { headers: headersA });
-    const data3 = await res3.json();
+    // =========================================================================
+    // Check 3: Text search & SQL injection safety
+    // =========================================================================
+    const res3Keyword = await fetch(`${baseUrl}/api/freelancer/projects/search?q=React`, { headers: headersA });
+    const data3Keyword = await res3Keyword.json();
+    const hasReactMatch = data3Keyword.projects?.some((p: any) => p.id === "opp_1" || p.id === "opp_8");
+
+    const sqliQuery = encodeURIComponent("'; drop table \"User\"; --");
+    const res3Sqli = await fetch(`${baseUrl}/api/freelancer/projects/search?q=${sqliQuery}`, { headers: headersA });
+    const data3Sqli = await res3Sqli.json();
+
+    const res3Empty = await fetch(`${baseUrl}/api/freelancer/projects/search?q=`, { headers: headersA });
+    const data3Empty = await res3Empty.json();
+
+    const userCountAfterSqli = await prisma.user.count();
+
     const pass3 =
-      res3.status === 200 &&
-      data3.projects?.length > 0 &&
-      data3.projects.every((p: any) => p.budgetCents >= 350000 && p.budgetCents <= 500000);
+      res3Keyword.status === 200 &&
+      hasReactMatch &&
+      res3Sqli.status === 200 &&
+      Array.isArray(data3Sqli.projects) &&
+      userCountAfterSqli > 0 &&
+      res3Empty.status === 200 &&
+      data3Empty.projects?.length >= data3Keyword.projects?.length;
+
     record(
-      "[Check 3] Budget range filtering in minor units (integer cents)",
+      3,
+      "Text search & SQL injection safety — keyword match, harmless injection handling, empty query",
       pass3,
-      `status: ${res3.status}, projects: ${data3.projects?.map((p: any) => p.budgetCents).join(", ")}`
+      `reactMatch: ${hasReactMatch}, sqliStatus: ${res3Sqli.status}, userTablePreserved: ${userCountAfterSqli > 0}`
     );
 
-    // [Check 4] Category & Experience Level
-    const res4 = await fetch(`${baseUrl}/api/freelancer/projects/search?category=Web%20Design&experienceLevel=EXPERT`, { headers: headersA });
+    // =========================================================================
+    // Check 4: Filter combinations (skills + budget range + payment model)
+    // =========================================================================
+    const res4 = await fetch(
+      `${baseUrl}/api/freelancer/projects/search?skills=Next.js&minBudgetCents=300000&maxBudgetCents=600000&budgetType=FIXED_PRICE`,
+      { headers: headersA }
+    );
     const data4 = await res4.json();
-    const pass4 = res4.status === 200 && data4.projects?.length === 1 && data4.projects[0].id === "opp_4";
+
+    const pass4 =
+      res4.status === 200 &&
+      data4.projects?.length > 0 &&
+      data4.projects.every(
+        (p: any) =>
+          p.skills.includes("Next.js") &&
+          p.budgetCents >= 300000 &&
+          p.budgetCents <= 600000 &&
+          p.budgetType === "Fixed-price"
+      );
+
     record(
-      "[Check 4] Category & Experience Level filtering",
+      4,
+      "Filter combinations — multi-skill + budget range + payment model filter",
       pass4,
-      `status: ${res4.status}, matchId: ${data4.projects?.[0]?.id || "none"}`
+      `status: ${res4.status}, count: ${data4.projects?.length || 0}, ids: ${data4.projects?.map((p: any) => p.id).join(",")}`
     );
 
-    // [Check 5] Pagination & proposals count
-    const res5 = await fetch(`${baseUrl}/api/freelancer/projects/search?page=1&limit=2`, { headers: headersA });
-    const data5 = await res5.json();
+    // =========================================================================
+    // Check 5: Sort options (specifically budget_high placing nulls last)
+    // =========================================================================
+    const res5High = await fetch(`${baseUrl}/api/freelancer/projects/search?sortBy=budget_high&limit=50`, {
+      headers: headersA,
+    });
+    const data5High = await res5High.json();
+    const projectsHigh = data5High.projects || [];
+
+    // Verify opp_10 (null budget) is at the very end
+    const lastItem = projectsHigh[projectsHigh.length - 1];
+    const opp10AtEnd = lastItem?.id === "opp_10" || lastItem?.budgetCents === null;
+    const firstItemBudgetHigh = projectsHigh[0]?.budgetCents >= projectsHigh[1]?.budgetCents;
+
+    const res5Low = await fetch(`${baseUrl}/api/freelancer/projects/search?sortBy=budget_low&limit=5`, {
+      headers: headersA,
+    });
+    const data5Low = await res5Low.json();
+
+    const res5Newest = await fetch(`${baseUrl}/api/freelancer/projects/search?sortBy=newest&limit=5`, {
+      headers: headersA,
+    });
+    const data5Newest = await res5Newest.json();
+
     const pass5 =
-      res5.status === 200 &&
-      data5.projects?.length === 2 &&
-      data5.pagination?.total >= 6 &&
-      data5.pagination?.totalPages >= 3 &&
-      typeof data5.projects[0].proposalsCount === "number";
+      res5High.status === 200 &&
+      opp10AtEnd &&
+      firstItemBudgetHigh &&
+      res5Low.status === 200 &&
+      res5Newest.status === 200;
+
     record(
-      "[Check 5] Pagination and real proposal counts query",
+      5,
+      "Sort options — budget_high places null budgets last, budget_low, newest",
       pass5,
-      `total: ${data5.pagination?.total}, pages: ${data5.pagination?.totalPages}`
+      `opp10AtEnd: ${opp10AtEnd}, topBudgetCents: ${projectsHigh[0]?.budgetCents}, lastBudgetCents: ${lastItem?.budgetCents}`
     );
 
-    // [Check 6] Single project details
-    const res6 = await fetch(`${baseUrl}/api/freelancer/projects/opp_5`, { headers: headersA });
-    const data6 = await res6.json();
+    // =========================================================================
+    // Check 6: Pagination consistency & Limit <= 50 (returns 422 if > 50)
+    // =========================================================================
+    const res6Page1 = await fetch(`${baseUrl}/api/freelancer/projects/search?page=1&limit=3`, { headers: headersA });
+    const data6Page1 = await res6Page1.json();
+    const res6Page2 = await fetch(`${baseUrl}/api/freelancer/projects/search?page=2&limit=3`, { headers: headersA });
+    const data6Page2 = await res6Page2.json();
+
+    const page1Ids = new Set(data6Page1.projects?.map((p: any) => p.id));
+    const overlap = data6Page2.projects?.some((p: any) => page1Ids.has(p.id));
+
+    // Request limit > 50 should return 422
+    const res6OverLimit = await fetch(`${baseUrl}/api/freelancer/projects/search?limit=51`, { headers: headersA });
+    const data6OverLimit = await res6OverLimit.json();
+
     const pass6 =
-      res6.status === 200 &&
-      data6.project?.id === "opp_5" &&
-      data6.project?.client?.id !== undefined &&
-      data6.project?.isSaved === false;
+      res6Page1.status === 200 &&
+      res6Page2.status === 200 &&
+      !overlap &&
+      res6OverLimit.status === 422 &&
+      data6OverLimit.error?.code === "VALIDATION_ERROR";
+
     record(
-      "[Check 6] Single project details endpoint (GET /:id)",
+      6,
+      "Pagination consistency & Limit <= 50 — no duplicate IDs, limit > 50 returns 422",
       pass6,
-      `status: ${res6.status}, title: ${data6.project?.title?.slice(0, 30)}...`
+      `overlap: ${overlap}, overLimitStatus: ${res6OverLimit.status}, errorCode: ${data6OverLimit.error?.code}`
     );
 
-    // [Check 7] Idempotent project bookmark save
-    const res7a = await fetch(`${baseUrl}/api/freelancer/projects/opp_5/save`, {
-      method: "POST",
-      headers: headersA,
-    });
-    const data7a = await res7a.json();
-    // Repeat save should be idempotent (no 500 duplicate key)
-    const res7b = await fetch(`${baseUrl}/api/freelancer/projects/opp_5/save`, {
-      method: "POST",
-      headers: headersA,
-    });
-    const data7b = await res7b.json();
+    // =========================================================================
+    // Check 7: Project detail JSON (privacy & integer minor units)
+    // =========================================================================
+    const res7Detail = await fetch(`${baseUrl}/api/freelancer/projects/opp_1`, { headers: headersA });
+    const data7Detail = await res7Detail.json();
+    const p1 = data7Detail.project;
 
-    const auditSave = await prisma.auditEvent.findFirst({
-      where: {
-        actorId: freelancerAId,
-        action: "PROJECT_SAVED",
-        objectId: "opp_5",
-      },
-    });
+    const emailOmitted = p1?.client?.email === undefined;
+    const notesOmitted = (p1 as any)?.privateNotes === undefined;
+    const proposalCountIsInt = Number.isInteger(p1?.proposalsCount) && p1?.proposalsCount >= 0;
+
+    // Check null budget preserved on opp_10
+    const res7NullBudget = await fetch(`${baseUrl}/api/freelancer/projects/opp_10`, { headers: headersA });
+    const data7NullBudget = await res7NullBudget.json();
+    const p10 = data7NullBudget.project;
+    const nullBudgetPreserved = p10?.budgetCents === null;
 
     const pass7 =
-      res7a.status === 200 &&
-      data7a.isSaved === true &&
-      res7b.status === 200 &&
-      data7b.isSaved === true &&
-      Boolean(auditSave);
+      res7Detail.status === 200 &&
+      emailOmitted &&
+      notesOmitted &&
+      proposalCountIsInt &&
+      res7NullBudget.status === 200 &&
+      nullBudgetPreserved;
+
     record(
-      "[Check 7] Idempotent bookmark save (POST /:id/save) and AuditEvent logging",
+      7,
+      "Project detail JSON — client email omitted, notes omitted, null budget preserved, integer proposals",
       pass7,
-      `status: ${res7b.status}, auditId: ${auditSave?.id || "missing"}`
+      `emailOmitted: ${emailOmitted}, proposalsCount: ${p1?.proposalsCount}, nullBudgetPreserved: ${nullBudgetPreserved}`
     );
 
-    // [Check 8] Saved list & bookmark removal
-    const res8List = await fetch(`${baseUrl}/api/freelancer/projects/saved`, { headers: headersA });
-    const data8List = await res8List.json();
-    const hasOpp5InList = data8List.savedProjects?.some((p: any) => p.id === "opp_5");
+    // =========================================================================
+    // Check 8: Detail 404 for PRIVATE, DRAFT, and closed projects
+    // =========================================================================
+    const res8Private = await fetch(`${baseUrl}/api/freelancer/projects/opp_13`, { headers: headersA });
+    const res8Draft = await fetch(`${baseUrl}/api/freelancer/projects/opp_14`, { headers: headersA });
+    const res8Closed = await fetch(`${baseUrl}/api/freelancer/projects/opp_15`, { headers: headersA });
 
-    const res8Del = await fetch(`${baseUrl}/api/freelancer/projects/opp_5/save`, {
+    const pass8 =
+      res8Private.status === 404 &&
+      res8Draft.status === 404 &&
+      res8Closed.status === 404;
+
+    record(
+      8,
+      "Detail 404 for PRIVATE, DRAFT, and closed projects",
+      pass8,
+      `opp_13 (PRIVATE): ${res8Private.status}, opp_14 (DRAFT): ${res8Draft.status}, opp_15 (CLOSED): ${res8Closed.status}`
+    );
+
+    // =========================================================================
+    // Check 9: INVITE_ONLY visibility (without invitation -> 404, with -> 200)
+    // =========================================================================
+    // opp_12 is INVITE_ONLY without invitation for Elena -> 404
+    const res9NoInv = await fetch(`${baseUrl}/api/freelancer/projects/opp_12`, { headers: headersA });
+    // opp_11 is INVITE_ONLY with invitation for Elena -> 200
+    const res9WithInv = await fetch(`${baseUrl}/api/freelancer/projects/opp_11`, { headers: headersA });
+
+    const pass9 = res9NoInv.status === 404 && res9WithInv.status === 200;
+
+    record(
+      9,
+      "INVITE_ONLY visibility — 404 without invitation, 200 with invitation",
+      pass9,
+      `opp_12 (uninvited): ${res9NoInv.status}, opp_11 (invited): ${res9WithInv.status}`
+    );
+
+    // =========================================================================
+    // Check 10: Save / bookmark flow (idempotent + list + unsave)
+    // =========================================================================
+    const res10Save1 = await fetch(`${baseUrl}/api/freelancer/projects/opp_1/save`, {
+      method: "POST",
+      headers: headersA,
+    });
+    const res10Save2 = await fetch(`${baseUrl}/api/freelancer/projects/opp_1/save`, {
+      method: "POST",
+      headers: headersA,
+    });
+
+    const res10List = await fetch(`${baseUrl}/api/freelancer/projects/saved`, { headers: headersA });
+    const data10List = await res10List.json();
+    const hasOpp1 = data10List.savedProjects?.some((p: any) => p.id === "opp_1");
+
+    const res10Unsave = await fetch(`${baseUrl}/api/freelancer/projects/opp_1/save`, {
       method: "DELETE",
       headers: headersA,
     });
-    const data8Del = await res8Del.json();
+    const res10ListAfter = await fetch(`${baseUrl}/api/freelancer/projects/saved`, { headers: headersA });
+    const data10ListAfter = await res10ListAfter.json();
+    const removedOpp1 = !data10ListAfter.savedProjects?.some((p: any) => p.id === "opp_1");
 
+    const auditSave = await prisma.auditEvent.findFirst({
+      where: { actorId: freelancerAId, action: "PROJECT_SAVED", objectId: "opp_1" },
+    });
     const auditUnsave = await prisma.auditEvent.findFirst({
+      where: { actorId: freelancerAId, action: "PROJECT_UNSAVED", objectId: "opp_1" },
+    });
+
+    const pass10 =
+      res10Save1.status === 200 &&
+      res10Save2.status === 200 &&
+      hasOpp1 &&
+      res10Unsave.status === 200 &&
+      removedOpp1 &&
+      Boolean(auditSave) &&
+      Boolean(auditUnsave);
+
+    record(
+      10,
+      "Save / bookmark flow — idempotent save, list verification, unsave, audit logging",
+      pass10,
+      `save1: ${res10Save1.status}, save2: ${res10Save2.status}, unsave: ${res10Unsave.status}, auditLogged: ${Boolean(auditSave && auditUnsave)}`
+    );
+
+    // =========================================================================
+    // Check 11: Closed saved project degradation
+    // =========================================================================
+    // Freelancer A saves opp_2
+    await fetch(`${baseUrl}/api/freelancer/projects/opp_2/save`, { method: "POST", headers: headersA });
+
+    // Transition opp_2 to COMPLETED
+    await prisma.project.update({
+      where: { id: "opp_2" },
+      data: { state: ProjectState.COMPLETED },
+    });
+
+    // Query saved projects
+    const res11Degraded = await fetch(`${baseUrl}/api/freelancer/projects/saved`, { headers: headersA });
+    const data11Degraded = await res11Degraded.json();
+    const degradedOpp2 = data11Degraded.savedProjects?.find((p: any) => p.id === "opp_2");
+
+    const isDegraded = degradedOpp2 && degradedOpp2.availability === "CLOSED";
+
+    // Restore opp_2 state and unsave
+    await prisma.project.update({
+      where: { id: "opp_2" },
+      data: { state: ProjectState.MATCHING },
+    });
+    await fetch(`${baseUrl}/api/freelancer/projects/opp_2/save`, { method: "DELETE", headers: headersA });
+
+    const pass11 = res11Degraded.status === 200 && Boolean(isDegraded);
+
+    record(
+      11,
+      "Closed saved project degradation — returns degraded view ({ availability: 'CLOSED' })",
+      pass11,
+      `status: ${res11Degraded.status}, opp_2 availability: ${degradedOpp2?.availability}`
+    );
+
+    // =========================================================================
+    // Check 12: Recommendation ranking with AI skills
+    // =========================================================================
+    const res12 = await fetch(`${baseUrl}/api/freelancer/projects/recommended?limit=5`, { headers: headersAi });
+    const data12 = await res12.json();
+    const recommendations = data12.recommendations || [];
+
+    const topRecommendation = recommendations[0];
+    const topIsAi = topRecommendation?.id === "opp_6" || topRecommendation?.category === "AI & Machine Learning";
+    const hasMatchScore = typeof topRecommendation?.matchScore === "number" && topRecommendation?.matchScore > 0;
+    const hasMatchReasons = Array.isArray(topRecommendation?.matchReasons) && topRecommendation.matchReasons.length > 0;
+
+    const pass12 = res12.status === 200 && topIsAi && hasMatchScore && hasMatchReasons;
+
+    record(
+      12,
+      "Recommendation ranking — AI profile ranks AI project #1 with honest match reasons",
+      pass12,
+      `topId: ${topRecommendation?.id}, score: ${topRecommendation?.matchScore}, reasons: ${topRecommendation?.matchReasons?.join("; ")}`
+    );
+
+    // =========================================================================
+    // Check 13: Deterministic recommendations without profile rate
+    // =========================================================================
+    const res13 = await fetch(`${baseUrl}/api/freelancer/projects/recommended?limit=5`, { headers: headersNoRate });
+    const data13 = await res13.json();
+    const recsNoRate = data13.recommendations || [];
+
+    // Verify recommendations are returned and none fabricate rate match
+    const noFabricatedRateMatch = recsNoRate.every(
+      (r: any) => !r.matchReasons?.some((m: string) => m.toLowerCase().includes("desired rate"))
+    );
+    const deterministicReturned = recsNoRate.length > 0;
+
+    const pass13 = res13.status === 200 && deterministicReturned && noFabricatedRateMatch;
+
+    record(
+      13,
+      "Deterministic recommendations without profile rate — no fabricated rate reasons",
+      pass13,
+      `count: ${recsNoRate.length}, noFabricatedRateMatch: ${noFabricatedRateMatch}`
+    );
+
+    // =========================================================================
+    // Check 14: Decline invitation flow & audit logging
+    // =========================================================================
+    // Create dedicated project and invitation for decline test
+    const testProj = await prisma.project.create({
+      data: {
+        title: "Test Invitation Decline Project",
+        description: "Testing decline flow",
+        visibility: "INVITE_ONLY",
+        state: ProjectState.MATCHING,
+        budgetCents: 200000,
+        currency: "USD",
+        clientId: clientId,
+      },
+    });
+    testProjectId = testProj.id;
+
+    const testInv = await prisma.projectInvitation.create({
+      data: {
+        projectId: testProjectId,
+        freelancerId: freelancerBId,
+        status: "PENDING",
+        message: "Invitation to decline",
+      },
+    });
+    testInvitationId = testInv.id;
+
+    // First decline: should succeed (200) and transition status to DECLINED
+    const res14Decline = await fetch(`${baseUrl}/api/freelancer/invitations/${testInvitationId}/decline`, {
+      method: "POST",
+      headers: headersB,
+      body: JSON.stringify({ reason: "Not enough bandwidth" }),
+    });
+    const data14Decline = await res14Decline.json();
+
+    // Repeat decline: should fail with 409 INVALID_STATE
+    const res14Repeat = await fetch(`${baseUrl}/api/freelancer/invitations/${testInvitationId}/decline`, {
+      method: "POST",
+      headers: headersB,
+      body: JSON.stringify({ reason: "Duplicate decline" }),
+    });
+    const data14Repeat = await res14Repeat.json();
+
+    const auditDecline = await prisma.auditEvent.findFirst({
       where: {
-        actorId: freelancerAId,
-        action: "PROJECT_UNSAVED",
-        objectId: "opp_5",
+        actorId: freelancerBId,
+        action: "INVITATION_DECLINED",
+        objectId: testInvitationId,
       },
     });
 
-    const res8After = await fetch(`${baseUrl}/api/freelancer/projects/saved`, { headers: headersA });
-    const data8After = await res8After.json();
-    const removedFromList = !data8After.savedProjects?.some((p: any) => p.id === "opp_5");
+    const pass14 =
+      res14Decline.status === 200 &&
+      data14Decline.invitation?.status === "DECLINED" &&
+      res14Repeat.status === 409 &&
+      data14Repeat.error?.code === "INVALID_STATE" &&
+      Boolean(auditDecline);
 
-    const pass8 =
-      hasOpp5InList &&
-      res8Del.status === 200 &&
-      data8Del.isSaved === false &&
-      removedFromList &&
-      Boolean(auditUnsave);
     record(
-      "[Check 8] Bookmark removal (DELETE /:id/save) and list reconciliation",
-      pass8,
-      `deletedStatus: ${res8Del.status}, verifiedAbsent: ${removedFromList}`
+      14,
+      "Decline invitation — PENDING -> DECLINED, repeat returns 409 INVALID_STATE, audit logged",
+      pass14,
+      `declineStatus: ${res14Decline.status}, repeatStatus: ${res14Repeat.status}, repeatCode: ${data14Repeat.error?.code}, auditLogged: ${Boolean(auditDecline)}`
     );
 
-    // [Check 9] Cross-user saved project isolation
-    // Save opp_1 for Freelancer A
-    await fetch(`${baseUrl}/api/freelancer/projects/opp_1/save`, {
-      method: "POST",
-      headers: headersA,
-    });
+    // =========================================================================
+    // Check 15: Cross-role protection (CLIENT receives 403)
+    // =========================================================================
+    const res15Search = await fetch(`${baseUrl}/api/freelancer/projects/search`, { headers: headersClient });
+    const res15Recs = await fetch(`${baseUrl}/api/freelancer/projects/recommended`, { headers: headersClient });
+    const res15Invs = await fetch(`${baseUrl}/api/freelancer/invitations`, { headers: headersClient });
 
-    // Freelancer B checks saved list - should NOT see opp_1
-    const res9 = await fetch(`${baseUrl}/api/freelancer/projects/saved`, { headers: headersB });
-    const data9 = await res9.json();
-    const pass9 = res9.status === 200 && !data9.savedProjects?.some((p: any) => p.id === "opp_1");
+    const pass15 =
+      res15Search.status === 403 &&
+      res15Recs.status === 403 &&
+      res15Invs.status === 403;
+
     record(
-      "[Check 9] Cross-user isolation: Freelancer B cannot see Freelancer A's saved bookmarks",
-      pass9,
-      `Freelancer B saved count: ${data9.savedProjects?.length || 0}`
+      15,
+      "Cross-role protection — CLIENT role receives 403 FORBIDDEN on all freelancer endpoints",
+      pass15,
+      `search: ${res15Search.status}, recommended: ${res15Recs.status}, invitations: ${res15Invs.status}`
     );
 
-    // [Check 10] 404 on non-existent project
-    const res10 = await fetch(`${baseUrl}/api/freelancer/projects/non_existent_project_xyz/save`, {
-      method: "POST",
-      headers: headersA,
-    });
-    const data10 = await res10.json();
-    const pass10 = res10.status === 404 && data10.error?.code === "NOT_FOUND";
+    // =========================================================================
+    // Check 16: Browse query performance (< 200ms locally)
+    // =========================================================================
+    const t0 = performance.now();
+    const res16 = await fetch(`${baseUrl}/api/freelancer/projects/search?limit=20`, { headers: headersA });
+    const elapsedMs = performance.now() - t0;
+
+    const pass16 = res16.status === 200 && elapsedMs < 200;
+
     record(
-      "[Check 10] Non-existent project save returns 404 NOT_FOUND",
-      pass10,
-      `status: ${res10.status}, code: ${data10.error?.code}`
+      16,
+      "Browse query performance — browse query response time < 200ms locally",
+      pass16,
+      `status: ${res16.status}, latency: ${elapsedMs.toFixed(1)}ms`
     );
 
-    // [Check 11] Role boundary isolation: CLIENT role receives 403
-    const res11 = await fetch(`${baseUrl}/api/freelancer/projects/search`, { headers: headersClient });
-    const data11 = await res11.json();
-    const pass11 = res11.status === 403 && data11.error?.code === "FORBIDDEN";
+    // =========================================================================
+    // Check 17: Cross-user bookmark isolation
+    // =========================================================================
+    // Freelancer A saves opp_4
+    await fetch(`${baseUrl}/api/freelancer/projects/opp_4/save`, { method: "POST", headers: headersA });
+
+    // Freelancer B checks saved list
+    const res17 = await fetch(`${baseUrl}/api/freelancer/projects/saved`, { headers: headersB });
+    const data17 = await res17.json();
+    const freelancerBHasOpp4 = data17.savedProjects?.some((p: any) => p.id === "opp_4");
+
+    // Clean up Freelancer A save
+    await fetch(`${baseUrl}/api/freelancer/projects/opp_4/save`, { method: "DELETE", headers: headersA });
+
+    const pass17 = res17.status === 200 && !freelancerBHasOpp4;
+
     record(
-      "[Check 11] Role boundary: CLIENT calling /api/freelancer/projects receives 403 FORBIDDEN",
-      pass11,
-      `status: ${res11.status}, code: ${data11.error?.code}`
+      17,
+      "Cross-user bookmark isolation — Freelancer B cannot see Freelancer A's saved bookmarks",
+      pass17,
+      `freelancerBCount: ${data17.savedProjects?.length || 0}, sawOpp4: ${freelancerBHasOpp4}`
+    );
+
+    // =========================================================================
+    // Check 18: Full suite completion summary (18/18 checks pass)
+    // =========================================================================
+    const passingCount = results.filter((r) => r.passed).length;
+    const pass18 = passingCount === 17; // All previous 17 passed
+
+    record(
+      18,
+      "Full suite completion summary — all 18 checks executed and verified against specification",
+      pass18,
+      `${passingCount + (pass18 ? 1 : 0)}/18 checks passed`
     );
 
   } catch (err: any) {
     console.error("Test execution exception:", err);
-    record("Verification execution completed without unhandled exception", false, err.message);
+    record(18, "Verification execution completed without unhandled exception", false, err.message);
   } finally {
-    // Teardown test users
+    // Teardown test resources
     console.log("\n🧹 Running test teardown cleanup...");
-    const cleanupIds = [freelancerAId, freelancerBId, clientId].filter(Boolean);
-    if (cleanupIds.length > 0) {
-      await prisma.savedProject.deleteMany({ where: { freelancerId: { in: cleanupIds } } });
-      await prisma.session.deleteMany({ where: { userId: { in: cleanupIds } } });
-      await prisma.auditEvent.deleteMany({ where: { actorId: { in: cleanupIds } } });
-      await prisma.freelancerProfile.deleteMany({ where: { userId: { in: cleanupIds } } });
-      await prisma.user.deleteMany({ where: { id: { in: cleanupIds } } });
-      console.log(`   Cleaned up ${cleanupIds.length} test user account(s).`);
+    const cleanupUserIds = [freelancerBId, freelancerAiId, freelancerNoRateId, clientId].filter(Boolean);
+
+    try {
+      if (testInvitationId) {
+        await prisma.projectInvitation.deleteMany({ where: { id: testInvitationId } });
+      }
+      if (testProjectId) {
+        await prisma.project.deleteMany({ where: { id: testProjectId } });
+      }
+      if (freelancerAId) {
+        // Clean up any bookmarks on demo account
+        await prisma.savedProject.deleteMany({ where: { freelancerId: freelancerAId } });
+        await prisma.auditEvent.deleteMany({
+          where: {
+            actorId: freelancerAId,
+            action: { in: ["PROJECT_SAVED", "PROJECT_UNSAVED"] },
+          },
+        });
+      }
+      if (cleanupUserIds.length > 0) {
+        await prisma.projectInvitation.deleteMany({ where: { freelancerId: { in: cleanupUserIds } } });
+        await prisma.savedProject.deleteMany({ where: { freelancerId: { in: cleanupUserIds } } });
+        await prisma.session.deleteMany({ where: { userId: { in: cleanupUserIds } } });
+        await prisma.auditEvent.deleteMany({ where: { actorId: { in: cleanupUserIds } } });
+        await prisma.freelancerProfile.deleteMany({ where: { userId: { in: cleanupUserIds } } });
+        await prisma.user.deleteMany({ where: { id: { in: cleanupUserIds } } });
+        console.log(`   Cleaned up test users and transient entities.`);
+      }
+    } catch (cleanupErr) {
+      console.warn("Cleanup warning:", cleanupErr);
     }
 
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -333,10 +791,10 @@ async function run() {
   }
 
   console.log("\n=======================================================");
-  const allPassed = results.every((r) => r.passed);
+  const allPassed = results.every((r) => r.passed) && results.length === 18;
   console.log(`SUMMARY: ${results.filter((r) => r.passed).length}/${results.length} checks passed`);
   if (allPassed) {
-    console.log("STATUS: PHASE 3 VERIFICATION PASS");
+    console.log("STATUS: PHASE 3 VERIFICATION PASS (18/18)");
     process.exit(0);
   } else {
     console.error("STATUS: PHASE 3 VERIFICATION FAIL");

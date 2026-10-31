@@ -206,6 +206,7 @@ model User {
   certifications         Certification[]
   portfolioProjects      PortfolioProject[]
   savedProjects          SavedProject[]          @relation("FreelancerSavedProjects")
+  projectInvitations     ProjectInvitation[]     @relation("FreelancerProjectInvitations")
 }
 
 model FreelancerProfile {
@@ -299,6 +300,9 @@ model Project {
   experienceLevel ExperienceLevel?
   budgetType      String           @default("FIXED_PRICE")
   location        String?          @default("Remote")
+  budgetMinCents  Int?
+  budgetMaxCents  Int?
+  invitations     ProjectInvitation[] @relation("ProjectInvitations")
 
   @@index([state, visibility])
   @@index([budgetCents])
@@ -809,4 +813,19 @@ model SavedProject {
   @@unique([freelancerId, projectId])
   @@index([freelancerId])
   @@index([projectId])
+}
+model ProjectInvitation {
+  id           String    @id @default(cuid())
+  projectId    String
+  project      Project   @relation("ProjectInvitations", fields: [projectId], references: [id], onDelete: Cascade)
+  freelancerId String
+  freelancer   User      @relation("FreelancerProjectInvitations", fields: [freelancerId], references: [id], onDelete: Cascade)
+  message      String?
+  status       String    @default("PENDING") // PENDING, DECLINED, PROPOSAL_SUBMITTED, EXPIRED, WITHDRAWN
+  createdAt    DateTime  @default(now())
+  respondedAt  DateTime?
+
+  @@unique([projectId, freelancerId])
+  @@index([freelancerId, status])
+  @@index([projectId, status])
 }

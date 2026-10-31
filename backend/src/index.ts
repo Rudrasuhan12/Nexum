@@ -70,6 +70,7 @@ app.use("/api/payments", paymentsRouter);
 // Freelancer Profile, Portfolio & Files Routes
 app.use("/api/freelancer/profile", freelancerProfileRouter);
 app.use("/api/freelancer/projects", freelancerProjectsRouter);
+app.use("/api/freelancer", freelancerProjectsRouter);
 app.use("/api/freelancer", freelancerFilesRouter);
 app.use("/api/files", publicFilesRouter);
 app.use("/api/public/freelancers", publicFreelancersRouter);

@@ -1173,3 +1173,124 @@ export async function getSavedFreelancerProjects(): Promise<{
     return { success: false, savedProjects: [], total: 0, error: err instanceof Error ? err.message : "Failed to fetch saved projects" };
   }
 }
+
+export interface ApiProjectRecommendation extends ApiProjectOpportunity {
+  matchScore: number;
+  matchReasons: string[];
+}
+
+export async function getFreelancerRecommendations(
+  limit: number = 10
+): Promise<{
+  success: boolean;
+  recommendations: ApiProjectRecommendation[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/recommended?limit=${limit}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, recommendations: [], error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      recommendations: json.recommendations || [],
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      recommendations: [],
+      error: err instanceof Error ? err.message : "Failed to fetch recommendations",
+    };
+  }
+}
+
+export interface ApiProjectInvitation {
+  id: string;
+  projectId: string;
+  status: "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED";
+  message?: string | null;
+  createdAt: string;
+  respondedAt?: string | null;
+  project: {
+    id: string;
+    title: string;
+    description: string;
+    category?: string;
+    skills?: string[];
+    budgetMinCents?: number | null;
+    budgetMaxCents?: number | null;
+    budgetCents?: number | null;
+    currency: string;
+    client?: {
+      id: string;
+      name: string;
+      company?: string;
+      location?: string;
+    };
+  };
+}
+
+export async function getFreelancerInvitations(): Promise<{
+  success: boolean;
+  invitations: ApiProjectInvitation[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/invitations`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, invitations: [], error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      invitations: json.invitations || [],
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      invitations: [],
+      error: err instanceof Error ? err.message : "Failed to fetch invitations",
+    };
+  }
+}
+
+export async function declineFreelancerInvitation(
+  id: string,
+  reason?: string
+): Promise<{
+  success: boolean;
+  invitation?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/invitations/${id}/decline`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ reason }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      invitation: json.invitation,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to decline invitation",
+    };
+  }
+}
+

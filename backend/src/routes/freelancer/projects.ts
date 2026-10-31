@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../../prisma.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { Role, ProjectState, ExperienceLevel, Prisma } from "@prisma/client";
-import { ValidationError, NotFoundError } from "../../lib/errors.js";
+import { ValidationError, NotFoundError, ConflictError } from "../../lib/errors.js";
 import { appendAuditEvent } from "../../lib/audit.js";
 
 const router = Router();
@@ -22,23 +22,106 @@ const searchProjectsSchema = z.object({
   minBudgetCents: z.coerce.number().int().nonnegative().optional(),
   maxBudgetCents: z.coerce.number().int().positive().optional(),
   skills: z.string().optional(),
-  sortBy: z.enum(["newest", "budget_high", "budget_low", "match_high", "fewest_proposals"]).default("newest"),
+  sortBy: z.enum(["newest", "budget_high", "budget_low", "match_high", "fewest_proposals", "deadline"]).default("newest"),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(50).default(10),
+  limit: z.coerce.number().int().min(1).max(50, "pageSize cannot exceed 50").default(10),
+  pageSize: z.coerce.number().int().min(1).max(50, "pageSize cannot exceed 50").optional(),
 });
 
 /**
- * GET /api/freelancer/projects/search
- * Search and filter open projects with real database records & proposal counts.
+ * Helper to determine project visibility for a specific freelancer.
+ * Rule: Visible only when state is FINDING_FREELANCERS/MATCHING/ACTIVE and either:
+ * - visibility is PUBLIC
+ * - visibility is INVITE_ONLY and an invitation exists for this freelancer
+ * All other states (DRAFT, PRIVATE, CLOSED/NEGOTIATION) are invisible and return 404.
  */
-router.get("/search", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+function buildVisibilityWhere(freelancerId: string): Prisma.ProjectWhereInput {
+  return {
+    state: { in: [ProjectState.MATCHING, ProjectState.ACTIVE] },
+    AND: [
+      {
+        OR: [
+          { visibility: "PUBLIC" },
+          {
+            visibility: "INVITE_ONLY",
+            invitations: {
+              some: {
+                freelancerId,
+                status: { in: ["PENDING", "PROPOSAL_SUBMITTED"] },
+              },
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * Format project for freelancer safe output
+ */
+function serializeProjectOpportunity(project: any, isSaved: boolean = false) {
+  // If no budget is specified, return null for budget
+  const hasBudget = project.budgetCents > 0 || project.budgetMinCents || project.budgetMaxCents;
+  const budgetCents = hasBudget ? project.budgetCents : null;
+  const budgetAmount = hasBudget ? budgetCents! / 100 : null;
+  const budgetDisplay = hasBudget
+    ? project.budgetType === "HOURLY"
+      ? `$${(budgetCents! / 100).toFixed(2)}/hr`
+      : `$${(budgetCents! / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+    : "Budget not specified";
+
+  return {
+    id: project.id,
+    title: project.title,
+    description: project.description,
+    category: project.category || "General",
+    skills: project.skills || [],
+    experienceLevel: project.experienceLevel || "MID",
+    budgetType: project.budgetType === "HOURLY" ? "Hourly" : "Fixed-price",
+    budgetCents,
+    budgetMinCents: project.budgetMinCents ?? null,
+    budgetMaxCents: project.budgetMaxCents ?? null,
+    budgetAmount,
+    budgetDisplay,
+    currency: project.currency,
+    location: project.location || "Remote",
+    visibility: project.visibility,
+    state: project.state,
+    postedAt: project.createdAt.toISOString(),
+    proposalsCount: project._count?.proposals || 0,
+    isSaved,
+    client: {
+      id: project.client.id,
+      name: project.client.name,
+      company: project.client.name ? `${project.client.name} Team` : "Client",
+      location: project.location || "Remote",
+    },
+  };
+}
+
+/**
+ * Shared search handler for GET / and GET /search
+ */
+async function handleSearchProjects(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const parsed = searchProjectsSchema.safeParse(req.query);
+    const rawQuery = { ...req.query };
+    if (rawQuery.pageSize && !rawQuery.limit) {
+      rawQuery.limit = rawQuery.pageSize;
+    }
+
+    const parsed = searchProjectsSchema.safeParse(rawQuery);
     if (!parsed.success) {
-      throw new ValidationError(
-        "Invalid search parameters",
-        parsed.error.flatten().fieldErrors
-      );
+      const fieldErrors = parsed.error.flatten().fieldErrors;
+      const isPageSizeError = fieldErrors.limit || fieldErrors.pageSize;
+      res.status(422).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: isPageSizeError ? "pageSize cannot exceed 50" : "Invalid search parameters",
+          details: fieldErrors,
+        },
+      });
+      return;
     }
 
     const {
@@ -56,14 +139,13 @@ router.get("/search", async (req: Request, res: Response, next: NextFunction): P
     } = parsed.data;
 
     const freelancerId = req.user!.id;
+    const visibilityCondition = buildVisibilityWhere(freelancerId);
 
-    // Filter projects that are visible and in matching/active intake state
     const where: Prisma.ProjectWhereInput = {
-      visibility: { in: ["PUBLIC", "MATCHING"] },
-      state: { in: [ProjectState.MATCHING, ProjectState.ACTIVE, ProjectState.INTAKE] },
+      ...visibilityCondition,
     };
 
-    // Text search (matches title, description, skills, or client name)
+    // Text search (safe parameterized search)
     if (q && q.trim()) {
       const term = q.trim();
       where.OR = [
@@ -105,7 +187,7 @@ router.get("/search", async (req: Request, res: Response, next: NextFunction): P
       }
     }
 
-    // Skills filter (comma-separated list)
+    // Skills filter (multi-tag)
     if (skills && skills.trim()) {
       const skillList = skills
         .split(",")
@@ -116,90 +198,177 @@ router.get("/search", async (req: Request, res: Response, next: NextFunction): P
       }
     }
 
-    // Sorting
-    let orderBy: Prisma.ProjectOrderByWithRelationInput = { createdAt: "desc" };
+    // Sorting order with stable tie-breaker 'id'
+    let orderBy: Prisma.ProjectOrderByWithRelationInput[] = [{ createdAt: "desc" }, { id: "asc" }];
     if (sortBy === "budget_high") {
-      orderBy = { budgetCents: "desc" };
+      // Put highest budgets first; null/zero budgets last
+      orderBy = [{ budgetCents: "desc" }, { id: "asc" }];
     } else if (sortBy === "budget_low") {
-      orderBy = { budgetCents: "asc" };
+      orderBy = [{ budgetCents: "asc" }, { id: "asc" }];
+    } else if (sortBy === "newest") {
+      orderBy = [{ createdAt: "desc" }, { id: "asc" }];
     } else if (sortBy === "fewest_proposals") {
-      orderBy = { proposals: { _count: "asc" } };
+      orderBy = [{ proposals: { _count: "asc" } }, { id: "asc" }];
     }
 
     const skip = (page - 1) * limit;
 
-    // Parallel query: fetch projects and total matching count
-    const [rawProjects, total] = await Promise.all([
+    const [total, projects, userBookmarks] = await Promise.all([
+      prisma.project.count({ where }),
       prisma.project.findMany({
         where,
+        include: {
+          client: { select: { id: true, name: true } },
+          _count: { select: { proposals: true } },
+        },
         orderBy,
         skip,
         take: limit,
-        include: {
-          client: {
-            select: {
-              id: true,
-              name: true,
-              locale: true,
-              status: true,
-              preferences: true,
-            },
-          },
-          _count: {
-            select: { proposals: true },
-          },
-        },
       }),
-      prisma.project.count({ where }),
+      prisma.savedProject.findMany({
+        where: { freelancerId },
+        select: { projectId: true },
+      }),
     ]);
 
-    // Query freelancer's saved bookmarks to annotate isSaved
-    const savedProjects = await prisma.savedProject.findMany({
-      where: { freelancerId },
-      select: { projectId: true },
-    });
-    const savedProjectIds = new Set(savedProjects.map((s) => s.projectId));
+    const bookmarkedSet = new Set(userBookmarks.map((b) => b.projectId));
 
-    // Format response without fabricating trust badges or ratings
-    const formattedProjects = rawProjects.map((proj) => {
-      const prefs = (proj.client.preferences as Record<string, unknown>) || {};
-      const company = (prefs.company as string) || (prefs.companyOrHandle as string) || "Independent Buyer";
+    const serializedProjects = projects.map((p) =>
+      serializeProjectOpportunity(p, bookmarkedSet.has(p.id))
+    );
 
-      return {
-        id: proj.id,
-        title: proj.title,
-        description: proj.description,
-        category: proj.category || "General",
-        skills: proj.skills || [],
-        experienceLevel: proj.experienceLevel || "MID",
-        budgetType: proj.budgetType === "HOURLY" ? "Hourly" : "Fixed Price",
-        budgetAmount: proj.budgetCents / 100,
-        budgetCents: proj.budgetCents,
-        currency: proj.currency,
-        location: proj.location || "Remote",
-        postedAt: proj.createdAt.toISOString(),
-        proposalsCount: proj._count.proposals,
-        isSaved: savedProjectIds.has(proj.id),
-        client: {
-          id: proj.client.id,
-          name: proj.client.name,
-          company,
-          location: proj.location || "Remote",
-          // Strictly show verified true ONLY if account status is ACTIVE, zero fabricated badges
-          isVerified: proj.client.status === "ACTIVE",
-        },
-      };
-    });
-
-    res.json({
+    res.status(200).json({
       success: true,
-      projects: formattedProjects,
+      projects: serializedProjects,
+      items: serializedProjects,
       pagination: {
         page,
         limit,
+        pageSize: limit,
         total,
         totalPages: Math.ceil(total / limit) || 1,
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Support both GET / and GET /search
+router.get("/", handleSearchProjects);
+router.get("/search", handleSearchProjects);
+
+/**
+ * GET /api/freelancer/projects/recommended
+ * Pure function deterministic recommendation algorithm (Page 20 of Guide)
+ * Weights:
+ * - Required skill overlap: 60 points
+ * - Category match: 20 points
+ * - Budget fit: 10 points (only if rate and budget exist in same currency)
+ * - Availability: 10 points (only if AVAILABLE)
+ * Output is deterministic (tie-breaker: id) with honest matching reasons.
+ */
+router.get("/recommended", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const freelancerId = req.user!.id;
+
+    // 1. Fetch freelancer profile
+    const profile = await prisma.freelancerProfile.findUnique({
+      where: { userId: freelancerId },
+      include: {
+        user: {
+          include: {
+            freelancerSkills: true,
+          },
+        },
+      },
+    });
+
+    const profileSkills = profile?.user?.freelancerSkills && profile.user.freelancerSkills.length > 0
+      ? profile.user.freelancerSkills.map((s) => s.skillName)
+      : Array.isArray(profile?.skills)
+        ? (profile.skills as string[])
+        : [];
+
+    const freelancerSkills = profileSkills.map((s) => s.toLowerCase());
+
+    const ratePreferences = profile?.ratePreferences as { preferredHourlyCents?: number; currency?: string } | null;
+    const preferredRateCents = profile?.rateHourlyMinor ?? ratePreferences?.preferredHourlyCents ?? null;
+    const currency = profile?.rateCurrency ?? ratePreferences?.currency ?? "USD";
+    const isAvailable = profile?.availability === "AVAILABLE" || profile?.availabilityStatus === "AVAILABLE";
+
+    // 2. Fetch candidate visible projects
+    const where = buildVisibilityWhere(freelancerId);
+    const candidateProjects = await prisma.project.findMany({
+      where,
+      include: {
+        client: { select: { id: true, name: true } },
+        _count: { select: { proposals: true } },
+      },
+      orderBy: { id: "asc" },
+    });
+
+    // 3. Compute score and honest reasons for each project
+    const scored = candidateProjects.map((project) => {
+      let score = 0;
+      const reasons: string[] = [];
+
+      // A. Skill overlap (Weight 60)
+      const projectSkills = project.skills || [];
+      if (projectSkills.length > 0 && freelancerSkills.length > 0) {
+        const matched = projectSkills.filter((ps) =>
+          freelancerSkills.some((fs) => fs.includes(ps.toLowerCase()) || ps.toLowerCase().includes(fs))
+        );
+        if (matched.length > 0) {
+          const skillWeight = Math.round((matched.length / projectSkills.length) * 60);
+          score += skillWeight;
+          reasons.push(`Matches ${matched.length} of ${projectSkills.length} required skills: ${matched.join(", ")}`);
+        }
+      }
+
+      // B. Preferred Category Match (Weight 20)
+      if (project.category) {
+        const matchesCategory = freelancerSkills.some((fs) =>
+          project.category!.toLowerCase().includes(fs) || fs.includes(project.category!.toLowerCase())
+        );
+        if (matchesCategory) {
+          score += 20;
+          reasons.push(`Matches your specialty in ${project.category}`);
+        }
+      }
+
+      // C. Budget Fit (Weight 10) - only when both rate and budget exist in same currency
+      if (preferredRateCents && project.budgetCents > 0 && project.currency === currency) {
+        if (project.budgetType === "HOURLY" && project.budgetCents >= preferredRateCents) {
+          score += 10;
+          reasons.push(`Hourly budget ($${(project.budgetCents / 100).toFixed(2)}/hr) meets your preferred rate ($${(preferredRateCents / 100).toFixed(2)}/hr)`);
+        } else if (project.budgetType === "FIXED_PRICE" && project.budgetCents >= 200000) {
+          score += 10;
+          reasons.push(`High-value verified milestone budget in ${project.currency}`);
+        }
+      }
+
+      // D. Availability (Weight 10) - only when AVAILABLE
+      if (isAvailable) {
+        score += 10;
+        reasons.push("Available for immediate engagement");
+      }
+
+      return {
+        ...serializeProjectOpportunity(project, false),
+        matchScore: score,
+        matchReasons: reasons,
+        reasons,
+      };
+    });
+
+    // Deterministic sort by score DESC, then ID ASC
+    scored.sort((a, b) => b.matchScore - a.matchScore || a.id.localeCompare(b.id));
+
+    res.status(200).json({
+      success: true,
+      recommendations: scored.slice(0, 10),
+      total: scored.length,
     });
   } catch (err) {
     next(err);
@@ -208,70 +377,198 @@ router.get("/search", async (req: Request, res: Response, next: NextFunction): P
 
 /**
  * GET /api/freelancer/projects/saved
- * Retrieve all projects bookmarked by the authenticated freelancer.
+ * Saved projects list. Handles closed project degradation (Page 20, Check 11):
+ * If closed, return { projectId, availability: "CLOSED", title } only.
  */
 router.get("/saved", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const freelancerId = req.user!.id;
 
-    const savedBookmarks = await prisma.savedProject.findMany({
+    const savedRecords = await prisma.savedProject.findMany({
       where: { freelancerId },
-      orderBy: { createdAt: "desc" },
       include: {
         project: {
           include: {
-            client: {
-              select: {
-                id: true,
-                name: true,
-                locale: true,
-                status: true,
-                preferences: true,
-              },
-            },
-            _count: {
-              select: { proposals: true },
-            },
+            client: { select: { id: true, name: true } },
+            _count: { select: { proposals: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const items = savedRecords.map((item) => {
+      const p = item.project;
+      // Degradation rule: if closed (not MATCHING or ACTIVE), return degraded summary
+      const isClosed = p.state !== ProjectState.MATCHING && p.state !== ProjectState.ACTIVE;
+      if (isClosed) {
+        return {
+          id: p.id,
+          projectId: p.id,
+          title: p.title,
+          availability: "CLOSED",
+        };
+      }
+
+      return serializeProjectOpportunity(p, true);
+    });
+
+    res.status(200).json({
+      success: true,
+      savedProjects: items,
+      total: items.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/freelancer/invitations
+ * List invitations received by this freelancer
+ */
+router.get("/invitations", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const freelancerId = req.user!.id;
+
+    const invitations = await prisma.projectInvitation.findMany({
+      where: { freelancerId },
+      include: {
+        project: {
+          select: {
+            id: true,
+            title: true,
+            category: true,
+            budgetCents: true,
+            budgetType: true,
+            currency: true,
+            client: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.status(200).json({
+      success: true,
+      invitations: invitations.map((inv) => ({
+        id: inv.id,
+        projectId: inv.projectId,
+        projectTitle: inv.project.title,
+        clientName: inv.project.client.name,
+        message: inv.message,
+        status: inv.status,
+        createdAt: inv.createdAt.toISOString(),
+        respondedAt: inv.respondedAt ? inv.respondedAt.toISOString() : null,
+      })),
+      total: invitations.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/freelancer/invitations/:id
+ * Individual invitation detail
+ */
+router.get("/invitations/:id", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const freelancerId = req.user!.id;
+    const { id } = req.params;
+
+    const invitation = await prisma.projectInvitation.findFirst({
+      where: { id, freelancerId },
+      include: {
+        project: {
+          include: {
+            client: { select: { id: true, name: true } },
           },
         },
       },
     });
 
-    const projects = savedBookmarks.map((item) => {
-      const proj = item.project;
-      const prefs = (proj.client.preferences as Record<string, unknown>) || {};
-      const company = (prefs.company as string) || (prefs.companyOrHandle as string) || "Independent Buyer";
+    if (!invitation) {
+      throw new NotFoundError("Invitation not found");
+    }
 
-      return {
-        id: proj.id,
-        savedAt: item.createdAt.toISOString(),
-        title: proj.title,
-        description: proj.description,
-        category: proj.category || "General",
-        skills: proj.skills || [],
-        experienceLevel: proj.experienceLevel || "MID",
-        budgetType: proj.budgetType === "HOURLY" ? "Hourly" : "Fixed Price",
-        budgetAmount: proj.budgetCents / 100,
-        budgetCents: proj.budgetCents,
-        currency: proj.currency,
-        location: proj.location || "Remote",
-        postedAt: proj.createdAt.toISOString(),
-        proposalsCount: proj._count.proposals,
-        isSaved: true,
-        client: {
-          id: proj.client.id,
-          name: proj.client.name,
-          company,
-          location: proj.location || "Remote",
-          isVerified: proj.client.status === "ACTIVE",
-        },
-      };
+    res.status(200).json({
+      success: true,
+      invitation: {
+        id: invitation.id,
+        projectId: invitation.projectId,
+        projectTitle: invitation.project.title,
+        clientName: invitation.project.client.name,
+        message: invitation.message,
+        status: invitation.status,
+        createdAt: invitation.createdAt.toISOString(),
+        respondedAt: invitation.respondedAt ? invitation.respondedAt.toISOString() : null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/freelancer/invitations/:id/decline
+ * Decline invitation. Allowed only from PENDING status; otherwise 409 INVALID_STATE.
+ * Emits INVITATION_DECLINED audit event.
+ */
+router.post("/invitations/:id/decline", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const freelancerId = req.user!.id;
+    const { id } = req.params;
+
+    const invitation = await prisma.projectInvitation.findFirst({
+      where: { id, freelancerId },
     });
 
-    res.json({
+    if (!invitation) {
+      throw new NotFoundError("Invitation not found");
+    }
+
+    if (invitation.status !== "PENDING") {
+      res.status(409).json({
+        error: {
+          code: "INVALID_STATE",
+          message: `Cannot decline invitation in '${invitation.status}' status. Only PENDING invitations can be declined.`,
+          details: { currentStatus: invitation.status },
+        },
+      });
+      return;
+    }
+
+    const updated = await prisma.projectInvitation.update({
+      where: { id: invitation.id },
+      data: {
+        status: "DECLINED",
+        respondedAt: new Date(),
+      },
+    });
+
+    // Write append-only audit event
+    await appendAuditEvent({
+      actorId: freelancerId,
+      action: "INVITATION_DECLINED",
+      objectType: "INVITATION",
+      objectId: invitation.id,
+      previousStatus: "PENDING",
+      newStatus: "DECLINED",
+      metadata: {
+        projectId: invitation.projectId,
+        reason: req.body?.reason || "Freelancer declined invitation",
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    res.status(200).json({
       success: true,
-      savedProjects: projects,
-      total: projects.length,
+      invitation: {
+        id: updated.id,
+        status: updated.status,
+        respondedAt: updated.respondedAt!.toISOString(),
+      },
     });
   } catch (err) {
     next(err);
@@ -280,7 +577,11 @@ router.get("/saved", async (req: Request, res: Response, next: NextFunction): Pr
 
 /**
  * GET /api/freelancer/projects/:id
- * Retrieve details for a specific project opportunity.
+ * Get details for a specific project opportunity.
+ * Enforces strict visibility rules:
+ * - PRIVATE or DRAFT -> 404
+ * - Closed (e.g. NEGOTIATION, COMPLETED) -> 404
+ * - INVITE_ONLY without invitation for this freelancer -> 404
  */
 router.get("/:id", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -290,32 +591,36 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction): Prom
     const project = await prisma.project.findUnique({
       where: { id },
       include: {
-        client: {
-          select: {
-            id: true,
-            name: true,
-            locale: true,
-            timezone: true,
-            status: true,
-            createdAt: true,
-            preferences: true,
-          },
-        },
-        briefVersions: {
-          where: { status: "CURRENT" },
-          take: 1,
-        },
-        _count: {
-          select: { proposals: true },
+        client: { select: { id: true, name: true } },
+        _count: { select: { proposals: true } },
+        invitations: {
+          where: { freelancerId },
+          select: { id: true, status: true },
         },
       },
     });
 
     if (!project) {
-      throw new NotFoundError("Project not found");
+      throw new NotFoundError("Project opportunity not found");
     }
 
-    const savedRecord = await prisma.savedProject.findUnique({
+    // 1. Invisible if DRAFT or PRIVATE or closed
+    const isClosed = project.state !== ProjectState.MATCHING && project.state !== ProjectState.ACTIVE;
+    if (project.visibility === "PRIVATE" || project.state === ProjectState.DRAFT || isClosed) {
+      throw new NotFoundError("Project opportunity not found");
+    }
+
+    // 2. Invisible if INVITE_ONLY and no invitation exists for this freelancer
+    if (project.visibility === "INVITE_ONLY") {
+      const activeInvitation = project.invitations?.some(
+        (inv) => inv.status === "PENDING" || inv.status === "PROPOSAL_SUBMITTED"
+      );
+      if (!activeInvitation) {
+        throw new NotFoundError("Project opportunity not found");
+      }
+    }
+
+    const saved = await prisma.savedProject.findUnique({
       where: {
         freelancerId_projectId: {
           freelancerId,
@@ -324,39 +629,9 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction): Prom
       },
     });
 
-    const prefs = (project.client.preferences as Record<string, unknown>) || {};
-    const company = (prefs.company as string) || (prefs.companyOrHandle as string) || "Independent Buyer";
-
-    res.json({
+    res.status(200).json({
       success: true,
-      project: {
-        id: project.id,
-        title: project.title,
-        description: project.description,
-        goals: project.goals,
-        category: project.category || "General",
-        skills: project.skills || [],
-        experienceLevel: project.experienceLevel || "MID",
-        budgetType: project.budgetType === "HOURLY" ? "Hourly" : "Fixed Price",
-        budgetAmount: project.budgetCents / 100,
-        budgetCents: project.budgetCents,
-        currency: project.currency,
-        location: project.location || "Remote",
-        state: project.state,
-        postedAt: project.createdAt.toISOString(),
-        proposalsCount: project._count.proposals,
-        isSaved: Boolean(savedRecord),
-        brief: project.briefVersions[0]?.structuredBrief || null,
-        client: {
-          id: project.client.id,
-          name: project.client.name,
-          company,
-          location: project.location || "Remote",
-          timezone: project.client.timezone,
-          memberSince: project.client.createdAt.toISOString(),
-          isVerified: project.client.status === "ACTIVE",
-        },
-      },
+      project: serializeProjectOpportunity(project, !!saved),
     });
   } catch (err) {
     next(err);
@@ -365,52 +640,53 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction): Prom
 
 /**
  * POST /api/freelancer/projects/:id/save
- * Bookmark a project idempotently and record an append-only AuditEvent.
+ * Idempotently bookmark a project opportunity.
  */
 router.post("/:id/save", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { id: projectId } = req.params;
+    const { id } = req.params;
     const freelancerId = req.user!.id;
 
     // Check project exists
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      select: { id: true, title: true },
-    });
-
+    const project = await prisma.project.findUnique({ where: { id } });
     if (!project) {
       throw new NotFoundError("Project not found");
     }
 
-    // Idempotent upsert
-    await prisma.savedProject.upsert({
+    const existing = await prisma.savedProject.findUnique({
       where: {
         freelancerId_projectId: {
           freelancerId,
-          projectId,
+          projectId: id,
         },
-      },
-      update: {},
-      create: {
-        freelancerId,
-        projectId,
       },
     });
 
-    // Append-only audit logging
-    await appendAuditEvent({
-      actorId: freelancerId,
-      action: "PROJECT_SAVED",
-      objectType: "PROJECT",
-      objectId: projectId,
-      metadata: { projectTitle: project.title, savedAt: new Date().toISOString() },
-    });
+    if (!existing) {
+      await prisma.savedProject.create({
+        data: {
+          freelancerId,
+          projectId: id,
+        },
+      });
+
+      // Append immutable audit log
+      await appendAuditEvent({
+        actorId: freelancerId,
+        action: "PROJECT_SAVED",
+        objectType: "PROJECT",
+        objectId: id,
+        metadata: {
+          projectTitle: project.title,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
 
     res.status(200).json({
       success: true,
       isSaved: true,
-      projectId,
-      message: "Project saved to bookmarks",
+      message: "Project bookmarked successfully",
     });
   } catch (err) {
     next(err);
@@ -419,18 +695,18 @@ router.post("/:id/save", async (req: Request, res: Response, next: NextFunction)
 
 /**
  * DELETE /api/freelancer/projects/:id/save
- * Remove a project bookmark and record an append-only AuditEvent.
+ * Idempotently remove bookmark.
  */
 router.delete("/:id/save", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { id: projectId } = req.params;
+    const { id } = req.params;
     const freelancerId = req.user!.id;
 
     const existing = await prisma.savedProject.findUnique({
       where: {
         freelancerId_projectId: {
           freelancerId,
-          projectId,
+          projectId: id,
         },
       },
     });
@@ -440,26 +716,26 @@ router.delete("/:id/save", async (req: Request, res: Response, next: NextFunctio
         where: { id: existing.id },
       });
 
-      // Append-only audit logging
+      // Append immutable audit log
       await appendAuditEvent({
         actorId: freelancerId,
         action: "PROJECT_UNSAVED",
         objectType: "PROJECT",
-        objectId: projectId,
-        metadata: { unsavedAt: new Date().toISOString() },
+        objectId: id,
+        metadata: {
+          timestamp: new Date().toISOString(),
+        },
       });
     }
 
     res.status(200).json({
       success: true,
       isSaved: false,
-      projectId,
-      message: "Project removed from bookmarks",
+      message: "Project bookmark removed",
     });
   } catch (err) {
     next(err);
   }
 });
 
-export { router as freelancerProjectsRouter };
 export default router;

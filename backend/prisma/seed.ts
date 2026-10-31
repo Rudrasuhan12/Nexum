@@ -29,6 +29,47 @@ async function main() {
   });
   console.log(`✅ Seeded Client: ${client.name} (${client.email})`);
 
+  // 1b. Seed Additional Demo Clients for Phase 3 Variety
+  const clientDavid = await prisma.user.upsert({
+    where: { email: "david.sterling@fintechlabs.demo" },
+    update: {
+      name: "David Sterling",
+      role: Role.CLIENT,
+      status: "ACTIVE",
+      passwordHash: defaultPasswordHash,
+    },
+    create: {
+      id: "usr_client_david",
+      email: "david.sterling@fintechlabs.demo",
+      name: "David Sterling",
+      role: Role.CLIENT,
+      locale: "en-US",
+      timezone: "America/Los_Angeles",
+      status: "ACTIVE",
+      passwordHash: defaultPasswordHash,
+    },
+  });
+
+  const clientSarah = await prisma.user.upsert({
+    where: { email: "sarah.jenkins@medicaresolutions.demo" },
+    update: {
+      name: "Sarah Jenkins",
+      role: Role.CLIENT,
+      status: "ACTIVE",
+      passwordHash: defaultPasswordHash,
+    },
+    create: {
+      id: "usr_client_sarah",
+      email: "sarah.jenkins@medicaresolutions.demo",
+      name: "Sarah Jenkins",
+      role: Role.CLIENT,
+      locale: "en-US",
+      timezone: "America/Chicago",
+      status: "ACTIVE",
+      passwordHash: defaultPasswordHash,
+    },
+  });
+
   // 2. Seed Freelancers (A, B, C)
   const freelancers = [
     {
@@ -151,14 +192,15 @@ async function main() {
   });
   console.log(`✅ Seeded Project: ${project.title}`);
 
-  // 3b. Seed Phase 3 Public Opportunities
+  // 3b. Seed Phase 3 Full Spectrum Opportunities (15 total for all 18 test checks)
   const demoOpportunities = [
     {
       id: "opp_1",
+      clientId: client.id,
       title: "Let's Collaborate on HAV's Website Redesign",
       description: "We are looking for a creative person who can redesign & build beautiful landing pages in modern responsive frameworks with clean typography.",
       category: "Web Design",
-      skills: ["UI Design", "Web Design", "Landing Page", "Web Development", "Figma"],
+      skills: ["React", "UI Design", "Web Design", "Landing Page", "Web Development", "Figma"],
       experienceLevel: ExperienceLevel.BEGINNER,
       budgetType: "HOURLY",
       budgetCents: 1500,
@@ -168,6 +210,7 @@ async function main() {
     },
     {
       id: "opp_2",
+      clientId: client.id,
       title: "Build/Edit Landing Page for Online Course",
       description: "Have a current landing page for my online course already. Need a designer to polish the layout, improve conversion flow, and add high-converting CTA sections.",
       category: "Web Design",
@@ -181,6 +224,7 @@ async function main() {
     },
     {
       id: "opp_3",
+      clientId: client.id,
       title: "Web Designer for E-Commerce Website",
       description: "Install new e-commerce responsive theme, redesign navigation menu, layout product catalog grids, and create custom mobile checkout views.",
       category: "Web Design",
@@ -194,6 +238,7 @@ async function main() {
     },
     {
       id: "opp_4",
+      clientId: client.id,
       title: "SaaS Dashboard Redesign & Design System Architect",
       description: "We're looking for a design systems architect who can help us redesign our B2B SaaS analytics portal in Figma and translate tokens to Next.js Tailwind components.",
       category: "Web Design",
@@ -207,6 +252,7 @@ async function main() {
     },
     {
       id: "opp_5",
+      clientId: clientDavid.id,
       title: "Enterprise Smart Escrow Integration for Solana Pay",
       description: "Construct cross-border payment settlement rails with dual SHA-256 state consensus, cryptographic signature verification, and automated webhook recovery.",
       category: "Smart Contracts",
@@ -220,10 +266,11 @@ async function main() {
     },
     {
       id: "opp_6",
+      clientId: clientSarah.id,
       title: "Autonomous Support Copilot with Streaming SSE",
       description: "Integrate an autonomous multi-turn customer support copilot with streaming SSE events, vector embeddings, and verified milestone deliverable escrow.",
       category: "AI & Machine Learning",
-      skills: ["Python", "OpenAI API", "LangChain", "Next.js", "Tailwind CSS"],
+      skills: ["Python", "AI", "LangChain", "Next.js", "Tailwind CSS"],
       experienceLevel: ExperienceLevel.SENIOR,
       budgetType: "FIXED_PRICE",
       budgetCents: 450000,
@@ -231,12 +278,143 @@ async function main() {
       visibility: "PUBLIC",
       state: ProjectState.MATCHING,
     },
+    {
+      id: "opp_7",
+      clientId: clientDavid.id,
+      title: "High-Throughput Distributed Microservices Gateway",
+      description: "Build a resilient high-throughput event routing API gateway in Node.js and PostgreSQL with skip-locked queue semantics.",
+      category: "Backend Architecture",
+      skills: ["Node.js", "PostgreSQL", "Docker", "TypeScript"],
+      experienceLevel: ExperienceLevel.SENIOR,
+      budgetType: "HOURLY",
+      budgetCents: 9500,
+      location: "Remote",
+      visibility: "PUBLIC",
+      state: ProjectState.MATCHING,
+    },
+    {
+      id: "opp_8",
+      clientId: clientDavid.id,
+      title: "Kubernetes Multi-Cluster Orchestration & CI/CD",
+      description: "Set up multi-cluster fault-tolerant deployment pipelines with automated blue-green rollouts and Prometheus alerts.",
+      category: "DevOps & Cloud",
+      skills: ["Docker", "CI/CD", "Prometheus", "Kubernetes"],
+      experienceLevel: ExperienceLevel.MID,
+      budgetType: "FIXED_PRICE",
+      budgetCents: 280000,
+      location: "Germany",
+      visibility: "PUBLIC",
+      state: ProjectState.MATCHING,
+    },
+    {
+      id: "opp_9",
+      clientId: clientSarah.id,
+      title: "Real-Time Fraud Detection & Anomaly Pipeline",
+      description: "Construct an incremental streaming data pipeline that flags unusual payment authorization velocities in sub-second latency.",
+      category: "Data Engineering",
+      skills: ["Python", "Data", "PostgreSQL"],
+      experienceLevel: ExperienceLevel.SENIOR,
+      budgetType: "FIXED_PRICE",
+      budgetCents: 400000,
+      budgetMinCents: 300000,
+      budgetMaxCents: 500000,
+      location: "United States",
+      visibility: "PUBLIC",
+      state: ProjectState.MATCHING,
+    },
+    {
+      id: "opp_10",
+      clientId: clientSarah.id,
+      title: "Zero-Trust Penetration Test & Auth Audit",
+      description: "Perform comprehensive threat modeling, OAuth token lifecycle audit, and penetration testing on our healthcare staging clusters.",
+      category: "Cybersecurity",
+      skills: ["Security", "Audit", "OAuth"],
+      experienceLevel: ExperienceLevel.EXPERT,
+      budgetType: "FIXED_PRICE",
+      budgetCents: 0,
+      budgetMinCents: null,
+      budgetMaxCents: null,
+      location: "Remote",
+      visibility: "PUBLIC",
+      state: ProjectState.MATCHING,
+    },
+    {
+      id: "opp_11",
+      clientId: clientDavid.id,
+      title: "Confidential Fintech Partnership Rail",
+      description: "Private bilateral integration with Tier-1 institutional liquidity provider for instant multi-currency settlement.",
+      category: "Fintech",
+      skills: ["Solana", "Fintech", "TypeScript"],
+      experienceLevel: ExperienceLevel.EXPERT,
+      budgetType: "HOURLY",
+      budgetCents: 12000,
+      location: "Switzerland",
+      visibility: "INVITE_ONLY",
+      state: ProjectState.MATCHING,
+    },
+    {
+      id: "opp_12",
+      clientId: clientDavid.id,
+      title: "Exclusive Banking API Core Integration",
+      description: "Internal banking interface for high-net-worth treasury management with strict multi-sig approval requirements.",
+      category: "Fintech",
+      skills: ["Banking", "API", "Rust"],
+      experienceLevel: ExperienceLevel.EXPERT,
+      budgetType: "FIXED_PRICE",
+      budgetCents: 600000,
+      location: "United Kingdom",
+      visibility: "INVITE_ONLY",
+      state: ProjectState.MATCHING,
+    },
+    {
+      id: "opp_13",
+      clientId: client.id,
+      title: "Internal Proprietary Strategy Whitepaper",
+      description: "Confidential research on next-generation decentralized liquidity algorithms and consensus guarantees.",
+      category: "Research",
+      skills: ["Strategy", "Research"],
+      experienceLevel: ExperienceLevel.EXPERT,
+      budgetType: "FIXED_PRICE",
+      budgetCents: 100000,
+      location: "Internal",
+      visibility: "PRIVATE",
+      state: ProjectState.MATCHING,
+    },
+    {
+      id: "opp_14",
+      clientId: clientSarah.id,
+      title: "Early Draft Exploratory Mobile App",
+      description: "Unpublished preliminary draft for cross-platform patient appointment scheduling interface.",
+      category: "Mobile Development",
+      skills: ["React Native", "Mobile"],
+      experienceLevel: ExperienceLevel.JUNIOR,
+      budgetType: "HOURLY",
+      budgetCents: 3000,
+      location: "Remote",
+      visibility: "PUBLIC",
+      state: ProjectState.DRAFT,
+    },
+    {
+      id: "opp_15",
+      clientId: client.id,
+      title: "Closed Bilateral Agreement Project",
+      description: "This project has finalized freelancer selection and is in active bilateral negotiation.",
+      category: "Web Development",
+      skills: ["Web Design", "Next.js"],
+      experienceLevel: ExperienceLevel.MID,
+      budgetType: "FIXED_PRICE",
+      budgetCents: 250000,
+      location: "Remote",
+      visibility: "PUBLIC",
+      state: ProjectState.NEGOTIATION,
+    },
   ];
 
   for (const opp of demoOpportunities) {
     await prisma.project.upsert({
       where: { id: opp.id },
       update: {
+        clientId: opp.clientId,
         title: opp.title,
         description: opp.description,
         category: opp.category,
@@ -244,13 +422,15 @@ async function main() {
         experienceLevel: opp.experienceLevel,
         budgetType: opp.budgetType,
         budgetCents: opp.budgetCents,
+        budgetMinCents: (opp as any).budgetMinCents ?? null,
+        budgetMaxCents: (opp as any).budgetMaxCents ?? null,
         location: opp.location,
         visibility: opp.visibility,
         state: opp.state,
       },
       create: {
         id: opp.id,
-        clientId: client.id,
+        clientId: opp.clientId,
         title: opp.title,
         description: opp.description,
         category: opp.category,
@@ -258,13 +438,37 @@ async function main() {
         experienceLevel: opp.experienceLevel,
         budgetType: opp.budgetType,
         budgetCents: opp.budgetCents,
+        budgetMinCents: (opp as any).budgetMinCents ?? null,
+        budgetMaxCents: (opp as any).budgetMaxCents ?? null,
         location: opp.location,
         visibility: opp.visibility,
         state: opp.state,
       },
     });
   }
-  console.log(`✅ Seeded ${demoOpportunities.length} Phase 3 Public Opportunities`);
+  console.log(`✅ Seeded ${demoOpportunities.length} Phase 3 Opportunities across all visibility & state variations.`);
+
+  // 3c. Seed Project Invitation for Elena on opp_11
+  await prisma.projectInvitation.upsert({
+    where: {
+      projectId_freelancerId: {
+        projectId: "opp_11",
+        freelancerId: "usr_freelancer_elena",
+      },
+    },
+    update: {
+      status: "PENDING",
+      message: "We would love your high-throughput distributed systems expertise on our confidential fintech partnership rail.",
+    },
+    create: {
+      id: "inv_elena_opp_11",
+      projectId: "opp_11",
+      freelancerId: "usr_freelancer_elena",
+      status: "PENDING",
+      message: "We would love your high-throughput distributed systems expertise on our confidential fintech partnership rail.",
+    },
+  });
+  console.log("✅ Seeded Project Invitation for Elena on opp_11 (INVITE_ONLY)");
 
   // 4. Seed Canonical Proposal & Milestones (Elena)
   const elenaUser = await prisma.user.findUnique({ where: { email: "elena.rostova@nexum.demo" } });
