@@ -50,6 +50,26 @@ export async function extractTextFromPdf(buffer: Buffer): Promise<string> {
 }
 
 /**
+ * Safe helper to update a ResumeExtraction record.
+ * Gracefully ignores P2025 errors if the parent user or extraction was cleaned up.
+ */
+async function safeUpdateResumeExtraction(extractionId: string, data: any): Promise<boolean> {
+  try {
+    await prisma.resumeExtraction.update({
+      where: { id: extractionId },
+      data,
+    });
+    return true;
+  } catch (err: any) {
+    if (err?.code === "P2025") {
+      // Record was deleted; safe to ignore
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
  * Process a resume extraction job asynchronously.
  */
 export async function processResumeExtraction(
@@ -57,13 +77,19 @@ export async function processResumeExtraction(
   filePath: string,
   _originalName: string
 ): Promise<{ success: boolean; model?: string }> {
+  // 0. Verify the extraction record exists
+  const existingRecord = await prisma.resumeExtraction.findUnique({
+    where: { id: extractionId },
+  });
+  if (!existingRecord) {
+    // Record was already deleted/cleaned up; nothing to process
+    return { success: false };
+  }
+
   if (!fs.existsSync(filePath)) {
-    await prisma.resumeExtraction.update({
-      where: { id: extractionId },
-      data: {
-        status: "FAILED",
-        failureReason: "FILE_NOT_FOUND: The uploaded file was not found on disk.",
-      },
+    await safeUpdateResumeExtraction(extractionId, {
+      status: "FAILED",
+      failureReason: "FILE_NOT_FOUND: The uploaded file was not found on disk.",
     });
     throw new Error(`File not found: ${filePath}`);
   }
@@ -72,12 +98,9 @@ export async function processResumeExtraction(
 
   // 1. Magic bytes check
   if (!validatePdfMagicBytes(fileBuffer)) {
-    await prisma.resumeExtraction.update({
-      where: { id: extractionId },
-      data: {
-        status: "FAILED",
-        failureReason: "INVALID_PDF_HEADER: Document is not a valid PDF file.",
-      },
+    await safeUpdateResumeExtraction(extractionId, {
+      status: "FAILED",
+      failureReason: "INVALID_PDF_HEADER: Document is not a valid PDF file.",
     });
     throw new Error("Invalid PDF header magic bytes");
   }
@@ -87,13 +110,10 @@ export async function processResumeExtraction(
 
   // 3. Check for scanned/image PDF without text layer
   if (!text || text.length < 20) {
-    await prisma.resumeExtraction.update({
-      where: { id: extractionId },
-      data: {
-        status: "FAILED",
-        failureReason:
-          "SCANNED_PDF_REQUIRES_OCR: Document contains no extractable text layer. Optical Character Recognition (OCR) is required.",
-      },
+    await safeUpdateResumeExtraction(extractionId, {
+      status: "FAILED",
+      failureReason:
+        "SCANNED_PDF_REQUIRES_OCR: Document contains no extractable text layer. Optical Character Recognition (OCR) is required.",
     });
     // This is a permanent failure for this document, not a retryable transient crash
     return { success: false };
@@ -103,27 +123,21 @@ export async function processResumeExtraction(
   try {
     const { data, model, promptVersion } = await extractResumeWithGemini(text);
 
-    await prisma.resumeExtraction.update({
-      where: { id: extractionId },
-      data: {
-        status: "READY",
-        extractedJson: data as any,
-        model,
-        promptVersion,
-        failureReason: null,
-      },
+    await safeUpdateResumeExtraction(extractionId, {
+      status: "READY",
+      extractedJson: data as any,
+      model,
+      promptVersion,
+      failureReason: null,
     });
 
     return { success: true, model };
   } catch (geminiError: any) {
     const errorMsg = geminiError?.message || String(geminiError);
 
-    await prisma.resumeExtraction.update({
-      where: { id: extractionId },
-      data: {
-        status: "FAILED",
-        failureReason: errorMsg,
-      },
+    await safeUpdateResumeExtraction(extractionId, {
+      status: "FAILED",
+      failureReason: errorMsg,
     });
 
     // Re-throw so background worker can track attempts and apply retry logic
