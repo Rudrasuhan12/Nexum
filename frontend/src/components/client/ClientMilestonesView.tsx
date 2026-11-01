@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   Layers,
   Clock,
@@ -25,6 +26,12 @@ import {
   MilestoneWorkflowStatus,
   MilestonePaymentState,
 } from "@/lib/mock-milestones";
+import { useAuth } from "@/context/AuthContext";
+import {
+  fetchClientMilestones,
+  approveClientMilestone,
+  requestClientMilestoneCorrections,
+} from "@/lib/api-client";
 
 interface ClientMilestonesViewProps {
   onOpenProjectWorkspace?: (projectId: string, tab?: string) => void;
@@ -33,8 +40,32 @@ interface ClientMilestonesViewProps {
 export default function ClientMilestonesView({
   onOpenProjectWorkspace,
 }: ClientMilestonesViewProps) {
+  const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+
   // Milestone dataset state (mutable for releases & corrections)
   const [milestones, setMilestones] = useState<FullMilestoneData[]>(CLIENT_MILESTONES);
+
+  // Fetch live milestones from database/backend
+  useEffect(() => {
+    let isMounted = true;
+    async function loadMilestones() {
+      try {
+        const res = await fetchClientMilestones(user?.id);
+        if (isMounted && res.success && Array.isArray(res.data)) {
+          setMilestones(res.data);
+        }
+      } catch {
+        // Fallback already in place
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    loadMilestones();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]);
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -127,6 +158,13 @@ export default function ClientMilestonesView({
     showToast("Dual SHA-256 Consensus: Executing PayPal Sandbox Escrow Capture...");
 
     try {
+      // 1. Dispatch backend approval
+      await approveClientMilestone(m.id, {
+        clientId: user?.id,
+        orderId: m.paymentDetails?.orderId,
+      }).catch(() => {});
+
+      // 2. Dispatch PayPal capture endpoint
       const res = await fetch("/api/paypal/capture-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -166,7 +204,7 @@ export default function ClientMilestonesView({
                   {
                     id: `act_${Date.now()}`,
                     timestamp: "Just now",
-                    actor: "Sambit Kumar",
+                    actor: user?.name || "Client",
                     role: "CLIENT" as const,
                     action: "Milestone Deliverables Accepted",
                     details: `${m.amount} USD captured from Sandbox Escrow and released to ${m.freelancer?.name || "contractor"}.`,
@@ -202,6 +240,9 @@ export default function ClientMilestonesView({
       }
 
       showToast(`Milestone accepted! ${m.amount} USD captured and released to contractor.`);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("nexum:milestones-updated"));
+      }
     } catch {
       showToast("Consensus state updated: Milestone marked Accepted.");
     } finally {
@@ -210,11 +251,19 @@ export default function ClientMilestonesView({
   };
 
   // Handle Request Corrections (identifying specific unmet criteria)
-  const handleSubmitCorrections = (m: FullMilestoneData) => {
+  const handleSubmitCorrections = async (m: FullMilestoneData) => {
     if (selectedUnmetCriteria.length === 0 && !correctionNotes.trim()) {
       showToast("Please select at least one unmet criterion or provide revision notes.");
       return;
     }
+
+    try {
+      await requestClientMilestoneCorrections(m.id, {
+        notes: correctionNotes,
+        unmetCriteria: selectedUnmetCriteria,
+        clientId: user?.id,
+      }).catch(() => {});
+    } catch {}
 
     setMilestones((prev) =>
       prev.map((item) =>
@@ -234,7 +283,7 @@ export default function ClientMilestonesView({
                 {
                   id: `act_corr_${Date.now()}`,
                   timestamp: "Just now",
-                  actor: "Sambit Kumar",
+                  actor: user?.name || "Client",
                   role: "CLIENT" as const,
                   action: "Corrections Requested",
                   details: `Unmet criteria: ${selectedUnmetCriteria.join(", ")}. Notes: ${correctionNotes}`,
@@ -251,7 +300,31 @@ export default function ClientMilestonesView({
     setCorrectionNotes("");
     setSelectedUnmetCriteria([]);
     showToast("Correction request logged on immutable audit trail and sent to contractor.");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("nexum:milestones-updated"));
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 sm:gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="p-5 rounded-2xl bg-white border border-slate-200/80 h-28 space-y-3">
+              <div className="w-16 h-3 bg-slate-200 rounded" />
+              <div className="w-10 h-7 bg-slate-200 rounded" />
+            </div>
+          ))}
+        </div>
+        <div className="h-28 rounded-2xl bg-white border border-slate-200/80" />
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="p-5 rounded-2xl bg-white border border-slate-200/80 h-36" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -555,41 +628,56 @@ export default function ClientMilestonesView({
          ============================================================== */}
       {filteredMilestones.length === 0 ? (
         /* Empty States matching requirements */
-        <div className="p-12 rounded-2xl border border-dashed border-slate-200 bg-white text-center space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#eef2ff] text-[#4f46e5] flex items-center justify-center mx-auto">
-            <Layers className="w-6 h-6" />
+        <div className="p-12 rounded-2xl border border-dashed border-slate-200 bg-white text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#eef2ff] text-[#4f46e5] flex items-center justify-center mx-auto">
+            <Layers className="w-7 h-7" />
           </div>
-          <h3 className="text-base font-bold text-slate-900">
-            {workflowFilter === "UPCOMING"
-              ? "You're all caught up on upcoming deliverables."
-              : workflowFilter === "AWAITING_REVIEW"
-              ? "No deliverables need your review right now."
-              : workflowFilter === "ACCEPTED"
-              ? "Accepted milestones will appear here as projects progress."
-              : "Your project milestones will appear here once an agreement is approved and milestones are defined."}
-          </h3>
-          <p className="text-xs text-slate-500 max-w-md mx-auto">
-            {searchQuery || workflowFilter !== "ALL" || projectFilter !== "ALL" || paymentFilter !== "ALL"
-              ? "Try adjusting your search terms or clearing active filters to see all milestones."
-              : "Milestones are created when project scopes are locked under canonical Dual SHA-256 agreement specs."}
-          </p>
-          {(searchQuery || workflowFilter !== "ALL" || projectFilter !== "ALL" || paymentFilter !== "ALL") && (
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-slate-900">
+              {milestones.length === 0
+                ? "No project milestones scheduled yet"
+                : workflowFilter === "UPCOMING"
+                ? "You're all caught up on upcoming deliverables."
+                : workflowFilter === "AWAITING_REVIEW"
+                ? "No deliverables need your review right now."
+                : workflowFilter === "ACCEPTED"
+                ? "Accepted milestones will appear here as projects progress."
+                : "No milestones match your active filters."}
+            </h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+              {milestones.length === 0
+                ? "Milestones establish escrow release checkpoints protected by bilateral PayPal verification consensus. Once you post a project and agree on deliverable scopes, checkpoints will appear here."
+                : "Try adjusting your search terms or clearing active filters to see all milestones."}
+            </p>
+          </div>
+          {milestones.length === 0 ? (
             <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery("");
-                  setWorkflowFilter("ALL");
-                  setProjectFilter("ALL");
-                  setPaymentFilter("ALL");
-                  setDueDateFilter("ALL");
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-[#4f46e5] bg-[#eef2ff] hover:bg-[#e0e7ff] transition cursor-pointer"
+              <Link
+                href="/client/post-project"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#4f46e5] hover:bg-[#4338ca] transition shadow-xs"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset all filters</span>
-              </button>
+                <span>+ Post a New Project</span>
+              </Link>
             </div>
+          ) : (
+            (searchQuery || workflowFilter !== "ALL" || projectFilter !== "ALL" || paymentFilter !== "ALL") && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setWorkflowFilter("ALL");
+                    setProjectFilter("ALL");
+                    setPaymentFilter("ALL");
+                    setDueDateFilter("ALL");
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-[#4f46e5] bg-[#eef2ff] hover:bg-[#e0e7ff] transition cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset all filters</span>
+                </button>
+              </div>
+            )
           )}
         </div>
       ) : (

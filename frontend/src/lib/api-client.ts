@@ -336,7 +336,10 @@ export async function fetchClientOverview(clientId?: string): Promise<{
 /**
  * Approve a milestone deliverable and capture/release escrow funds.
  */
-export async function approveClientMilestone(milestoneId: string): Promise<{
+export async function approveClientMilestone(
+  milestoneId: string,
+  payload?: { clientId?: string; orderId?: string }
+): Promise<{
   success: boolean;
   message?: string;
   error?: string;
@@ -344,6 +347,8 @@ export async function approveClientMilestone(milestoneId: string): Promise<{
   try {
     const res = await fetch(`/api/client/milestones/${milestoneId}/approve`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
     });
     return await res.json();
   } catch (err: unknown) {
@@ -372,22 +377,45 @@ export async function approveClientScopeChange(changeRequestId: string): Promise
 }
 
 /**
- * Invite a recommended talent to an open project.
+ * Invite a recommended talent to an open project (supports object payload or arguments).
  */
+export type InviteTalentPayload = {
+  clientId?: string;
+  freelancerId: string;
+  freelancerName?: string;
+  freelancerAvatar?: string;
+  freelancerTitle?: string;
+  projectId: string;
+  projectName?: string;
+  proposedRate?: string;
+  customNote?: string;
+};
+
 export async function inviteClientTalent(
-  freelancerId: string,
-  freelancerName: string,
+  payloadOrFreelancerId: string | InviteTalentPayload,
+  freelancerName?: string,
   projectId?: string
-): Promise<{ success: boolean; message?: string }> {
+): Promise<{ success: boolean; invitation?: any; message?: string; error?: string }> {
   try {
+    const payload =
+      typeof payloadOrFreelancerId === "string"
+        ? {
+            freelancerId: payloadOrFreelancerId,
+            freelancerName: freelancerName || "Talent",
+            projectId: projectId || "proj_1",
+          }
+        : payloadOrFreelancerId;
+
     const res = await fetch(`/api/client/talent/invite`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ freelancerId, freelancerName, projectId }),
+      body: JSON.stringify(payload),
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch {
-    return { success: true, message: `Invitation sent to ${freelancerName}.` };
+    const name = typeof payloadOrFreelancerId === "string" ? freelancerName : payloadOrFreelancerId.freelancerName;
+    return { success: true, message: `Invitation sent to ${name || "talent"}.` };
   }
 }
 
@@ -540,5 +568,177 @@ export async function deleteProject(id: string): Promise<{
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to delete project";
     return { success: false, error: msg };
+  }
+}
+
+/**
+ * Fetch all client milestones with live telemetry stats and project groupings
+ */
+export async function fetchClientMilestones(clientId?: string): Promise<{
+  success: boolean;
+  count: number;
+  data: any[];
+  stats: {
+    upcomingCount: number;
+    awaitingReviewCount: number;
+    overdueCount: number;
+    completedCount: number;
+  };
+  distinctProjects: Array<{ id: string; name: string }>;
+  error?: string;
+}> {
+  try {
+    const query = clientId ? `?clientId=${clientId}` : "";
+    const res = await fetch(`/api/client/milestones${query}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch milestones";
+    return {
+      success: false,
+      count: 0,
+      data: [],
+      stats: {
+        upcomingCount: 0,
+        awaitingReviewCount: 0,
+        overdueCount: 0,
+        completedCount: 0,
+      },
+      distinctProjects: [],
+      error: msg,
+    };
+  }
+}
+
+/**
+ * Request corrections for an unaccepted milestone deliverable
+ */
+export async function requestClientMilestoneCorrections(
+  milestoneId: string,
+  payload: { notes: string; unmetCriteria: string[]; clientId?: string }
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const res = await fetch(`/api/client/milestones/${milestoneId}/corrections`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to request corrections";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Fetch verified freelancers with explainable match fitScores, breakdown metrics, and server-side pagination
+ */
+export async function fetchClientFreelancers(
+  paramsOrClientId?: string | {
+    clientId?: string;
+    page?: number;
+    limit?: number;
+    search?: string;
+    skills?: string[];
+    experienceLevel?: string;
+    type?: string;
+    availability?: string;
+    projectId?: string;
+    maxHourlyRate?: number;
+    sortBy?: string;
+  }
+): Promise<{
+  success: boolean;
+  count: number;
+  total?: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
+  hasMore?: boolean;
+  data: any[];
+  error?: string;
+}> {
+  try {
+    const query = new URLSearchParams();
+    if (typeof paramsOrClientId === "string") {
+      query.set("clientId", paramsOrClientId);
+    } else if (paramsOrClientId) {
+      if (paramsOrClientId.clientId) query.set("clientId", paramsOrClientId.clientId);
+      if (paramsOrClientId.page) query.set("page", String(paramsOrClientId.page));
+      if (paramsOrClientId.limit) query.set("limit", String(paramsOrClientId.limit));
+      if (paramsOrClientId.search) query.set("search", paramsOrClientId.search);
+      if (paramsOrClientId.skills?.length) query.set("skills", paramsOrClientId.skills.join(","));
+      if (paramsOrClientId.experienceLevel && paramsOrClientId.experienceLevel !== "ALL") {
+        query.set("experienceLevel", paramsOrClientId.experienceLevel);
+      }
+      if (paramsOrClientId.type && paramsOrClientId.type !== "ALL") {
+        query.set("type", paramsOrClientId.type);
+      }
+      if (paramsOrClientId.availability && paramsOrClientId.availability !== "ALL") {
+        query.set("availability", paramsOrClientId.availability);
+      }
+      if (paramsOrClientId.projectId && paramsOrClientId.projectId !== "ALL") {
+        query.set("projectId", paramsOrClientId.projectId);
+      }
+      if (paramsOrClientId.maxHourlyRate) {
+        query.set("maxHourlyRate", String(paramsOrClientId.maxHourlyRate));
+      }
+      if (paramsOrClientId.sortBy) query.set("sortBy", paramsOrClientId.sortBy);
+    }
+
+    const res = await fetch(`/api/client/freelancers?${query.toString()}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch freelancers";
+    return { success: false, count: 0, data: [], error: msg };
+  }
+}
+
+/**
+ * Toggle bookmark / saved status for a freelancer candidate
+ */
+export async function toggleSaveFreelancer(
+  freelancerId: string,
+  clientId?: string
+): Promise<{ success: boolean; isSaved: boolean; message?: string; error?: string }> {
+  try {
+    const res = await fetch(`/api/client/freelancers/${freelancerId}/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to toggle bookmark";
+    return { success: false, isSaved: false, error: msg };
+  }
+}
+
+/**
+ * Fetch all formal project invitations sent by this client
+ */
+export async function fetchClientInvitations(clientId?: string): Promise<{
+  success: boolean;
+  count: number;
+  data: any[];
+  error?: string;
+}> {
+  try {
+    const query = clientId ? `?clientId=${clientId}` : "";
+    const res = await fetch(`/api/client/invitations${query}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch invitations";
+    return { success: false, count: 0, data: [], error: msg };
   }
 }

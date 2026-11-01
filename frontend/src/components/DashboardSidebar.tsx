@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
+import { fetchClientMilestones } from "@/lib/api-client";
 
 export interface NavItemConfig {
   id: string;
@@ -48,6 +49,42 @@ export default function DashboardSidebar({
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const [milestonesBadge, setMilestonesBadge] = React.useState<number | undefined>(undefined);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    const fetchBadge = async () => {
+      const isClient =
+        currentRole === "CLIENT" ||
+        user?.role === "CLIENT" ||
+        pathname?.startsWith("/client");
+
+      if (isClient) {
+        try {
+          const res = await fetchClientMilestones(user?.id);
+          if (isMounted && res.success && res.stats) {
+            // Badges in navigation denote items requiring client action/review
+            const count = res.stats.awaitingReviewCount || 0;
+            setMilestonesBadge(count > 0 ? count : undefined);
+          }
+        } catch {
+          // Keep quiet on background badge fetch fail
+        }
+      }
+    };
+
+    fetchBadge();
+
+    const handleUpdate = () => {
+      fetchBadge();
+    };
+
+    window.addEventListener("nexum:milestones-updated", handleUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener("nexum:milestones-updated", handleUpdate);
+    };
+  }, [user?.id, user?.role, currentRole, pathname]);
 
   const handleLogout = async () => {
     await logout();
@@ -72,8 +109,8 @@ export default function DashboardSidebar({
       id: "milestones",
       label: "Milestones",
       icon: Layers,
-      badge: 2,
-      href: "/client/dashboard?tab=milestones",
+      badge: milestonesBadge,
+      href: "/client/milestones",
     },
     {
       id: "freelancers",
@@ -178,6 +215,12 @@ export default function DashboardSidebar({
         return;
       }
       if (
+        item.id === "milestones" &&
+        pathname === "/client/milestones"
+      ) {
+        return;
+      }
+      if (
         (item.id === "overview" || item.id === "dashboard") &&
         (pathname === "/client/dashboard" || pathname === "/freelancer/dashboard") &&
         !window.location.search
@@ -200,6 +243,7 @@ export default function DashboardSidebar({
     const Icon = item.icon;
     const isActive =
       activeTab === item.id ||
+      (item.id === "milestones" && pathname === "/client/milestones") ||
       (item.id === "dashboard" && (activeTab === "overview" || !activeTab)) ||
       (item.id === "overview" && (activeTab === "dashboard" || !activeTab)) ||
       (item.id === "projects" && activeTab === "milestones" && isFreelancer);
@@ -223,8 +267,8 @@ export default function DashboardSidebar({
         />
         <span className="flex-1 truncate">{item.label}</span>
 
-        {/* Circular Pill Badge */}
-        {item.badge !== undefined && (
+        {/* Circular Pill Badge (render only if numeric count > 0) */}
+        {item.badge !== undefined && Number(item.badge) > 0 && (
           <span className="w-5 h-5 rounded-full bg-[#ef4444] text-white text-[11px] font-bold flex items-center justify-center shrink-0 shadow-xs">
             {item.badge}
           </span>
