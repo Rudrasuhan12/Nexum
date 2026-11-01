@@ -1,3 +1,5 @@
+import { createAgreementTermsFromProposalVersion } from "../../domain/agreements/createTerms.js";
+import { AgreementStatus, AgreementVersionStatus } from "@prisma/client";
 /**
  * TEMPORARY DEV-ONLY CLIENT STAND-IN ROUTER
  *
@@ -123,6 +125,34 @@ router.post("/:id/client", async (req: Request, res: Response, next: NextFunctio
           },
         });
         newCurrentVersionId = createdVersion.id;
+      }
+
+      if (eventName === "accept") {
+        const existingAgreement = await tx.agreement.findUnique({
+          where: { projectId: proposal.projectId },
+        });
+        if (!existingAgreement && currentVersion) {
+          const { terms: agTerms, contentHash } = createAgreementTermsFromProposalVersion(currentVersion);
+          await tx.agreement.create({
+            data: {
+              projectId: proposal.projectId,
+              proposalId: proposal.id,
+              clientId: proposal.project.clientId,
+              freelancerId: proposal.freelancerId,
+              status: AgreementStatus.PENDING_APPROVAL,
+              versions: {
+                create: {
+                  versionNumber: 1,
+                  source: "PROPOSAL",
+                  sourceRefId: proposal.id,
+                  terms: agTerms as any,
+                  contentHash,
+                  status: AgreementVersionStatus.PENDING_APPROVAL,
+                },
+              },
+            },
+          });
+        }
       }
 
       // Update proposal

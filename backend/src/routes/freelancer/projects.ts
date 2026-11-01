@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { Role, ProjectState, ExperienceLevel, Prisma } from "@prisma/client";
 import { ValidationError, NotFoundError, ConflictError } from "../../lib/errors.js";
 import { appendAuditEvent } from "../../lib/audit.js";
+import { deriveProjectStatus } from "../../domain/milestones/projectStatus.js";
 
 const router = Router();
 
@@ -584,6 +585,121 @@ router.post("/invitations/:id/decline", async (req: Request, res: Response, next
  * - Closed (e.g. NEGOTIATION, COMPLETED) -> 404
  * - INVITE_ONLY without invitation for this freelancer -> 404
  */
+/**
+ * GET /api/freelancer/projects/active
+ * Active delivery directory for the authenticated freelancer.
+ * Derives dynamic project state from real milestone records and agreements.
+ */
+router.get("/active", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const freelancerId = req.user!.id;
+    const { status, q } = req.query;
+
+    const agreements = await prisma.agreement.findMany({
+      where: {
+        freelancerId,
+        status: { not: "TERMINATED" },
+      },
+      include: {
+        project: {
+          include: {
+            client: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        versions: {
+          where: { status: "ACTIVE" },
+          take: 1,
+        },
+        milestones: {
+          where: { removedAt: null },
+          orderBy: { sequence: "asc" },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    const results = [];
+
+    for (const agr of agreements) {
+      const derivedStatus = deriveProjectStatus(agr.milestones);
+
+      // Filter by status if requested
+      if (status && typeof status === "string" && status.toUpperCase() !== "ALL") {
+        if (derivedStatus !== status.toUpperCase()) {
+          continue;
+        }
+      }
+
+      // Filter by search term if requested
+      if (q && typeof q === "string" && q.trim()) {
+        const queryLower = q.toLowerCase();
+        const matchesTitle = agr.project.title.toLowerCase().includes(queryLower);
+        const matchesClient = agr.project.client.name.toLowerCase().includes(queryLower);
+        if (!matchesTitle && !matchesClient) {
+          continue;
+        }
+      }
+
+      const activeVer = agr.versions[0];
+      const terms = activeVer?.terms as any;
+      const totalMilestones = agr.milestones.length;
+      const completedMilestones = agr.milestones.filter(
+        (m) => m.workStatus === "ACCEPTED"
+      ).length;
+      const inProgressMilestones = agr.milestones.filter(
+        (m) =>
+          m.workStatus === "IN_PROGRESS" ||
+          m.workStatus === "READY_TO_SUBMIT" ||
+          m.workStatus === "AWAITING_CLIENT_REVIEW" ||
+          m.workStatus === "REVISIONS_REQUESTED"
+      ).length;
+
+      // Find current active milestone (first non-accepted)
+      const currentMilestone = agr.milestones.find((m) => m.workStatus !== "ACCEPTED") || null;
+
+      results.push({
+        id: agr.project.id,
+        projectId: agr.project.id,
+        agreementId: agr.id,
+        title: agr.project.title,
+        category: agr.project.category || "General",
+        derivedStatus,
+        agreementStatus: agr.status,
+        client: agr.project.client,
+        totalMilestones,
+        completedMilestones,
+        inProgressMilestones,
+        activeMilestone: currentMilestone
+          ? {
+              id: currentMilestone.id,
+              milestoneKey: currentMilestone.milestoneKey,
+              title: currentMilestone.title,
+              workStatus: currentMilestone.workStatus,
+              dueDate: currentMilestone.dueDate ? currentMilestone.dueDate.toISOString() : null,
+              amountMinor: currentMilestone.amountMinor,
+            }
+          : null,
+        totalAmountMinor:
+          terms?.totalAmountMinor ??
+          agr.milestones.reduce((acc, m) => acc + m.amountMinor, 0),
+        currency: terms?.currency ?? "USD",
+        activeVersionNumber: activeVer?.versionNumber ?? 1,
+        createdAt: agr.createdAt.toISOString(),
+        updatedAt: agr.updatedAt.toISOString(),
+      });
+    }
+
+    res.status(200).json({ success: true, projects: results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post("/:projectId/proposals", handleCreateDraftProposal);
 router.post("/:id/proposals", handleCreateDraftProposal);
 

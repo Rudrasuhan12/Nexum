@@ -48,6 +48,18 @@ export function errorHandler(
     return;
   }
 
+  // 2.5 Any error with a numeric statusCode (e.g. InvalidMilestoneTransitionError, MilestoneLockedError)
+  if ("statusCode" in err && typeof (err as any).statusCode === "number") {
+    res.status((err as any).statusCode).json({
+      error: {
+        code: (err as any).code || "CONFLICT",
+        message: err.message,
+        details: (err as any).details || {},
+      },
+    });
+    return;
+  }
+
   // 3. Unhandled Server Error
   console.error("Unhandled Server Error:", err);
   res.status(500).json({

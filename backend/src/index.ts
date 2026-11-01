@@ -22,7 +22,12 @@ import {
 } from "./routes/freelancer/files.js";
 import freelancerProjectsRouter from "./routes/freelancer/projects.js";
 import freelancerProposalsRouter from "./routes/freelancer/proposals.js";
+import freelancerAgreementsRouter from "./routes/freelancer/agreements.js";
+import freelancerMilestonesRouter from "./routes/freelancer/milestones.js";
+import freelancerChangeRequestsRouter from "./routes/freelancer/changeRequests.js";
 import devProposalsRouter from "./routes/dev/proposals.js";
+import devAgreementsRouter from "./routes/dev/agreements.js";
+import devMilestonesRouter from "./routes/dev/milestones.js";
 import clientRouter from "./routes/client.js";
 
 const app = express();
@@ -76,6 +81,11 @@ app.use("/api/freelancer/onboarding", freelancerOnboardingRouter);
 // Freelancer Proposals Routes
 app.use("/api/freelancer/proposals", freelancerProposalsRouter);
 
+// Freelancer Agreements, Milestones & Change Requests Routes
+app.use("/api/freelancer/agreements", freelancerAgreementsRouter);
+app.use("/api/freelancer/milestones", freelancerMilestonesRouter);
+app.use("/api/freelancer/change-requests", freelancerChangeRequestsRouter);
+
 // Freelancer Profile, Portfolio & Files Routes
 app.use("/api/freelancer/profile", freelancerProfileRouter);
 app.use("/api/freelancer/projects", freelancerProjectsRouter);
@@ -86,6 +96,9 @@ app.use("/api/public/freelancers", publicFreelancersRouter);
 
 // Dev-Only Client Stand-in Routes (guards internally for ENABLE_DEV_TOOLS)
 app.use("/api/dev/proposals", devProposalsRouter);
+app.use("/api/dev/agreements", devAgreementsRouter);
+app.use("/api/dev/milestones", devMilestonesRouter);
+app.use("/api/dev", devMilestonesRouter);
 
 // Client Overview Routes
 app.use("/api/client", clientRouter);

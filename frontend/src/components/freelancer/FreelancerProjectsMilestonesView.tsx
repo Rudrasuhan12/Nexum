@@ -13,7 +13,7 @@ import {
   INITIAL_FREELANCER_PROJECTS,
   calculateSummaryKPIs,
 } from "@/lib/freelancer-projects-data";
-import { fetchBackendProjects } from "@/lib/api-client";
+import { fetchBackendProjects, fetchActiveProjects, submitMilestoneDeliverable } from "@/lib/api-client";
 import ProjectSummaryCards from "./projects/ProjectSummaryCards";
 import ProjectDirectory from "./projects/ProjectDirectory";
 import SelectedProjectHeader from "./projects/SelectedProjectHeader";

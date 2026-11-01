@@ -1739,3 +1739,479 @@ export async function generateProposalAiDraft(id: string): Promise<{
 }
 
 
+
+// ==========================================
+// Phase 5: Agreements, Milestones & Change Requests
+// ==========================================
+
+export async function fetchActiveProjects(): Promise<{
+  success: boolean;
+  projects?: any[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/active`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, projects: json.projects };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch active projects",
+    };
+  }
+}
+
+export async function fetchFreelancerAgreements(): Promise<{
+  success: boolean;
+  agreements?: any[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/agreements`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, agreements: json.agreements };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch agreements",
+    };
+  }
+}
+
+export async function fetchFreelancerAgreement(id: string): Promise<{
+  success: boolean;
+  agreement?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/agreements/${id}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, agreement: json.agreement };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch agreement",
+    };
+  }
+}
+
+export async function fetchAgreementDiff(
+  id: string,
+  from: number | string,
+  to: number | string
+): Promise<{
+  success: boolean;
+  diff?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/agreements/${id}/diff?from=${from}&to=${to}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, diff: json.diff };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch agreement diff",
+    };
+  }
+}
+
+export async function approveAgreementVersion(
+  agreementId: string,
+  versionId: string,
+  contentHash: string
+): Promise<{
+  success: boolean;
+  activated?: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/agreements/${agreementId}/versions/${versionId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ contentHash }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, activated: json.activated, message: json.message };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to approve agreement version",
+    };
+  }
+}
+
+export async function rejectAgreementVersion(
+  agreementId: string,
+  versionId: string,
+  reason?: string
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/agreements/${agreementId}/versions/${versionId}/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ reason }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to reject agreement version",
+    };
+  }
+}
+
+export async function fetchMilestonesSummary(): Promise<{
+  success: boolean;
+  summary?: {
+    inProgress: number;
+    awaitingReview: number;
+    revisionsRequested: number;
+    disputeActive: number;
+    completed: number;
+    total: number;
+  };
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/milestones/summary`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, summary: json.summary };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch milestones summary",
+    };
+  }
+}
+
+export async function fetchMilestones(params?: {
+  status?: string;
+  projectId?: string;
+  sort?: string;
+  limit?: number;
+}): Promise<{
+  success: boolean;
+  milestones?: any[];
+  error?: string;
+}> {
+  try {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.projectId) query.set("projectId", params.projectId);
+    if (params?.sort) query.set("sort", params.sort);
+    if (params?.limit) query.set("limit", String(params.limit));
+
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/milestones?${query.toString()}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, milestones: json.milestones };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch milestones",
+    };
+  }
+}
+
+export async function fetchMilestone(id: string): Promise<{
+  success: boolean;
+  milestone?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/milestones/${id}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, milestone: json.milestone };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch milestone",
+    };
+  }
+}
+
+export async function startMilestone(id: string): Promise<{
+  success: boolean;
+  milestone?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/milestones/${id}/start`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, milestone: json.milestone };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to start milestone",
+    };
+  }
+}
+
+export async function readyMilestone(id: string): Promise<{
+  success: boolean;
+  milestone?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/milestones/${id}/ready`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, milestone: json.milestone };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to mark milestone ready",
+    };
+  }
+}
+
+export async function submitMilestoneDeliverable(
+  id: string,
+  payload: {
+    note: string;
+    links?: string[];
+    fileIds?: string[];
+  }
+): Promise<{
+  success: boolean;
+  submission?: any;
+  milestone?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/milestones/${id}/submissions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      submission: json.submission,
+      milestone: json.milestone,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to submit milestone deliverable",
+    };
+  }
+}
+
+export async function submitDisputeStatement(
+  id: string,
+  statement: string
+): Promise<{
+  success: boolean;
+  disputeStatement?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/milestones/${id}/dispute-statement`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ statement }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, disputeStatement: json.disputeStatement };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to submit dispute statement",
+    };
+  }
+}
+
+export async function fetchChangeRequests(projectId?: string): Promise<{
+  success: boolean;
+  changeRequests?: any[];
+  error?: string;
+}> {
+  try {
+    const url = projectId
+      ? `${BACKEND_URL}/api/freelancer/change-requests?projectId=${projectId}`
+      : `${BACKEND_URL}/api/freelancer/change-requests`;
+    const res = await fetch(url, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, changeRequests: json.changeRequests };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch change requests",
+    };
+  }
+}
+
+export async function fetchChangeRequest(id: string): Promise<{
+  success: boolean;
+  changeRequest?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/change-requests/${id}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, changeRequest: json.changeRequest };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch change request",
+    };
+  }
+}
+
+export async function quoteChangeRequest(
+  id: string,
+  payload: {
+    priceDeltaMinor: number;
+    rationale: string;
+    addedMilestones?: any[];
+    modifiedMilestones?: any[];
+    removedMilestoneIds?: string[];
+  }
+): Promise<{
+  success: boolean;
+  changeRequest?: any;
+  version?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/change-requests/${id}/quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, changeRequest: json.changeRequest, version: json.version };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to submit quote for change request",
+    };
+  }
+}
+
+export async function declineChangeRequest(
+  id: string,
+  reason?: string
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/change-requests/${id}/decline`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ reason }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to decline change request",
+    };
+  }
+}
