@@ -1,4 +1,8 @@
 import { handleCreateDraftProposal } from "./proposals.js";
+import { getProjectFiles, uploadProjectFile } from "./projectFiles.js";
+import { getProjectTasks, createProjectTask } from "./tasks.js";
+import { getProjectMeetings, proposeProjectMeeting } from "./meetings.js";
+import { getProjectDecisions, createProjectDecision } from "./decisions.js";
 import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { prisma } from "../../prisma.js";
@@ -702,6 +706,15 @@ router.get("/active", async (req: Request, res: Response, next: NextFunction): P
 
 router.post("/:projectId/proposals", handleCreateDraftProposal);
 router.post("/:id/proposals", handleCreateDraftProposal);
+
+router.get("/:projectId/files", getProjectFiles);
+router.post("/:projectId/files", uploadProjectFile);
+router.get("/:projectId/tasks", getProjectTasks);
+router.post("/:projectId/tasks", createProjectTask);
+router.get("/:projectId/meetings", getProjectMeetings);
+router.post("/:projectId/meetings", proposeProjectMeeting);
+router.get("/:projectId/decisions", getProjectDecisions);
+router.post("/:projectId/decisions", createProjectDecision);
 
 router.get("/:id", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {

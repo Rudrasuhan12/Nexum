@@ -1,48 +1,45 @@
-import { PrismaClient, AgreementVersionStatus, AgreementStatus, MilestoneWorkStatus, ProjectState } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { AgreementStatus, AgreementVersionStatus, ProjectState, MilestoneWorkStatus } from "@prisma/client";
 import { appendAuditEvent } from "../../lib/audit.js";
 
+/**
+ * Attempts to activate an agreement version if both parties have approved it.
+ * Runs atomically inside a transaction.
+ */
 export async function tryActivateAgreementVersion(
   versionId: string,
-  prismaClient: PrismaClient
-): Promise<{ activated: boolean; agreementId: string }> {
-  return await prismaClient.$transaction(async (tx) => {
-    // 1. Fetch version with approvals and agreement
-    const version = await tx.agreementVersion.findUnique({
-      where: { id: versionId },
-      include: {
-        approvals: true,
-        agreement: {
-          include: {
-            project: true,
-          },
-        },
-      },
-    });
+  prisma: PrismaClient
+): Promise<{ activated: boolean; agreementId?: string }> {
+  // 1. Fetch version with approvals and agreement
+  const version = await prisma.agreementVersion.findUnique({
+    where: { id: versionId },
+    include: {
+      approvals: true,
+      agreement: true,
+    },
+  });
 
-    if (!version) {
-      throw new Error(`AgreementVersion ${versionId} not found`);
-    }
+  if (!version) {
+    return { activated: false };
+  }
 
-    const agreement = version.agreement;
+  // Check if both CLIENT and FREELANCER have APPROVED decisions
+  const hasClientApproval = version.approvals.some(
+    (a) => a.partyRole === "CLIENT" && a.decision === "APPROVED"
+  );
+  const hasFreelancerApproval = version.approvals.some(
+    (a) => a.partyRole === "FREELANCER" && a.decision === "APPROVED"
+  );
 
-    // Check if already active or superseded
-    if (version.status === AgreementVersionStatus.ACTIVE) {
-      return { activated: false, agreementId: agreement.id };
-    }
+  if (!hasClientApproval || !hasFreelancerApproval) {
+    return { activated: false, agreementId: version.agreementId };
+  }
 
-    // Check both client and freelancer approved
-    const clientApproved = version.approvals.some(
-      (a) => a.partyRole === "CLIENT" && a.decision === "APPROVED"
-    );
-    const freelancerApproved = version.approvals.some(
-      (a) => a.partyRole === "FREELANCER" && a.decision === "APPROVED"
-    );
+  const agreement = version.agreement;
 
-    if (!clientApproved || !freelancerApproved) {
-      return { activated: false, agreementId: agreement.id };
-    }
-
-    // 2. Mark any currently ACTIVE version as SUPERSEDED
+  // Perform atomic activation transaction
+  return await prisma.$transaction(async (tx) => {
+    // 2. Supersede any previously active versions for this agreement
     await tx.agreementVersion.updateMany({
       where: {
         agreementId: agreement.id,
@@ -83,58 +80,63 @@ export async function tryActivateAgreementVersion(
     // 6. Synchronize milestones
     const terms = version.terms as any;
     const versionMilestones: any[] = terms?.milestones || [];
-    const versionKeys = new Set(versionMilestones.map((m) => m.key));
 
-    // Existing milestones for this agreement
     const existingMilestones = await tx.milestone.findMany({
-      where: { agreementId: agreement.id },
+      where: {
+        agreementId: agreement.id,
+      },
     });
-    const existingKeyMap = new Map(existingMilestones.map((m) => [m.milestoneKey || m.id, m]));
+    const existingMap = new Map(existingMilestones.map((m) => [m.milestoneKey || m.id, m]));
 
-    // Soft-delete removed milestones
+    // Check for removed milestones (not present in new version)
+    const newVersionKeys = new Set(versionMilestones.map((vm) => vm.key || vm.id));
     for (const em of existingMilestones) {
       const key = em.milestoneKey || em.id;
-      if (!versionKeys.has(key) && !em.removedAt) {
+      if (!newVersionKeys.has(key) && em.workStatus !== MilestoneWorkStatus.ACCEPTED) {
         await tx.milestone.update({
           where: { id: em.id },
-          data: { removedAt: activatedAt },
+          data: {
+            removedAt: new Date(),
+          },
         });
       }
     }
 
-    // Upsert version milestones
-    for (const vm of versionMilestones) {
-      const key = vm.key;
-      const existing = existingKeyMap.get(key);
+    for (let i = 0; i < versionMilestones.length; i++) {
+      const vm = versionMilestones[i];
+      const key = vm.key || `m_${i + 1}`;
+      const existing = existingMap.get(key);
 
       if (!existing) {
-        // Insert new milestone as UPCOMING
+        // Create upcoming milestone
         await tx.milestone.create({
           data: {
             projectId: agreement.projectId,
             agreementId: agreement.id,
             milestoneKey: key,
-            sequence: vm.sequence,
+            sequence: i + 1,
             title: vm.title,
-            description: vm.description || "",
+            description: vm.description || null,
             criteria: vm.criteria || [],
             amountMinor: vm.amountMinor,
-            amountCents: vm.amountMinor,
             currency: terms.currency || "USD",
-            workStatus: MilestoneWorkStatus.UPCOMING,
             dueDate: vm.dueDate ? new Date(vm.dueDate) : null,
+            workStatus: MilestoneWorkStatus.UPCOMING,
             lastAgreementVersionId: versionId,
+            // Legacy schema compatibility
+            amountCents: vm.amountMinor,
+            state: "NOT_STARTED",
           },
         });
       } else {
-        // An ACCEPTED milestone is NEVER modified
+        // Only update if not already ACCEPTED
         if (existing.workStatus !== MilestoneWorkStatus.ACCEPTED) {
           await tx.milestone.update({
             where: { id: existing.id },
             data: {
-              sequence: vm.sequence,
+              sequence: i + 1,
               title: vm.title,
-              description: vm.description || existing.description,
+              description: vm.description || null,
               criteria: vm.criteria || existing.criteria,
               amountMinor: vm.amountMinor,
               amountCents: vm.amountMinor,
@@ -147,12 +149,26 @@ export async function tryActivateAgreementVersion(
       }
     }
 
-    // 7. If this version was from a ChangeRequest, mark it APPROVED
+    // 7. If this version was from a ChangeRequest, mark it APPROVED and record APPROVED_CHANGE decision
     if (version.source === "CHANGE_REQUEST" && version.sourceRefId) {
       await tx.changeRequest.updateMany({
         where: { id: version.sourceRefId },
         data: {
           status: "APPROVED",
+        },
+      });
+
+      await tx.projectDecision.create({
+        data: {
+          projectId: agreement.projectId,
+          title: `Approved Change: Agreement Version ${version.versionNumber}`,
+          description: `Scope and terms amendment activated via Change Request ${version.sourceRefId}`,
+          kind: "APPROVED_CHANGE",
+          binding: true,
+          sourceType: "CHANGE_REQUEST",
+          sourceRefId: version.sourceRefId,
+          agreementVersionId: versionId,
+          recordedBy: agreement.freelancerId,
         },
       });
     }

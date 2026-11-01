@@ -28,6 +28,13 @@ import freelancerChangeRequestsRouter from "./routes/freelancer/changeRequests.j
 import devProposalsRouter from "./routes/dev/proposals.js";
 import devAgreementsRouter from "./routes/dev/agreements.js";
 import devMilestonesRouter from "./routes/dev/milestones.js";
+import freelancerConversationsRouter from "./routes/freelancer/conversations.js";
+import freelancerTasksRouter from "./routes/freelancer/tasks.js";
+import freelancerMeetingsRouter from "./routes/freelancer/meetings.js";
+import freelancerProjectFilesRouter from "./routes/freelancer/projectFiles.js";
+import freelancerDecisionsRouter from "./routes/freelancer/decisions.js";
+import freelancerPrivateAiRouter from "./routes/freelancer/privateAi.js";
+import devWorkspaceRouter from "./routes/dev/workspace.js";
 import clientRouter from "./routes/client.js";
 
 const app = express();
@@ -86,6 +93,15 @@ app.use("/api/freelancer/agreements", freelancerAgreementsRouter);
 app.use("/api/freelancer/milestones", freelancerMilestonesRouter);
 app.use("/api/freelancer/change-requests", freelancerChangeRequestsRouter);
 
+// Phase 6: Workspace, Mediated Chat, Tasks, Meetings, Decisions & Private AI
+app.use("/api/freelancer/conversations", freelancerConversationsRouter);
+app.use("/api/freelancer/tasks", freelancerTasksRouter);
+app.use("/api/freelancer/meetings", freelancerMeetingsRouter);
+app.use("/api/freelancer/project-files", freelancerProjectFilesRouter);
+app.use("/api/freelancer/decisions", freelancerDecisionsRouter);
+app.use("/api/freelancer/ai", freelancerPrivateAiRouter);
+app.use("/api/freelancer", freelancerConversationsRouter);
+
 // Freelancer Profile, Portfolio & Files Routes
 app.use("/api/freelancer/profile", freelancerProfileRouter);
 app.use("/api/freelancer/projects", freelancerProjectsRouter);
@@ -99,6 +115,7 @@ app.use("/api/dev/proposals", devProposalsRouter);
 app.use("/api/dev/agreements", devAgreementsRouter);
 app.use("/api/dev/milestones", devMilestonesRouter);
 app.use("/api/dev", devMilestonesRouter);
+app.use("/api/dev", devWorkspaceRouter);
 
 // Client Overview Routes
 app.use("/api/client", clientRouter);

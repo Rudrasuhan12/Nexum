@@ -68,6 +68,8 @@ enum FilePurpose {
   PORTFOLIO_IMAGE
   PROPOSAL_ATTACHMENT
   DELIVERABLE
+  CHAT_ATTACHMENT
+  PROJECT_FILE
 }
 
 enum ResumeVisibility {
@@ -272,6 +274,14 @@ model User {
   freelancerAgreements   Agreement[]             @relation("FreelancerAgreements")
   agreementApprovals     AgreementApproval[]
   raisedChangeRequests   ChangeRequest[]         @relation("RaisedChangeRequests")
+  sentMessages           Message[]               @relation("MessageSender")
+  conversationParticipants ConversationParticipant[]
+  projectFilesUploaded   ProjectFile[]
+  workspaceTasksCreated  WorkspaceTask[]
+  meetingsProposed       Meeting[]               @relation("MeetingProposer")
+  meetingResponses       MeetingResponse[]
+  aiChats                AIChat[]
+  aiCalls                AICall[]
 }
 
 model FreelancerProfile {
@@ -371,6 +381,11 @@ model Project {
   projectProposals Proposal[]          @relation("ProjectProposals")
   agreement        Agreement?          @relation("ProjectAgreement")
   projectMilestones Milestone[]        @relation("ProjectMilestones")
+  conversation     Conversation?
+  projectFiles     ProjectFile[]
+  workspaceTasks   WorkspaceTask[]
+  meetings         Meeting[]
+  projectDecisions ProjectDecision[]
 
   @@index([state, visibility])
   @@index([budgetCents])
@@ -868,6 +883,8 @@ model File {
   portfolioProjects   PortfolioProject[]  @relation("PortfolioCover")
   proposalAttachments ProposalAttachment[]
   submissionFiles     MilestoneSubmissionFile[]
+  messageAttachments  MessageAttachment[]
+  projectFiles        ProjectFile[]
 
   @@index([ownerId, purpose])
 }
@@ -1143,4 +1160,329 @@ model Dispute {
 
   @@map("disputes")
   @@index([milestoneId, status])
+}
+
+
+// ===========================================================================
+// Phase 6: Workspace, Mediated Chat, Tasks, Meetings & Private Nexum AI
+// ===========================================================================
+
+enum ParticipantRole {
+  CLIENT
+  FREELANCER
+  OBSERVER
+}
+
+enum SenderKind {
+  USER
+  NEXUM
+  SYSTEM
+}
+
+enum MessageClass {
+  QUESTION
+  CLARIFICATION
+  FEEDBACK
+  SCOPE_CHANGE
+  PRICE_OR_DEADLINE
+  APPROVAL_LIKE
+  PAYMENT_QUESTION
+  DISPUTE
+  GENERAL
+  NEXUM_CARD
+}
+
+enum MessageDeliveryStatus {
+  PENDING_REVIEW
+  AWAITING_SENDER_CONFIRMATION
+  DELIVERED
+  DISCARDED
+}
+
+enum MediationState {
+  REVIEWED
+  NOT_REVIEWED
+}
+
+enum ProposedAction {
+  RELAY
+  DRAFT_CHANGE_REQUEST
+  LINK_PENDING_VERSION
+  NONE
+}
+
+enum ProjectFileCategory {
+  REFERENCE
+  ATTACHMENT
+  DELIVERABLE
+}
+
+enum WorkspaceTaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskVisibility {
+  PRIVATE
+  SHARED
+}
+
+enum MeetingStatus {
+  PROPOSED
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+enum DecisionKind {
+  PROJECT_NOTE
+  APPROVED_CHANGE
+}
+
+enum AIDraftStatus {
+  DRAFT
+  SENT
+  DISCARDED
+}
+
+model Conversation {
+  id           String                    @id @default(cuid())
+  projectId    String                    @unique
+  project      Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id                String          @id @default(cuid())
+  conversationId    String
+  conversation      Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              ParticipantRole
+  lastReadMessageId String?
+  lastReadAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id              String                @id @default(cuid())
+  conversationId  String
+  conversation    Conversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId        String?
+  sender          User?                 @relation("MessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+  senderKind      SenderKind            @default(USER)
+  originalBody    String
+  clientMessageId String?
+  messageClass    MessageClass          @default(GENERAL)
+  status          MessageDeliveryStatus @default(PENDING_REVIEW)
+  mediationState  MediationState        @default(NOT_REVIEWED)
+  visibleToUserId String?
+  cardType        String?
+  cardPayload     Json?
+  relatedType     String?
+  relatedId       String?
+  createdAt       DateTime              @default(now())
+  deliveredAt     DateTime?
+
+  attachments     MessageAttachment[]
+  mediationResult MediationResult?
+
+  @@unique([conversationId, clientMessageId])
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model MessageAttachment {
+  id        String   @id @default(cuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  fileId    String
+  file      File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([messageId])
+  @@index([fileId])
+  @@map("message_attachments")
+}
+
+model MediationResult {
+  id                         String         @id @default(cuid())
+  messageId                  String         @unique
+  message                    Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  classification             MessageClass
+  confidence                 Float
+  summaryForRecipient        String
+  structuredPayload          Json?
+  proposedAction             ProposedAction @default(RELAY)
+  requiresSenderConfirmation Boolean        @default(false)
+  status                     String         @default("DRAFT")
+  model                      String?
+  promptVersion              String?
+  validatorResults           Json?
+  createdAt                  DateTime       @default(now())
+
+  @@map("mediation_results")
+}
+
+model ProjectFile {
+  id             String              @id @default(cuid())
+  projectId      String
+  project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fileId         String
+  file           File                @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  uploadedBy     String
+  uploader       User                @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+  category       ProjectFileCategory @default(REFERENCE)
+  name           String
+  versionGroupId String              @default(cuid())
+  versionNumber  Int                 @default(1)
+  note           String?
+  createdAt      DateTime            @default(now())
+
+  @@index([projectId, category])
+  @@index([versionGroupId, versionNumber])
+  @@map("project_files")
+}
+
+model WorkspaceTask {
+  id          String              @id @default(cuid())
+  projectId   String
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId String?
+  title       String
+  description String?
+  status      WorkspaceTaskStatus @default(TODO)
+  dueDate     DateTime?
+  visibility  TaskVisibility      @default(PRIVATE)
+  createdBy   String
+  creator     User                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  createdAt   DateTime            @default(now())
+  completedAt DateTime?
+
+  @@index([projectId, visibility])
+  @@map("workspace_tasks")
+}
+
+model Meeting {
+  id         String            @id @default(cuid())
+  projectId  String
+  project    Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title      String
+  proposedBy String
+  proposer   User              @relation("MeetingProposer", fields: [proposedBy], references: [id], onDelete: Restrict)
+  startsAt   DateTime
+  endsAt     DateTime
+  joinUrl    String?
+  status     MeetingStatus     @default(PROPOSED)
+  createdAt  DateTime          @default(now())
+  responses  MeetingResponse[]
+
+  @@index([projectId, startsAt])
+  @@map("meetings")
+}
+
+model MeetingResponse {
+  id          String   @id @default(cuid())
+  meetingId   String
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  response    String
+  respondedAt DateTime @default(now())
+
+  @@unique([meetingId, userId])
+  @@map("meeting_responses")
+}
+
+model ProjectDecision {
+  id                 String       @id @default(cuid())
+  projectId          String
+  project            Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title              String
+  description        String
+  kind               DecisionKind @default(PROJECT_NOTE)
+  binding            Boolean      @default(false)
+  sourceType         String       @default("MANUAL_NOTE")
+  sourceRefId        String?
+  agreementVersionId String?
+  recordedBy         String?
+  createdAt          DateTime     @default(now())
+
+  @@index([projectId, kind])
+  @@map("project_decisions")
+}
+
+// ---------------------------------------------------------------------------
+// Private AI Workspace Tables (Isolated; no FK to shared conversations)
+// ---------------------------------------------------------------------------
+
+model AIChat {
+  id        String          @id @default(cuid())
+  ownerId   String
+  owner     User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId String?
+  title     String          @default("New chat")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  messages  AIChatMessage[]
+  drafts    AIDraft[]
+
+  @@index([ownerId, updatedAt])
+  @@map("ai_chats")
+}
+
+model AIChatMessage {
+  id        String   @id @default(cuid())
+  chatId    String
+  chat      AIChat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([chatId, createdAt])
+  @@map("ai_chat_messages")
+}
+
+model AIDraft {
+  id                   String        @id @default(cuid())
+  chatId               String
+  chat                 AIChat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  ownerId              String
+  targetConversationId String?
+  body                 String
+  status               AIDraftStatus @default(DRAFT)
+  createdAt            DateTime      @default(now())
+
+  @@index([chatId, ownerId])
+  @@map("ai_drafts")
+}
+
+model AICall {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose         String
+  model           String
+  promptVersion   String
+  inputRecordRefs Json     @default("[]")
+  tokensIn        Int      @default(0)
+  tokensOut       Int      @default(0)
+  latencyMs       Int      @default(0)
+  status          String   @default("SUCCESS")
+  createdAt       DateTime @default(now())
+
+  @@index([userId, purpose])
+  @@map("ai_calls")
 }

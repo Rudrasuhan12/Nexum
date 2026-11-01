@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
+import path from "path";
 import multer from "multer";
 import crypto from "crypto";
 import { z } from "zod";
@@ -50,17 +51,78 @@ freelancerFilesRouter.post(
       }
 
       const purposeRaw = req.body.purpose;
-      if (!purposeRaw || !["PROFILE_PHOTO", "PROFILE_COVER", "PORTFOLIO_IMAGE"].includes(purposeRaw)) {
-        throw new ValidationError("Purpose must be PROFILE_PHOTO, PROFILE_COVER, or PORTFOLIO_IMAGE");
+      const validPurposes = ["PROFILE_PHOTO", "PROFILE_COVER", "PORTFOLIO_IMAGE", "CHAT_ATTACHMENT", "PROJECT_FILE", "DELIVERABLE", "PROPOSAL_ATTACHMENT"];
+      if (!purposeRaw || !validPurposes.includes(purposeRaw)) {
+        throw new ValidationError("Purpose must be a valid FilePurpose");
       }
       const purpose = purposeRaw as FilePurpose;
 
-      // 1. Validate magic bytes, auto-orient, re-encode and strip EXIF
-      const processed = await sanitizeAndProcessImage(req.file.buffer, purpose);
-      savedStorageKey = processed.storageKey;
+      const isProfileImage = ["PROFILE_PHOTO", "PROFILE_COVER", "PORTFOLIO_IMAGE"].includes(purpose);
+      let processedBuffer: Buffer;
+      let finalMime: string;
+      let finalSizeBytes: number;
+      let finalSha256: string;
+      let storageKey: string;
+
+      if (isProfileImage) {
+        // 1. Validate magic bytes, auto-orient, re-encode and strip EXIF
+        const processed = await sanitizeAndProcessImage(req.file.buffer, purpose);
+        storageKey = processed.storageKey;
+        savedStorageKey = storageKey;
+        processedBuffer = processed.sanitizedBuffer;
+        finalMime = processed.mime;
+        finalSizeBytes = processed.sizeBytes;
+        finalSha256 = processed.sha256;
+      } else {
+        // General attachment / project file security check
+        const ext = path.extname(req.file.originalname).toLowerCase();
+        const mime = req.file.mimetype.toLowerCase();
+
+        const BLOCKED_EXTENSIONS = [".exe", ".bat", ".cmd", ".sh", ".com", ".msi", ".dll", ".bin", ".js"];
+        const BLOCKED_MIMES = [
+          "application/x-msdownload",
+          "application/x-sh",
+          "application/x-executable",
+          "application/javascript",
+          "text/javascript",
+          "application/x-msdos-program",
+          "application/x-bat",
+        ];
+
+        if (BLOCKED_EXTENSIONS.includes(ext) || BLOCKED_MIMES.includes(mime)) {
+          throw new UnsupportedMediaTypeError(`File type '${mime}' or extension '${ext}' is not permitted`);
+        }
+
+        const ALLOWED_MIMES = [
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "application/pdf",
+          "text/plain",
+          "text/markdown",
+          "text/csv",
+          "application/json",
+          "application/zip",
+          "application/x-zip-compressed",
+          "application/octet-stream",
+        ];
+
+        if (!ALLOWED_MIMES.includes(mime)) {
+          throw new UnsupportedMediaTypeError(`Unsupported media type: ${mime}`);
+        }
+
+        processedBuffer = req.file.buffer;
+        finalMime = mime;
+        finalSizeBytes = processedBuffer.length;
+        finalSha256 = crypto.createHash("sha256").update(processedBuffer).digest("hex");
+        const safeExt = ext || ".bin";
+        storageKey = `uploads/files/${crypto.randomUUID()}${safeExt}`;
+        savedStorageKey = storageKey;
+      }
 
       // 2. Persist to storage
-      await defaultStorage.save(processed.storageKey, processed.sanitizedBuffer);
+      await defaultStorage.save(storageKey, processedBuffer);
 
       // 3. Persist file metadata to database
       const user = req.user!;
@@ -69,11 +131,11 @@ freelancerFilesRouter.post(
           data: {
             ownerId: user.id,
             purpose,
-            storageKey: processed.storageKey,
+            storageKey,
             originalName: req.file!.originalname,
-            mime: processed.mime,
-            sizeBytes: processed.sizeBytes,
-            sha256: processed.sha256,
+            mime: finalMime,
+            sizeBytes: finalSizeBytes,
+            sha256: finalSha256,
           },
         });
 
@@ -83,7 +145,7 @@ freelancerFilesRouter.post(
             action: "FILE_UPLOADED",
             objectType: "FILE",
             objectId: file.id,
-            metadata: { purpose, sizeBytes: processed.sizeBytes, mime: processed.mime },
+            metadata: { purpose, sizeBytes: finalSizeBytes, mime: finalMime, sha256: finalSha256 },
           },
           tx
         );
@@ -98,6 +160,7 @@ freelancerFilesRouter.post(
           originalName: fileRecord.originalName,
           sizeBytes: fileRecord.sizeBytes,
           mime: fileRecord.mime,
+          sha256: fileRecord.sha256,
         },
       });
     } catch (err) {

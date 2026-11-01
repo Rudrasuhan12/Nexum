@@ -2215,3 +2215,756 @@ export async function declineChangeRequest(
     };
   }
 }
+
+// ============================================================================
+// PHASE 6: WORKSPACE, MEDIATED CHAT, FILES, TASKS, MEETINGS & PRIVATE NEXUM AI
+// ============================================================================
+
+export interface ApiConversationThread {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  client: { id: string; name: string };
+  unreadCount: number;
+  lastMessageSnippet: string | null;
+  lastMessageTime: string | null;
+  lastMessageClass: string | null;
+  status: string;
+}
+
+export interface ApiChatMessage {
+  id: string;
+  senderId: string | null;
+  senderKind: "USER" | "NEXUM" | "SYSTEM";
+  senderName: string;
+  senderRole?: string;
+  isSelf: boolean;
+  status: string;
+  mediationState: string;
+  messageClass: string | null;
+  cardType: string | null;
+  cardPayload: any;
+  summaryText: string;
+  hasOriginal: boolean;
+  requiresSenderConfirmation: boolean;
+  attachments: Array<{
+    id: string;
+    name: string;
+    sizeBytes: number;
+    mime: string;
+  }>;
+  createdAt: string;
+}
+
+export async function fetchConversations(
+  filter: string = "all",
+  q: string = ""
+): Promise<{
+  success: boolean;
+  conversations?: ApiConversationThread[];
+  error?: string;
+}> {
+  try {
+    const params = new URLSearchParams();
+    if (filter) params.set("filter", filter);
+    if (q) params.set("q", q);
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/conversations?${params.toString()}`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, conversations: json.conversations };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch conversations",
+    };
+  }
+}
+
+export async function fetchConversationMessages(
+  conversationId: string,
+  options: { after?: string; before?: string; limit?: number } = {}
+): Promise<{
+  success: boolean;
+  messages?: ApiChatMessage[];
+  conversation?: any;
+  error?: string;
+}> {
+  try {
+    const params = new URLSearchParams();
+    if (options.after) params.set("after", options.after);
+    if (options.before) params.set("before", options.before);
+    if (options.limit) params.set("limit", options.limit.toString());
+    const res = await fetch(
+      `${BACKEND_URL}/api/freelancer/conversations/${conversationId}/messages?${params.toString()}`,
+      {
+        method: "GET",
+        credentials: "include",
+      }
+    );
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, messages: json.messages, conversation: json.conversation };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch messages",
+    };
+  }
+}
+
+export async function sendMessage(
+  conversationId: string,
+  body: string,
+  attachmentFileIds: string[] = [],
+  clientMessageId?: string
+): Promise<{
+  success: boolean;
+  messageId?: string;
+  status?: string;
+  idempotent?: boolean;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/conversations/${conversationId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ body, attachmentFileIds, clientMessageId }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      messageId: json.messageId || json.message?.id,
+      status: json.status,
+      idempotent: json.idempotent,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to send message",
+    };
+  }
+}
+
+export async function confirmMessage(
+  messageId: string,
+  editedSummary?: string
+): Promise<{
+  success: boolean;
+  message?: any;
+  changeRequestId?: string | null;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/messages/${messageId}/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ editedSummary }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, message: json.message, changeRequestId: json.changeRequestId };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to confirm message",
+    };
+  }
+}
+
+export async function discardMessage(
+  messageId: string
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/messages/${messageId}/discard`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to discard message",
+    };
+  }
+}
+
+export async function fetchOriginalMessage(
+  messageId: string
+): Promise<{
+  success: boolean;
+  originalBody?: string;
+  senderKind?: string;
+  attachments?: any[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/messages/${messageId}/original`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      originalBody: json.originalBody,
+      senderKind: json.senderKind,
+      attachments: json.attachments,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch original message",
+    };
+  }
+}
+
+export async function markConversationRead(
+  conversationId: string,
+  upToMessageId?: string
+): Promise<{
+  success: boolean;
+  readAt?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/conversations/${conversationId}/read`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ upToMessageId }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, readAt: json.readAt };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to mark conversation read",
+    };
+  }
+}
+
+export async function fetchConversationContext(
+  conversationId: string
+): Promise<{
+  success: boolean;
+  context?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/conversations/${conversationId}/context`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, context: json.context };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch conversation context",
+    };
+  }
+}
+
+export async function fetchProjectFiles(
+  projectId: string
+): Promise<{
+  success: boolean;
+  files?: any[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${projectId}/files`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, files: json.files };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch project files",
+    };
+  }
+}
+
+export async function uploadProjectFile(
+  projectId: string,
+  payload: {
+    fileId: string;
+    category?: string;
+    name: string;
+    note?: string;
+    versionOf?: string;
+  }
+): Promise<{
+  success: boolean;
+  projectFile?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${projectId}/files`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, projectFile: json.projectFile };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to upload project file",
+    };
+  }
+}
+
+export async function fetchProjectTasks(
+  projectId: string
+): Promise<{
+  success: boolean;
+  tasks?: any[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${projectId}/tasks`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, tasks: json.tasks };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch tasks",
+    };
+  }
+}
+
+export async function createProjectTask(
+  projectId: string,
+  payload: {
+    title: string;
+    description?: string;
+    status?: string;
+    dueDate?: string;
+    visibility?: string;
+    milestoneId?: string;
+  }
+): Promise<{
+  success: boolean;
+  task?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${projectId}/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, task: json.task };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to create task",
+    };
+  }
+}
+
+export async function updateProjectTask(
+  taskId: string,
+  payload: {
+    title?: string;
+    description?: string;
+    status?: string;
+    dueDate?: string | null;
+    visibility?: string;
+  }
+): Promise<{
+  success: boolean;
+  task?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, task: json.task };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to update task",
+    };
+  }
+}
+
+export async function deleteProjectTask(
+  taskId: string
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/tasks/${taskId}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to delete task",
+    };
+  }
+}
+
+export async function fetchProjectMeetings(
+  projectId: string
+): Promise<{
+  success: boolean;
+  meetings?: any[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${projectId}/meetings`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, meetings: json.meetings };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch meetings",
+    };
+  }
+}
+
+export async function proposeProjectMeeting(
+  projectId: string,
+  payload: {
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    joinUrl?: string;
+  }
+): Promise<{
+  success: boolean;
+  meeting?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${projectId}/meetings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, meeting: json.meeting };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to propose meeting",
+    };
+  }
+}
+
+export async function respondMeeting(
+  meetingId: string,
+  response: "ACCEPTED" | "DECLINED"
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/meetings/${meetingId}/respond`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ response }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to respond to meeting",
+    };
+  }
+}
+
+export async function fetchProjectDecisions(
+  projectId: string
+): Promise<{
+  success: boolean;
+  decisions?: any[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${projectId}/decisions`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, decisions: json.decisions };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch decisions",
+    };
+  }
+}
+
+export async function createProjectDecision(
+  projectId: string,
+  payload: {
+    title: string;
+    description: string;
+  }
+): Promise<{
+  success: boolean;
+  decision?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${projectId}/decisions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, decision: json.decision };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to create decision note",
+    };
+  }
+}
+
+export async function fetchPrivateAiChats(): Promise<{
+  success: boolean;
+  chats?: any[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/ai/chats`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, chats: json.chats };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch private AI chats",
+    };
+  }
+}
+
+export async function createPrivateAiChat(payload: {
+  title?: string;
+  projectId?: string;
+} = {}): Promise<{
+  success: boolean;
+  chat?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/ai/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, chat: json.chat };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to create private AI chat",
+    };
+  }
+}
+
+export async function fetchPrivateAiMessages(chatId: string): Promise<{
+  success: boolean;
+  chat?: any;
+  messages?: any[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/ai/chats/${chatId}/messages`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, chat: json.chat, messages: json.messages };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch private AI messages",
+    };
+  }
+}
+
+export async function postPrivateAiMessage(
+  chatId: string,
+  payload: {
+    content: string;
+    quickAction?: "SUMMARIZE_CONVERSATION" | "DRAFT_REPLY" | "NEXT_STEPS";
+  }
+): Promise<{
+  success: boolean;
+  message?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/ai/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, message: json.message };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to post message to Nexum AI",
+    };
+  }
+}
+
+export async function sendAiDraft(
+  draftId: string,
+  conversationId: string
+): Promise<{
+  success: boolean;
+  messageId?: string;
+  status?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/ai/drafts/${draftId}/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ conversationId }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, messageId: json.messageId, status: json.status };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to send AI draft",
+    };
+  }
+}
+
+export async function deletePrivateAiChat(chatId: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/ai/chats/${chatId}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to delete private AI chat",
+    };
+  }
+}
