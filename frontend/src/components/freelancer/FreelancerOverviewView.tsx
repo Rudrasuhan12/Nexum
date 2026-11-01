@@ -27,6 +27,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { DemoUser } from "@/lib/auth-types";
+import { fetchFreelancerDashboard, DashboardSummaryData } from "@/lib/api-client";
 
 interface FreelancerOverviewViewProps {
   freelancer: DemoUser;
@@ -44,6 +45,26 @@ export default function FreelancerOverviewView({
   const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
   const [bookmarkedProjects, setBookmarkedProjects] = useState<string[]>(["rec_1"]);
   const [workStatus, setWorkStatus] = useState<"Available for work" | "In active project" | "Busy / Away">("Available for work");
+  const [dashboardData, setDashboardData] = useState<DashboardSummaryData | null>(null);
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadDashboard() {
+      try {
+        const res = await fetchFreelancerDashboard();
+        if (mounted && res.success && res.dashboard) {
+          setDashboardData(res.dashboard);
+        }
+      } catch (err) {
+        console.warn("Using fallback dashboard data", err);
+      } finally {
+        if (mounted) setIsLoadingDashboard(false);
+      }
+    }
+    loadDashboard();
+    return () => { mounted = false; };
+  }, []);
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const statusDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -151,14 +172,14 @@ export default function FreelancerOverviewView({
           <div className="w-full lg:w-auto min-w-[240px] max-w-[290px] rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 p-3.5 space-y-2.5 shadow-inner">
             <div className="flex items-center justify-between text-xs font-bold text-white">
               <span className="text-white/80 font-medium">Profile Completeness</span>
-              <span className="font-mono text-white text-[13px]">85%</span>
+              <span className="font-mono text-white text-[13px]">{dashboardData ? `${dashboardData.profileCompleteness.score}%` : "85%"}</span>
             </div>
 
             {/* Progress Bar with vibrant emerald fill */}
             <div className="w-full h-2 rounded-full bg-black/25 overflow-hidden p-0.5 border border-white/10">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-300 transition-all duration-500 shadow-sm"
-                style={{ width: "85%" }}
+                style={{ width: `${dashboardData ? dashboardData.profileCompleteness.score : 85}%` }}
               />
             </div>
 
@@ -245,7 +266,7 @@ export default function FreelancerOverviewView({
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
-                  ₹1,20,000
+                  {dashboardData ? `${(dashboardData.earningsSnapshot.availableMinor / 100).toLocaleString()} ${dashboardData.earningsSnapshot.currency}` : "$1,200.00 USD"}
                 </span>
                 <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
                   <TrendingUp className="w-2.5 h-2.5" />
@@ -271,10 +292,10 @@ export default function FreelancerOverviewView({
             </div>
             <div>
               <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
-                3
+                {dashboardData ? dashboardData.activeProjects.count : 3}
               </div>
               <p className="text-[11px] text-slate-400 mt-1 font-medium">
-                2 on track · 1 pending review
+                {dashboardData ? `${dashboardData.activeProjects.count} active · ${dashboardData.awaitingClientReview.count} in review` : "2 on track · 1 pending review"}
               </p>
             </div>
           </div>
@@ -294,10 +315,10 @@ export default function FreelancerOverviewView({
             </div>
             <div>
               <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
-                4
+                {dashboardData ? dashboardData.allProposals.count : 4}
               </div>
               <p className="text-[11px] text-slate-400 mt-1 font-medium">
-                2 new responses
+                {dashboardData ? `${dashboardData.allProposals.count} proposals total` : "2 new responses"}
               </p>
             </div>
           </div>
@@ -317,10 +338,10 @@ export default function FreelancerOverviewView({
             </div>
             <div>
               <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
-                5
+                {dashboardData ? dashboardData.milestonesDueSoon.count : 5}
               </div>
               <p className="text-[11px] text-slate-400 mt-1 font-medium">
-                3 from clients
+                {dashboardData ? `${dashboardData.milestonesDueSoon.count} due soon · ${dashboardData.overdue.count} overdue` : "3 from clients"}
               </p>
             </div>
           </div>

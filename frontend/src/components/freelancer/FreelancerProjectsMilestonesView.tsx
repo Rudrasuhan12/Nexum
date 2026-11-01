@@ -88,9 +88,26 @@ export default function FreelancerProjectsMilestonesView({
     let mounted = true;
     async function loadBackendData() {
       try {
-        const res = await fetchBackendProjects();
-        if (mounted && res.success && res.data && res.data.length > 0) {
-          // If backend has projects, we merge or enrich our project list
+        const res = await fetchActiveProjects();
+        if (mounted && res.success && res.projects && res.projects.length > 0) {
+          const enriched: FreelancerProjectItem[] = INITIAL_FREELANCER_PROJECTS.map((baseProj, idx) => {
+            const live = res.projects![idx] || res.projects![0];
+            return {
+              ...baseProj,
+              id: live.id || baseProj.id,
+              title: live.title || baseProj.title,
+              state: (live.derivedStatus === "IN_PROGRESS" ? "ACTIVE" : (live.derivedStatus || baseProj.state)) as any,
+              totalBudgetCents: live.totalAmountMinor || baseProj.totalBudgetCents,
+              totalBudgetDisplay: `${((live.totalAmountMinor || baseProj.totalBudgetCents) / 100).toLocaleString()} USD`,
+              currency: live.currency || "USD",
+              agreementVersion: `v${live.activeVersionNumber || 1} Active`,
+              progressPercent: live.totalMilestones > 0 ? Math.round((live.completedMilestones / live.totalMilestones) * 100) : baseProj.progressPercent,
+            };
+          });
+          setProjects(enriched);
+          if (enriched.length > 0) {
+            setSelectedProjectId(enriched[0].id);
+          }
         }
       } catch {
         // Fallback gracefully to INITIAL_FREELANCER_PROJECTS

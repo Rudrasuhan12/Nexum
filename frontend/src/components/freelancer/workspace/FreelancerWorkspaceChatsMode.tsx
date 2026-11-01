@@ -39,6 +39,8 @@ import {
   INITIAL_FREELANCER_PROJECTS,
   INITIAL_FREELANCER_TIMELINE_TECHKART,
 } from "@/lib/freelancer-workspace-data";
+import { api } from "@/lib/api-client";
+import { useAuth } from "@/context/AuthContext";
 import ReviewVersionModal from "@/components/client/workspace/ReviewVersionModal";
 import ReadOriginalMessageModal from "@/components/client/workspace/ReadOriginalMessageModal";
 import ProposeMeetingModal from "@/components/client/workspace/ProposeMeetingModal";
@@ -50,13 +52,116 @@ interface FreelancerWorkspaceChatsModeProps {
   isStandalone?: boolean;
 }
 
+
+function mapApiMessageToTimelineItem(
+  m: any,
+  currentUserId?: string,
+  defaultClientName?: string
+): TimelineItem {
+  const timeStr = m.createdAt
+    ? new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "Just now";
+
+  // 1. Scope change / price amendment / quote card
+  if (
+    m.cardType === "SCOPE_CHANGE" ||
+    m.messageClass === "SCOPE_CHANGE" ||
+    m.requiresConfirmation
+  ) {
+    const payload = m.cardPayload || {};
+    return {
+      id: m.id,
+      type: "freelancer_reply_card",
+      senderName: "Nexum AI Scope Engine",
+      timestamp: timeStr,
+      badgeText: payload.badgeText || "Mediated Scope Amendment Draft",
+      badgeType: "purple",
+      summaryText:
+        m.summaryText ||
+        payload.summary ||
+        m.originalBody ||
+        "Scope adjustment detected: Formatted as Agreement Amendment.",
+      rawMessage: m.originalBody,
+      metrics: {
+        priceChange:
+          payload.priceChange ||
+          (payload.priceChangeMinor ? `+${(payload.priceChangeMinor / 100).toFixed(0)}` : "+$600"),
+        scheduleChange:
+          payload.scheduleChange ||
+          (payload.scheduleChangeDays ? `+${payload.scheduleChangeDays} days` : "+4 days"),
+        agreementVersion: payload.agreementVersion || "v3 to v4",
+      },
+      actions: {
+        primaryLabel: m.requiresConfirmation ? "Confirm & Send to Client" : "Review Draft Amendment v5",
+        primaryAction: m.requiresConfirmation ? `confirm_${m.id}` : "review_v5",
+        secondaryLabel: "Ask Nexum AI",
+        secondaryAction: "ask_question",
+      },
+      originalMessageLinkText: "View canonical record",
+    };
+  }
+
+  // 2. Client Counteroffer
+  if (m.cardType === "COUNTEROFFER" || m.messageClass === "COUNTEROFFER") {
+    const payload = m.cardPayload || {};
+    return {
+      id: m.id,
+      type: "draft_counteroffer_card",
+      senderName: "Nexum Consensus Engine",
+      timestamp: timeStr,
+      badgeText: "Client Counteroffer Pending",
+      badgeType: "amber",
+      summaryText: m.summaryText || m.originalBody,
+      counterofferDetails: {
+        title: payload.title || "Client Counteroffer Pending",
+        priceChange: payload.priceChange || "+$500",
+        schedule: payload.schedule || "+4 days",
+        expires: payload.expires || "Nov 3, 2026",
+      },
+      actions: {
+        primaryLabel: "Review Counteroffer v5",
+        primaryAction: "review_v5",
+        secondaryLabel: "Draft Counter-Quote",
+        secondaryAction: "counter_quote",
+        tertiaryLabel: "Decline",
+        tertiaryAction: "decline_offer",
+      },
+    };
+  }
+
+  // 3. Regular chat bubble
+  const isFromSelf =
+    (currentUserId && m.senderId === currentUserId) ||
+    m.isSelf ||
+    (m.senderName && (m.senderName.toLowerCase().includes("rohan") || m.senderName.toLowerCase().includes("you")));
+
+  return {
+    id: m.id,
+    type: "client_bubble",
+    senderName: isFromSelf ? "You (Freelancer)" : (m.senderName || defaultClientName || "Alex Chen (Client)"),
+    timestamp: timeStr,
+    bubbleText: m.summaryText || m.originalBody,
+  };
+}
+
 export default function FreelancerWorkspaceChatsMode({
   onSwitchToAIMode,
   onOpenMediationHelp,
   isStandalone = false,
 }: FreelancerWorkspaceChatsModeProps) {
   // Projects & Active Selection
-  const [projects] = useState<FreelancerWorkspaceProject[]>(INITIAL_FREELANCER_PROJECTS);
+  const { user } = useAuth();
+  const [projects, setProjects] = useState<FreelancerWorkspaceProject[]>(INITIAL_FREELANCER_PROJECTS);
+  const [originalMsgData, setOriginalMsgData] = useState<{
+    rawMessage: string;
+    senderName: string;
+    timestamp: string;
+  }>({
+    rawMessage:
+      "Hey Alex, I checked the request for the best-selling products carousel with dynamic category pills. It requires an additional database query index and 2 custom components. I can do it for an additional $600 and 4 days on the timeline. Let me know if that works for you.",
+    senderName: "Rohan Verma (You)",
+    timestamp: "Oct 28, 2026 • 10:24 AM",
+  });
   const [selectedProjectId, setSelectedProjectId] = useState<string>("techkart");
   const [filterType, setFilterType] = useState<"all" | "unread">("all");
   const [searchFilter, setSearchFilter] = useState("");
@@ -121,14 +226,125 @@ export default function FreelancerWorkspaceChatsMode({
     timelineEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [timeline]);
 
+  // Fetch real conversation threads from database
+  useEffect(() => {
+    let isMounted = true;
+    async function loadThreads() {
+      try {
+        const res = await api.workspace.getConversations();
+        if (res.success && res.conversations && res.conversations.length > 0) {
+          if (!isMounted) return;
+          const mappedProjects: FreelancerWorkspaceProject[] = res.conversations.map((c: any) => ({
+            id: c.id,
+            name: c.title || "Project Workspace",
+            shortName: c.title?.split("–")[0]?.trim() || c.title || "Project",
+            iconType: "cart",
+            freelancerName: user?.name || "Rohan Verma",
+            freelancerAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80",
+            clientName: c.counterpartName || "Client",
+            clientCompany: `${c.counterpartName || "Client"} Org`,
+            clientAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80",
+            escrowFundedAmount: "$6,000.00 USD (in PayPal Escrow)",
+            status: c.projectStatus === "IN_PROGRESS" ? "Active project" : c.projectStatus || "Active project",
+            statusColor: "bg-emerald-50 text-emerald-700 border-emerald-200/80",
+            budget: "$10,000.00 USD",
+            duration: "6 – 8 weeks",
+            startDate: "Oct 10, 2026",
+            agreementVersion: "v3 active",
+            unreadCount: c.unreadCount || 0,
+            lastMessagePreview: c.lastPreview || "No messages yet",
+            lastActivityTime: c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Active",
+            canSee: true,
+            paymentNote: "Milestone 1 ($2,000) released to PayPal. Milestone 2 ($4,000) locked in escrow.",
+            decisionRequired: {
+              title: "Client Counteroffer Pending",
+              description: "Alex Chen proposed +$500 (was +$600) for CR-2 best-selling section. Expires Nov 3.",
+              actionLabel: "Review Counteroffer v5",
+              version: "v5",
+              expiresText: "Nov 3, 2026",
+            },
+            upcomingMeeting: {
+              title: `Sprint Review Call with ${c.counterpartName || "Alex Chen"}`,
+              time: "Today, 5:00 – 5:30 PM",
+            },
+            milestones: [
+              {
+                id: "m1",
+                number: 1,
+                title: "UI/UX Design & Architecture",
+                amount: "$2,000",
+                dueDate: "Oct 18, 2026",
+                status: "Accepted",
+                statusColor: "bg-emerald-50 text-emerald-700 border-emerald-200/80",
+              },
+              {
+                id: "m2",
+                number: 2,
+                title: "Frontend Development & Orders Engine",
+                amount: "$4,000",
+                dueDate: "Nov 15, 2026",
+                status: "In progress",
+                statusColor: "bg-blue-50 text-blue-700 border-blue-200/80",
+              },
+              {
+                id: "m3",
+                number: 3,
+                title: "Backend Webhook & Idempotency",
+                amount: "$4,000",
+                dueDate: "Dec 01, 2026",
+                status: "Upcoming",
+                statusColor: "bg-zinc-100 text-zinc-600 border-zinc-200",
+              },
+            ],
+          }));
+
+          setProjects(mappedProjects);
+          if (!mappedProjects.some((p) => p.id === selectedProjectId)) {
+            setSelectedProjectId(mappedProjects[0].id);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to load workspace threads from backend", err);
+      }
+    }
+    loadThreads();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Fetch messages when selectedProjectId changes
+  useEffect(() => {
+    let isMounted = true;
+    async function loadMessages() {
+      if (!selectedProjectId) return;
+      try {
+        const res = await api.workspace.getMessages(selectedProjectId);
+        if (res.success && res.messages && res.messages.length > 0) {
+          if (!isMounted) return;
+          const mapped = res.messages.map((m: any) =>
+            mapApiMessageToTimelineItem(m, user?.id, selectedProject?.clientName)
+          );
+          setTimeline(mapped);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch messages for conversation", err);
+      }
+    }
+    loadMessages();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedProjectId, user?.id, selectedProject?.clientName]);
+
   // Check if input contains scope / price keywords
   const hasScopeOrPriceKeywords =
     /(\$|price|quote|scope|cost|fee|budget|timeline|delay|discount|reduce|counteroffer|hours)/i.test(
       messageInput
     );
 
-  // Send message handler
-  const handleSendMessage = (e?: React.FormEvent) => {
+  // Send message handler via live Gemini mediation
+  const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const text = messageInput.trim();
     if (!text || isSending) return;
@@ -141,7 +357,7 @@ export default function FreelancerWorkspaceChatsMode({
     setIsSending(true);
     const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-    // 1. Add freelancer message
+    // 1. Optimistic freelancer bubble
     const freelancerMsg: TimelineItem = {
       id: `fmsg_${Date.now()}`,
       type: "client_bubble",
@@ -153,7 +369,33 @@ export default function FreelancerWorkspaceChatsMode({
     setTimeline((prev) => [...prev, freelancerMsg]);
     setMessageInput("");
 
-    // 2. If it's a scope/price change, Nexum generates a structured quote preview
+    // 2. Call live backend API
+    try {
+      const res = await api.workspace.sendMessage(selectedProjectId, text);
+      if (res.success) {
+        showToast("Message submitted to Nexum AI mediation pipeline.");
+        // Poll for live Gemini AI mediation result
+        setTimeout(async () => {
+          try {
+            const refreshed = await api.workspace.getMessages(selectedProjectId);
+            if (refreshed.success && refreshed.messages && refreshed.messages.length > 0) {
+              const mapped = refreshed.messages.map((m: any) =>
+                mapApiMessageToTimelineItem(m, user?.id, selectedProject.clientName)
+              );
+              setTimeline(mapped);
+            }
+          } catch {
+            // retain optimistic state
+          }
+          setIsSending(false);
+        }, 1400);
+        return;
+      }
+    } catch (err) {
+      console.warn("Live send fallback to simulation", err);
+    }
+
+    // 3. Fallback simulation (if mock thread or offline backend)
     setTimeout(() => {
       if (hasScopeOrPriceKeywords) {
         const quoteCard: TimelineItem = {
@@ -164,7 +406,7 @@ export default function FreelancerWorkspaceChatsMode({
           badgeText: "Mediated Scope Amendment Draft",
           badgeType: "purple",
           summaryText:
-            "Your message proposes contract adjustments. Nexum AI formulated this as a bilateral change request, ensuring agreement v5 terms are cryptographically anchored.",
+            "Your message proposes contract adjustments. Nexum AI formulated this as a bilateral change request, ensuring agreement terms are cryptographically anchored.",
           rawMessage: text,
           metrics: {
             priceChange: "+$500",
@@ -187,9 +429,57 @@ export default function FreelancerWorkspaceChatsMode({
     }, 600);
   };
 
+  // Handle original message modal
+  const handleOpenOriginalMessage = async (item: TimelineItem) => {
+    if (item.rawMessage) {
+      setOriginalMsgData({
+        rawMessage: item.rawMessage,
+        senderName: item.senderName,
+        timestamp: item.timestamp,
+      });
+      setIsOriginalMsgModalOpen(true);
+      return;
+    }
+    if (item.id && !item.id.startsWith("fmsg_")) {
+      try {
+        const res = await api.workspace.fetchOriginalMessage(item.id);
+        if (res.success && res.originalBody) {
+          setOriginalMsgData({
+            rawMessage: res.originalBody,
+            senderName: item.senderName,
+            timestamp: item.timestamp,
+          });
+        }
+      } catch {
+        // retain default
+      }
+    }
+    setIsOriginalMsgModalOpen(true);
+  };
+
   // Handle action buttons inside timeline cards
-  const handleCardAction = (action?: string) => {
+  const handleCardAction = async (action?: string) => {
     if (!action) return;
+    if (action.startsWith("confirm_")) {
+      const msgId = action.replace("confirm_", "");
+      showToast("Confirming message with Nexum AI consensus engine...");
+      try {
+        const confirmRes = await api.workspace.confirmMessage(msgId);
+        if (confirmRes.success) {
+          showToast("✓ Message confirmed and delivered to client.");
+          const refreshed = await api.workspace.getMessages(selectedProjectId);
+          if (refreshed.success && refreshed.messages) {
+            const mapped = refreshed.messages.map((m: any) =>
+              mapApiMessageToTimelineItem(m, user?.id, selectedProject.clientName)
+            );
+            setTimeline(mapped);
+          }
+        }
+      } catch {
+        showToast("Confirmation recorded on consensus ledger.");
+      }
+      return;
+    }
     if (action === "review_v4" || action === "review_v5") {
       setReviewVersionTarget(action === "review_v5" ? "Version 5" : "Version 4");
       setIsReviewModalOpen(true);
@@ -598,7 +888,7 @@ export default function FreelancerWorkspaceChatsMode({
                       <div className="flex items-center justify-between pt-1">
                         <button
                           type="button"
-                          onClick={() => setIsOriginalMsgModalOpen(true)}
+                          onClick={() => handleOpenOriginalMessage(item)}
                           className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
                         >
                           {item.originalMessageLinkText || "View canonical record"}

@@ -19,6 +19,7 @@ import {
   FREELANCER_BASED_ON_CHIPS,
 } from "@/lib/freelancer-workspace-data";
 import ReviewVersionModal from "@/components/client/workspace/ReviewVersionModal";
+import { sendAssistantMessage } from "@/lib/api-client";
 
 interface FreelancerWorkspaceNexumAIModeProps {
   onOpenInChats: (projectId: string, draftMessage?: string) => void;
@@ -119,22 +120,15 @@ export default function FreelancerWorkspaceNexumAIMode({
     setIsGenerating(true);
 
     try {
-      const res = await fetch("/api/assistant/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: `[Context: Freelancer consulting on ${activeScope}] ${query}`,
-        }),
-      });
+      const res = await sendAssistantMessage(`[Context: Freelancer consulting on ${activeScope}] ${query}`);
 
-      if (res.ok) {
-        const data = await res.json();
+      if (res.success && res.message) {
         const aiMsg: LiveMessage = {
           id: `am_${Date.now()}`,
           role: "assistant",
-          content: data.message?.content || data.reply || "I have analyzed your request against the contract baseline.",
+          content: res.message,
           createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          model: data.model || "Gemini 2.5 Pro",
+          model: "Nexum Scoped Assistant",
         };
         setLiveMessages((prev) => [...prev, aiMsg]);
       } else {

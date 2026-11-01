@@ -3563,3 +3563,28 @@ export async function sendAssistantMessage(content: string, chatId?: string): Pr
     return { success: false, error: err instanceof Error ? err.message : "Failed to contact assistant" };
   }
 }
+
+// Namespace export for structured module access
+export const workspace = {
+  getConversations: fetchConversations,
+  getMessages: fetchConversationMessages,
+  sendMessage: sendMessage,
+  confirmMessage: confirmMessage,
+  discardMessage: discardMessage,
+  fetchOriginalMessage: fetchOriginalMessage,
+  markConversationRead: markConversationRead,
+  getContext: fetchConversationContext,
+};
+
+export const api = {
+  workspace,
+  fetchConversations,
+  fetchConversationMessages,
+  sendMessage,
+  confirmMessage,
+  discardMessage,
+  fetchOriginalMessage,
+  markConversationRead,
+  fetchConversationContext,
+};
+

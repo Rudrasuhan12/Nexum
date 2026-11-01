@@ -1,4 +1,18 @@
-import { PrismaClient, Role, AvailabilityStatus, ProjectState, ProposalStatus, PaymentState, ExperienceLevel } from "@prisma/client";
+import {
+  PrismaClient,
+  Role,
+  AvailabilityStatus,
+  ProjectState,
+  ProposalStatus,
+  PaymentState,
+  ExperienceLevel,
+  AgreementStatus,
+  AgreementVersionStatus,
+  MilestoneWorkStatus,
+  MessageDeliveryStatus,
+  MessageClass,
+  MediationState,
+} from "@prisma/client";
 import { hashPassword } from "../src/lib/auth.js";
 
 const prisma = new PrismaClient();
@@ -563,12 +577,7 @@ async function main() {
 
     // Milestone 1 ($5.00)
     await prisma.milestone.upsert({
-      where: {
-        proposalVersionId_orderIndex: {
-          proposalVersionId: proposal.id,
-          orderIndex: 1,
-        },
-      },
+      where: { id: "ms_seed_1" },
       update: {
         title: "Milestone 1: Pure Core Logic & Unit Tests",
         amountCents: 500,
@@ -590,12 +599,7 @@ async function main() {
 
     // Milestone 2 ($5.00)
     await prisma.milestone.upsert({
-      where: {
-        proposalVersionId_orderIndex: {
-          proposalVersionId: proposal.id,
-          orderIndex: 2,
-        },
-      },
+      where: { id: "ms_seed_2" },
       update: {
         title: "Milestone 2: Express & Prisma PostgreSQL Backend",
         amountCents: 500,
@@ -905,6 +909,234 @@ async function main() {
   const rohanUser = await prisma.user.findUnique({ where: { email: "rohan.verma@nexum.demo" } });
   if (rohanUser) {
     await seedSpectrum(rohanUser, "prop_rohan");
+  }
+
+  // 4b. Seed Real TechKart Workspace Project, Agreement, Milestones & Mediated Conversation
+  const clientAlexChen = await prisma.user.upsert({
+    where: { email: "alex.chen@techkart.demo" },
+    update: {
+      name: "Alex Chen",
+      role: Role.CLIENT,
+      status: "ACTIVE",
+      passwordHash: defaultPasswordHash,
+    },
+    create: {
+      id: "usr_client_alex_chen",
+      email: "alex.chen@techkart.demo",
+      name: "Alex Chen",
+      role: Role.CLIENT,
+      locale: "en-US",
+      timezone: "America/New_York",
+      status: "ACTIVE",
+      passwordHash: defaultPasswordHash,
+    },
+  });
+
+  if (rohanUser) {
+    const techKartProject = await prisma.project.upsert({
+      where: { id: "prj_techkart_ecommerce" },
+      update: {
+        clientId: clientAlexChen.id,
+        title: "TechKart – E-commerce Website",
+        state: ProjectState.IN_PROGRESS,
+        budgetCents: 1000000,
+      },
+      create: {
+        id: "prj_techkart_ecommerce",
+        clientId: clientAlexChen.id,
+        title: "TechKart – E-commerce Website",
+        description: "Full-stack e-commerce storefront with dynamic catalog filters and PayPal escrow payments.",
+        category: "Software Development",
+        budgetType: "FIXED_PRICE",
+        budgetCents: 1000000,
+        currency: "USD",
+        state: ProjectState.IN_PROGRESS,
+        visibility: "PUBLIC",
+      },
+    });
+
+    const agreement = await prisma.agreement.upsert({
+      where: { id: "agr_techkart_active" },
+      update: {
+        status: AgreementStatus.ACTIVE,
+      },
+      create: {
+        id: "agr_techkart_active",
+        projectId: techKartProject.id,
+        clientId: clientAlexChen.id,
+        freelancerId: rohanUser.id,
+        status: AgreementStatus.ACTIVE,
+      },
+    });
+
+    const v3 = await prisma.agreementVersion.upsert({
+      where: { id: "agr_ver_techkart_v3" },
+      update: {
+        status: AgreementVersionStatus.ACTIVE,
+      },
+      create: {
+        id: "agr_ver_techkart_v3",
+        agreementId: agreement.id,
+        versionNumber: 3,
+        status: AgreementVersionStatus.ACTIVE,
+        activatedAt: new Date("2026-10-10"),
+        contentHash: "c0ffee112233445566778899aabbccddeeff00112233445566778899aabbccdd",
+        terms: {
+          scope: "Full-stack e-commerce marketplace and PayPal consensus payments",
+          deliverables: ["UI/UX Design", "Frontend & Orders Engine", "Backend Webhook & Idempotency"],
+          totalAmountMinor: 1000000,
+          currency: "USD",
+        },
+      },
+    });
+
+    await prisma.agreement.update({
+      where: { id: agreement.id },
+      data: { activeVersionId: v3.id },
+    });
+
+    await prisma.milestone.upsert({
+      where: { id: "mls_techkart_1" },
+      update: { workStatus: MilestoneWorkStatus.ACCEPTED },
+      create: {
+        id: "mls_techkart_1",
+        projectId: techKartProject.id,
+        agreementId: agreement.id,
+        title: "UI/UX Design & Architecture",
+        description: "Figma design system and architecture spec",
+        sequence: 1,
+        amountMinor: 200000,
+        currency: "USD",
+        workStatus: MilestoneWorkStatus.ACCEPTED,
+        dueDate: new Date("2026-10-18"),
+      },
+    });
+
+    await prisma.milestone.upsert({
+      where: { id: "mls_techkart_2" },
+      update: { workStatus: MilestoneWorkStatus.IN_PROGRESS },
+      create: {
+        id: "mls_techkart_2",
+        projectId: techKartProject.id,
+        agreementId: agreement.id,
+        title: "Frontend Development & Orders Engine",
+        description: "Responsive storefront, checkout cart, orders API",
+        sequence: 2,
+        amountMinor: 400000,
+        currency: "USD",
+        workStatus: MilestoneWorkStatus.IN_PROGRESS,
+        dueDate: new Date("2026-11-15"),
+      },
+    });
+
+    await prisma.milestone.upsert({
+      where: { id: "mls_techkart_3" },
+      update: { workStatus: MilestoneWorkStatus.UPCOMING },
+      create: {
+        id: "mls_techkart_3",
+        projectId: techKartProject.id,
+        agreementId: agreement.id,
+        title: "Backend Webhook & Idempotency",
+        description: "PayPal webhook reconciler and idempotency ledger",
+        sequence: 3,
+        amountMinor: 400000,
+        currency: "USD",
+        workStatus: MilestoneWorkStatus.UPCOMING,
+        dueDate: new Date("2026-12-10"),
+      },
+    });
+
+    const conv = await prisma.conversation.upsert({
+      where: { id: "conv_techkart_workspace" },
+      update: {},
+      create: {
+        id: "conv_techkart_workspace",
+        projectId: techKartProject.id,
+        participants: {
+          create: [
+            { userId: rohanUser.id, role: Role.FREELANCER },
+            { userId: clientAlexChen.id, role: Role.CLIENT },
+          ],
+        },
+      },
+    });
+
+    await prisma.message.upsert({
+      where: { id: "msg_techkart_1" },
+      update: {},
+      create: {
+        id: "msg_techkart_1",
+        conversationId: conv.id,
+        senderId: clientAlexChen.id,
+        senderKind: "USER",
+        originalBody: "Hey Sambit! Our marketing team wants to add a dynamic category filter and best-selling carousel to the store before launch. Can we include this in the upcoming delivery?",
+        messageClass: MessageClass.INQUIRY,
+        status: MessageDeliveryStatus.DELIVERED,
+        mediationState: MediationState.REVIEWED,
+        deliveredAt: new Date(Date.now() - 3600000 * 2),
+      },
+    });
+
+    const msg2 = await prisma.message.upsert({
+      where: { id: "msg_techkart_2" },
+      update: {},
+      create: {
+        id: "msg_techkart_2",
+        conversationId: conv.id,
+        senderId: rohanUser.id,
+        senderKind: "USER",
+        originalBody: "Hey Alex, I checked the request for the best-selling products carousel with dynamic category pills. It requires an additional database query index and 2 custom components. I can do it for an additional $600 and 4 days on the timeline. Let me know if that works for you.",
+        messageClass: MessageClass.SCOPE_CHANGE,
+        status: MessageDeliveryStatus.DELIVERED,
+        mediationState: MediationState.REVIEWED,
+        cardType: "SCOPE_CHANGE",
+        cardPayload: {
+          badgeText: "YOUR MEDIATED QUOTE V4",
+          priceChange: "+$600",
+          scheduleChange: "+4 days",
+          agreementVersion: "v3 to v4",
+          summary: "You submitted a structured quote for the dynamic category filter [CR-2]. Nexum AI ensured your pricing and schedule adjustments were cryptographically linked to Agreement v4.",
+        },
+        deliveredAt: new Date(Date.now() - 3600000),
+      },
+    });
+
+    await prisma.mediationResult.upsert({
+      where: { messageId: msg2.id },
+      update: {},
+      create: {
+        messageId: msg2.id,
+        summaryForRecipient: "You submitted a structured quote for the dynamic category filter [CR-2]. Nexum AI ensured your pricing and schedule adjustments were cryptographically linked to Agreement v4.",
+        confidence: 0.98, proposedAction: "RELAY",
+        //
+        classification: MessageClass.SCOPE_CHANGE,
+      },
+    });
+
+    await prisma.message.upsert({
+      where: { id: "msg_techkart_3" },
+      update: {},
+      create: {
+        id: "msg_techkart_3",
+        conversationId: conv.id,
+        senderId: clientAlexChen.id,
+        senderKind: "USER",
+        originalBody: "Alex Chen proposed +$500 (was +$600) for CR-2 best-selling section. Expires Nov 3.",
+        messageClass: MessageClass.PRICE_AMENDMENT,
+        cardType: "COUNTEROFFER",
+        cardPayload: {
+          title: "Client Counteroffer Pending",
+          priceChange: "+$500",
+          schedule: "+4 days",
+          expires: "Nov 3, 2026",
+        },
+        status: MessageDeliveryStatus.DELIVERED,
+        mediationState: MediationState.REVIEWED,
+        deliveredAt: new Date(Date.now() - 1800000),
+      },
+    });
+
+    console.log(`✅ Seeded TechKart Workspace project, agreement v3, and conversation for ${rohanUser.name}.`);
   }
 
 

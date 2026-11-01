@@ -50,3 +50,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS "notification_prefs_userId_type_key" ON "notif
 
 ALTER TABLE "notification_prefs" DROP CONSTRAINT IF EXISTS "notification_prefs_userId_fkey";
 ALTER TABLE "notification_prefs" ADD CONSTRAINT "notification_prefs_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
