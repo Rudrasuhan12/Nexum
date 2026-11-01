@@ -73,6 +73,38 @@ async function main() {
   // 2. Seed Freelancers (A, B, C)
   const freelancers = [
     {
+      id: "usr_freelancer_rohan",
+      email: "rohan.verma@nexum.demo",
+      name: "Rohan Verma",
+      title: "Senior Full-Stack & Payment Rails Engineer",
+      bio: "Full-stack engineer specializing in Next.js, state machines, API idempotency, and PayPal Orders v2.",
+      skills: ["Next.js", "TypeScript", "Node.js", "PostgreSQL", "PayPal Orders v2", "State Machines", "Zod", "Docker", "React", "Tailwind CSS"],
+      ratePreferences: { minHourlyCents: 6500, preferredHourlyCents: 8500, currency: "USD" },
+      portfolio: [
+        { title: "Verifiable Escrow Engine", year: 2025, impact: "$40M volume processed" },
+        { title: "Deterministic State Machine", year: 2026, impact: "0 unhandled timeout states" },
+      ],
+      experienceClaims: [
+        { org: "GlobalFintech", role: "Principal Engineer", years: 4 },
+        { org: "AutonomousWorks", role: "Lead Architect", years: 3 },
+      ],
+    },
+    {
+      id: "usr_freelancer_priya_sharma",
+      email: "priya.sharma@nexum.demo",
+      name: "Priya Sharma",
+      title: "UI/UX & Design Systems Architect",
+      bio: "Design systems expert crafting high-conversion e-commerce experiences.",
+      skills: ["Figma", "UI Design", "Design Systems", "React", "Tailwind CSS", "Next.js"],
+      ratePreferences: { minHourlyCents: 5500, preferredHourlyCents: 7500, currency: "USD" },
+      portfolio: [
+        { title: "Design System Architecture", year: 2025, impact: "Used across 12 product lines" },
+      ],
+      experienceClaims: [
+        { org: "DesignLabs", role: "Lead Designer", years: 4 },
+      ],
+    },
+    {
       id: "usr_freelancer_elena",
       email: "elena.rostova@nexum.demo",
       name: "Elena Rostova",
@@ -488,6 +520,26 @@ async function main() {
   });
   console.log("✅ Seeded Project Invitation for Elena on opp_11 (INVITE_ONLY)");
 
+  await prisma.projectInvitation.upsert({
+    where: {
+      projectId_freelancerId: {
+        projectId: "opp_11",
+        freelancerId: "usr_freelancer_rohan",
+      },
+    },
+    update: {
+      status: "PENDING",
+    },
+    create: {
+      id: "inv_rohan_opp_11",
+      projectId: "opp_11",
+      freelancerId: "usr_freelancer_rohan",
+      status: "PENDING",
+      message: "We would love your high-throughput distributed systems expertise on our confidential fintech partnership rail.",
+    },
+  });
+  console.log("✅ Seeded Project Invitation for Rohan on opp_11 (INVITE_ONLY)");
+
   // 4. Seed Canonical Proposal & Milestones (Elena)
   const elenaUser = await prisma.user.findUnique({ where: { email: "elena.rostova@nexum.demo" } });
   if (elenaUser) {
@@ -565,10 +617,11 @@ async function main() {
 
     console.log("✅ Seeded Proposal & Milestones (Sum: $10.00 USD / 1000 cents)");
   }
-    // 5. Seed Phase 4 Proposal Spectrum for Elena (All 9 Lifecycle Statuses)
-    console.log("🌱 Seeding Phase 4 Proposal Spectrum for Elena...");
+    // 5. Seed Phase 4 Proposal Spectrum for Freelancers (All 9 Lifecycle Statuses)
+    async function seedSpectrum(targetUser: any, prefix: string) {
+      console.log(`🌱 Seeding Phase 4 Proposal Spectrum for ${targetUser.name} (${prefix})...`);
 
-    const proposalSeeds = [
+      const proposalSeeds = [
       {
         id: "prop_p4_draft",
         projectId: "opp_7",
@@ -721,9 +774,10 @@ async function main() {
     ];
 
     for (const pSeed of proposalSeeds) {
+      const propId = pSeed.id.replace("prop_p4", prefix);
       // 1. Upsert Proposal root entity
       const propRecord = await prisma.proposal.upsert({
-        where: { id: pSeed.id },
+        where: { id: propId },
         update: {
           status: pSeed.status,
           rejectionFeedback: pSeed.rejectionFeedback || null,
@@ -731,9 +785,9 @@ async function main() {
           lastActivityAt: new Date(),
         },
         create: {
-          id: pSeed.id,
+          id: propId,
           projectId: pSeed.projectId,
-          freelancerId: elenaUser.id,
+          freelancerId: targetUser.id,
           status: pSeed.status,
           rejectionFeedback: pSeed.rejectionFeedback || null,
           submittedAt: pSeed.status !== ProposalStatus.DRAFT ? new Date() : null,
@@ -742,18 +796,18 @@ async function main() {
       });
 
       // 2. Upsert Proposal Version 1
-      const v1Hash = `hash_${pSeed.id}_v1_${Date.now()}`;
+      const v1Hash = `hash_${propId}_v1_${Date.now()}`;
       const v1 = await prisma.proposalVersion.upsert({
-        where: { id: `${pSeed.id}_v1` },
+        where: { id: `${propId}_v1` },
         update: {
           proposalId: propRecord.id,
           status: pSeed.status === ProposalStatus.COUNTEROFFER_RECEIVED ? ProposalStatus.SUBMITTED : pSeed.status,
         },
         create: {
-          id: `${pSeed.id}_v1`,
+          id: `${propId}_v1`,
           proposalId: propRecord.id,
           projectId: pSeed.projectId,
-          freelancerId: elenaUser.id,
+          freelancerId: targetUser.id,
           version: 1,
           versionNumber: 1,
           authorRole: Role.FREELANCER,
@@ -764,13 +818,13 @@ async function main() {
           scope: pSeed.scopeText,
           paymentModel: pSeed.paymentModel,
           totalAmountMinor: pSeed.totalAmountMinor,
-          hourlyRateMinor: pSeed.hourlyRateMinor,
-          estimatedHours: pSeed.estimatedHours,
+          hourlyRateMinor: pSeed.hourlyRateMinor || null,
+          estimatedHours: pSeed.estimatedHours || null,
           amountCents: pSeed.totalAmountMinor || (pSeed.hourlyRateMinor ? pSeed.hourlyRateMinor * (pSeed.estimatedHours || 1) : 0),
           currency: pSeed.currency,
           estimatedDurationWeeks: pSeed.durationWeeks,
-          deliverables: pSeed.deliverables,
-          milestonesJson: pSeed.milestones,
+          deliverables: pSeed.deliverables || [],
+          milestonesJson: pSeed.milestones || [],
           status: pSeed.status === ProposalStatus.COUNTEROFFER_RECEIVED ? ProposalStatus.SUBMITTED : pSeed.status,
           submittedAt: pSeed.status !== ProposalStatus.DRAFT ? new Date() : null,
         },
@@ -778,20 +832,20 @@ async function main() {
 
       let currentVerId = v1.id;
 
-      // For COUNTEROFFER_RECEIVED, create Version 2 authored by CLIENT
+      // 3. If COUNTEROFFER_RECEIVED, create Version 2 authored by CLIENT
       if (pSeed.status === ProposalStatus.COUNTEROFFER_RECEIVED) {
-        const v2Hash = `hash_${pSeed.id}_v2_counter`;
+        const v2Hash = `hash_${propId}_v2_${Date.now()}`;
         const v2 = await prisma.proposalVersion.upsert({
-          where: { id: `${pSeed.id}_v2` },
+          where: { id: `${propId}_v2` },
           update: {
             proposalId: propRecord.id,
             status: ProposalStatus.COUNTEROFFER_RECEIVED,
           },
           create: {
-            id: `${pSeed.id}_v2`,
+            id: `${propId}_v2`,
             proposalId: propRecord.id,
             projectId: pSeed.projectId,
-            freelancerId: elenaUser.id,
+            freelancerId: targetUser.id,
             version: 2,
             versionNumber: 2,
             authorRole: Role.CLIENT,
@@ -802,7 +856,7 @@ async function main() {
             scopeText: pSeed.scopeText,
             scope: pSeed.scopeText,
             paymentModel: pSeed.paymentModel,
-            totalAmountMinor: 420000, // Counteroffer price
+            totalAmountMinor: 420000,
             hourlyRateMinor: pSeed.hourlyRateMinor,
             estimatedHours: pSeed.estimatedHours,
             amountCents: 420000,
@@ -825,13 +879,13 @@ async function main() {
         data: { currentVersionId: currentVerId },
       });
 
-      // 3. Create ProposalEvent
+      // 4. Create ProposalEvent
       await prisma.proposalEvent.create({
         data: {
           proposalId: propRecord.id,
           proposalVersionId: currentVerId,
           actorRole: pSeed.status === ProposalStatus.COUNTEROFFER_RECEIVED ? Role.CLIENT : Role.FREELANCER,
-          actorId: elenaUser.id,
+          actorId: targetUser.id,
           type: pSeed.status === ProposalStatus.DRAFT ? "CREATED" : "SUBMITTED",
           fromStatus: ProposalStatus.DRAFT,
           toStatus: pSeed.status,
@@ -839,7 +893,19 @@ async function main() {
         },
       });
     }
-    console.log(`✅ Seeded ${proposalSeeds.length} Phase 4 proposals covering all lifecycle statuses.`);
+    console.log(`✅ Seeded ${proposalSeeds.length} Phase 4 proposals for ${targetUser.name}.`);
+  }
+
+  // Seed proposal spectrum for Elena
+  if (elenaUser) {
+    await seedSpectrum(elenaUser, "prop_p4");
+  }
+
+  // Seed proposal spectrum for Rohan
+  const rohanUser = await prisma.user.findUnique({ where: { email: "rohan.verma@nexum.demo" } });
+  if (rohanUser) {
+    await seedSpectrum(rohanUser, "prop_rohan");
+  }
 
 
   // 5. Append initial Audit Event
