@@ -92,9 +92,9 @@ export default function ProjectDirectory({
             </p>
           </div>
         ) : (
-          displayProjects.map((proj) => (
+          displayProjects.map((proj, idx) => (
             <ProjectCard
-              key={proj.id}
+              key={`${proj.id}_${idx}`}
               project={proj}
               isSelected={proj.id === selectedProjectId}
               onSelect={() => onSelectProject(proj.id)}

@@ -91,7 +91,8 @@ export default function FreelancerProjectsMilestonesView({
         const res = await fetchActiveProjects();
         if (mounted && res.success && res.projects && res.projects.length > 0) {
           const enriched: FreelancerProjectItem[] = INITIAL_FREELANCER_PROJECTS.map((baseProj, idx) => {
-            const live = res.projects![idx] || res.projects![0];
+            const live = res.projects![idx];
+            if (!live) return baseProj;
             return {
               ...baseProj,
               id: live.id || baseProj.id,
