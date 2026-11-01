@@ -8,6 +8,7 @@ import {
   MilestoneSubmission,
   ProjectTask,
   ProjectFile,
+  ProjectLifecycleStatus,
 } from "@/lib/freelancer-projects-types";
 import {
   INITIAL_FREELANCER_PROJECTS,
@@ -90,26 +91,29 @@ export default function FreelancerProjectsMilestonesView({
       try {
         const res = await fetchActiveProjects();
         if (mounted && res.success && res.projects && res.projects.length > 0) {
-          const enriched: FreelancerProjectItem[] = INITIAL_FREELANCER_PROJECTS.map((baseProj) => {
-            // Match with live database project by ID or keyword
-            const live = res.projects!.find(
-              (p: any) =>
-                p.id === baseProj.id ||
-                (baseProj.title.toLowerCase().includes("e-commerce") && (p.title.toLowerCase().includes("techkart") || p.title.toLowerCase().includes("commerce"))) ||
-                (baseProj.title.toLowerCase().includes("fitness") && p.title.toLowerCase().includes("fitness")) ||
-                (baseProj.title.toLowerCase().includes("ai") && (p.title.toLowerCase().includes("ai support") || p.title.toLowerCase().includes("streaming"))) ||
-                (baseProj.title.toLowerCase().includes("landing") && p.title.toLowerCase().includes("landing")) ||
-                (baseProj.title.toLowerCase().includes("analytics") && p.title.toLowerCase().includes("analytics"))
+          const mapped: FreelancerProjectItem[] = res.projects.map((live: any, idx: number) => {
+            // Find template mock if available to preserve rich tasks/files/progressSteps
+            const mock = INITIAL_FREELANCER_PROJECTS.find(
+              (m) =>
+                m.id === live.id ||
+                m.id === live.projectId ||
+                (live.title.toLowerCase().includes("techkart") && m.title.toLowerCase().includes("e-commerce")) ||
+                (live.title.toLowerCase().includes("fitness") && m.title.toLowerCase().includes("fitness")) ||
+                (live.title.toLowerCase().includes("nexaai") && (m.title.toLowerCase().includes("ai") || m.techTags.includes("OpenAI"))) ||
+                (live.title.toLowerCase().includes("support") && (m.title.toLowerCase().includes("ai") || m.techTags.includes("OpenAI"))) ||
+                (live.title.toLowerCase().includes("analytics") && m.title.toLowerCase().includes("analytics"))
             );
 
-            if (!live) return baseProj;
-
             // Map live backend status to UI lifecycle status
-            let mappedState = baseProj.state;
-            let statusLabel = baseProj.statusLabel;
-            let statusBadgeColor = baseProj.statusBadgeColor;
+            let mappedState: ProjectLifecycleStatus = "ACTIVE";
+            let statusLabel = "In Progress";
+            let statusBadgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200/80";
 
-            if (live.derivedStatus === "COMPLETED" || live.agreementStatus === "COMPLETED") {
+            if (live.agreementStatus === "PENDING_APPROVAL" || live.derivedStatus === "INTAKE") {
+              mappedState = "AWAITING_APPROVAL";
+              statusLabel = "Awaiting Approval";
+              statusBadgeColor = "bg-amber-50 text-amber-700 border-amber-200/80";
+            } else if (live.derivedStatus === "COMPLETED" || live.agreementStatus === "COMPLETED") {
               mappedState = "COMPLETED";
               statusLabel = "Completed";
               statusBadgeColor = "bg-purple-50 text-purple-700 border-purple-200";
@@ -117,10 +121,6 @@ export default function FreelancerProjectsMilestonesView({
               mappedState = "CANCELLED";
               statusLabel = "Cancelled";
               statusBadgeColor = "bg-rose-50 text-rose-700 border-rose-200";
-            } else if (live.agreementStatus === "PENDING_APPROVAL" || live.derivedStatus === "INTAKE") {
-              mappedState = "AWAITING_APPROVAL";
-              statusLabel = "Awaiting Approval";
-              statusBadgeColor = "bg-amber-50 text-amber-700 border-amber-200/80";
             } else {
               // "ACTIVE", "IN_PROGRESS", "IN_REVIEW" are active ongoing contracts
               mappedState = "ACTIVE";
@@ -128,23 +128,61 @@ export default function FreelancerProjectsMilestonesView({
               statusBadgeColor = live.derivedStatus === "IN_REVIEW" ? "bg-amber-50 text-amber-700 border-amber-200/80" : "bg-emerald-50 text-emerald-700 border-emerald-200/80";
             }
 
+            const totalBudgetCents = live.totalAmountMinor || (mock ? mock.totalBudgetCents : 0);
+            const totalBudgetDisplay = '$' + (totalBudgetCents / 100).toLocaleString("en-US", { minimumFractionDigits: 0 }) + ' USD';
+            const progressPercent = live.totalMilestones > 0
+              ? Math.round((live.completedMilestones / live.totalMilestones) * 100)
+              : (mappedState === "COMPLETED" ? 100 : (mock?.progressPercent || 0));
+
+            const milestones = (live.milestones && live.milestones.length > 0)
+              ? live.milestones
+              : (mock?.milestones || []);
+
+            const clientName = live.client?.name || mock?.client.name || "Client Partner";
+            const clientCompany = mock?.client.companyName || clientName;
+
             return {
-              ...baseProj,
-              id: live.id || baseProj.id,
-              title: live.title || baseProj.title,
+              id: live.id || live.projectId || `proj-${idx}`,
+              title: live.title || mock?.title || "Project",
+              description: mock?.description || `${live.title} bilateral agreement and verified milestones.`,
               state: mappedState,
               statusLabel,
               statusBadgeColor,
-              totalBudgetCents: live.totalAmountMinor || baseProj.totalBudgetCents,
-              totalBudgetDisplay: '$' + ((live.totalAmountMinor || baseProj.totalBudgetCents) / 100).toLocaleString() + ' USD',
+              client: {
+                id: live.client?.id || mock?.client.id || `cli-${idx}`,
+                name: clientName,
+                companyName: clientCompany,
+                verified: mock?.client.verified ?? true,
+                avatarLetter: (clientName[0] || "C").toUpperCase(),
+                avatarBg: mock?.client.avatarBg || "bg-indigo-600 text-white",
+                email: mock?.client.email || "client@nexum.io",
+              },
+              startDate: mock?.startDate || new Date(live.createdAt || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+              dueDate: mock?.dueDate || (live.activeMilestone?.dueDate ? new Date(live.activeMilestone.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Dec 15, 2026"),
+              completedDate: mappedState === "COMPLETED" ? (mock?.completedDate || "Sep 30, 2026") : undefined,
+              totalBudgetCents,
+              totalBudgetDisplay,
               currency: live.currency || "USD",
-              agreementVersion: 'v' + (live.activeVersionNumber || 1) + ' Active',
-              progressPercent: live.totalMilestones > 0 ? Math.round((live.completedMilestones / live.totalMilestones) * 100) : baseProj.progressPercent,
+              pricingType: (mock?.pricingType || "FIXED_PRICE") as "FIXED_PRICE" | "HOURLY",
+              agreementVersion: `v${live.activeVersionNumber || 1} ${mappedState === "COMPLETED" ? "Fulfilled" : mappedState === "AWAITING_APPROVAL" ? "Under Review" : "Active"}`,
+              progressPercent,
+              techTags: mock?.techTags || ["Next.js", "TypeScript", "Node.js", "PostgreSQL"],
+              thumbnailType: mock?.thumbnailType || "IMAGE_MOCK",
+              milestones,
+              tasks: mock?.tasks || [],
+              files: mock?.files || [],
+              progressSteps: mock?.progressSteps || [
+                { id: `ps-${idx}-1`, title: "Requirements & contract scope", status: "COMPLETED" },
+                { id: `ps-${idx}-2`, title: "Milestone deliverable execution", status: mappedState === "COMPLETED" ? "COMPLETED" : "CURRENT" },
+                { id: `ps-${idx}-3`, title: "Final verification and payout", status: mappedState === "COMPLETED" ? "COMPLETED" : "PENDING" },
+              ],
+              nextActions: mock?.nextActions || [],
             };
           });
-          setProjects(enriched);
-          if (enriched.length > 0) {
-            setSelectedProjectId(enriched[0].id);
+
+          setProjects(mapped);
+          if (mapped.length > 0) {
+            setSelectedProjectId((prev) => (mapped.some((p) => p.id === prev) ? prev : mapped[0].id));
           }
         }
       } catch {

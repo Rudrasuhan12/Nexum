@@ -688,9 +688,38 @@ router.get("/active", async (req: Request, res: Response, next: NextFunction): P
               amountMinor: currentMilestone.amountMinor,
             }
           : null,
+        milestones: agr.milestones.map((m: any, idx: number) => {
+          let payStatus = "SANDBOX_CAPTURE_CONFIRMED";
+          if (m.workStatus === "ACCEPTED") {
+            payStatus = "PAYOUT_COMPLETED";
+          } else if (m.workStatus === "UPCOMING") {
+            payStatus = "FUNDING_PENDING";
+          }
+
+          return {
+            id: m.id,
+            number: m.sequence ?? (idx + 1),
+            title: m.title,
+            description: m.description || "",
+            deliverablesSummary: typeof m.deliverables === "string" ? m.deliverables : "Verified milestone deliverables",
+            acceptanceCriteria: Array.isArray(m.criteria) ? m.criteria : [],
+            amountCents: m.amountMinor,
+            amountDisplay: `$${(m.amountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 0 })} USD`,
+            currency: m.currency || "USD",
+            dueDate: m.dueDate ? new Date(m.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Dec 15, 2026",
+            submittedAt: m.workStatus === "AWAITING_CLIENT_REVIEW" || m.workStatus === "ACCEPTED" ? "Oct 22, 2026" : undefined,
+            approvedAt: m.acceptedAt ? new Date(m.acceptedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : (m.workStatus === "ACCEPTED" ? "Oct 24, 2026" : undefined),
+            workStatus: m.workStatus,
+            paymentStatus: payStatus,
+            fundingRule: m.fundingRule || "PRE_FUNDED_BEFORE_WORK",
+            submissions: [],
+          };
+        }),
         totalAmountMinor:
           terms?.totalAmountMinor ??
-          agr.milestones.reduce((acc, m) => acc + m.amountMinor, 0),
+          (agr.milestones.length > 0
+            ? agr.milestones.reduce((acc, m) => acc + m.amountMinor, 0)
+            : (agr.project.budgetCents || 0)),
         currency: terms?.currency ?? "USD",
         activeVersionNumber: activeVer?.versionNumber ?? 1,
         createdAt: agr.createdAt.toISOString(),
