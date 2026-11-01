@@ -2702,12 +2702,12 @@ export default function FreelancerProfileView({
             {/* Checklist */}
             <div className="space-y-2 text-xs pt-1">
               {[
-                { tabId: "basic", label: "Basic information", isDone: liveCompleteness ? (liveCompleteness.breakdown.basic.score >= 20) : true },
-                { tabId: "skills", label: `Skills (${skillsList.length}/10)`, isDone: liveCompleteness ? (liveCompleteness.breakdown.skills.score >= 15) : true },
+                { tabId: "basic", label: "Basic information", isDone: liveCompleteness ? ((liveCompleteness.breakdown?.basic?.score ?? 0) >= 20) : true },
+                { tabId: "skills", label: `Skills (${skillsList.length}/10)`, isDone: liveCompleteness ? ((liveCompleteness.breakdown?.skills?.score ?? 0) >= 15) : true },
                 { tabId: "portfolio", label: `Portfolio projects (${portfolioProjects.length})`, isDone: portfolioProjects.length > 0 },
                 { tabId: "experience", label: `Work experience (${workExperiences.length})`, isDone: workExperiences.length > 0 },
                 { tabId: "certifications", label: `Certifications (${certificationsList.length})`, isDone: certificationsList.length > 0 },
-                { tabId: "availability", label: "Availability & preferences", isDone: liveCompleteness ? (liveCompleteness.breakdown.availability.score >= 15) : true },
+                { tabId: "availability", label: "Availability & preferences", isDone: liveCompleteness ? ((liveCompleteness.breakdown?.availability?.score ?? 0) >= 15) : true },
               ].map((item) => (
                 <div
                   key={item.label}

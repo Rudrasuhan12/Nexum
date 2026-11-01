@@ -13,8 +13,17 @@ export interface ProfileForCompleteness {
   resumeFiles?: Array<{ id: string; status?: string }> | null;
 }
 
+export interface CompletenessBreakdown {
+  basic: { score: number; max: number };
+  skills: { score: number; max: number };
+  experienceOrEducation: { score: number; max: number };
+  availability: { score: number; max: number };
+  resumeOrPortfolio: { score: number; max: number };
+}
+
 export interface CompletenessResult {
   percent: number;
+  breakdown: CompletenessBreakdown;
   missing: string[];
 }
 
@@ -72,35 +81,43 @@ export function calculateProfileCompleteness(
   }
 
   // 2. Skills (15 points)
+  let skillsScore = 0;
   const hasSkills =
     (profile.freelancerSkills && profile.freelancerSkills.length > 0) ||
     (profile.skills && profile.skills.length > 0);
   if (hasSkills) {
+    skillsScore = 15;
     score += 15;
   } else {
     missing.push("skills");
   }
 
   // 3. Experience OR Education (15 points)
+  let experienceScore = 0;
   const hasExperience = profile.workExperiences && profile.workExperiences.length > 0;
   const hasEducation = profile.educationEntries && profile.educationEntries.length > 0;
   if (hasExperience || hasEducation) {
+    experienceScore = 15;
     score += 15;
   } else {
     missing.push("experience_or_education");
   }
 
   // 4. Availability (15 points)
+  let availabilityScore = 0;
   if (profile.availabilityStatus && profile.availabilityStatus.trim().length > 0) {
+    availabilityScore = 15;
     score += 15;
   } else {
     missing.push("availability");
   }
 
   // 5. Resume OR Portfolio (20 points)
+  let resumeOrPortfolioScore = 0;
   const hasResume = profile.resumeFiles && profile.resumeFiles.length > 0;
   const hasPortfolio = profile.portfolioProjects && profile.portfolioProjects.length > 0;
   if (hasResume || hasPortfolio) {
+    resumeOrPortfolioScore = 20;
     score += 20;
   } else {
     missing.push("resume_or_portfolio");
@@ -108,7 +125,13 @@ export function calculateProfileCompleteness(
 
   return {
     percent: Math.min(100, Math.max(0, score)),
+    breakdown: {
+      basic: { score: basicScore, max: 35 },
+      skills: { score: skillsScore, max: 15 },
+      experienceOrEducation: { score: experienceScore, max: 15 },
+      availability: { score: availabilityScore, max: 15 },
+      resumeOrPortfolio: { score: resumeOrPortfolioScore, max: 20 },
+    },
     missing,
   };
 }
-
