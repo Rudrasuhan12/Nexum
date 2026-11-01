@@ -36,6 +36,10 @@ import freelancerDecisionsRouter from "./routes/freelancer/decisions.js";
 import freelancerPrivateAiRouter from "./routes/freelancer/privateAi.js";
 import devWorkspaceRouter from "./routes/dev/workspace.js";
 import clientRouter from "./routes/client.js";
+import freelancerEarningsRouter from "./routes/freelancer/earnings.js";
+import freelancerPayoutsRouter from "./routes/freelancer/payouts.js";
+import paypalWebhooksRouter from "./routes/webhooks/paypal.js";
+import devPaymentsRouter from "./routes/dev/payments.js";
 
 const app = express();
 const port = env.PORT || 4000;
@@ -69,7 +73,13 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req: express.Request & { rawBody?: Buffer }, _res: express.Response, buf: Buffer) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(cookieParser());
 app.use(csrfProtection);
 
@@ -116,6 +126,17 @@ app.use("/api/dev/agreements", devAgreementsRouter);
 app.use("/api/dev/milestones", devMilestonesRouter);
 app.use("/api/dev", devMilestonesRouter);
 app.use("/api/dev", devWorkspaceRouter);
+
+// Freelancer Earnings & Payouts Routes
+app.use("/api/freelancer/earnings", freelancerEarningsRouter);
+app.use("/api/freelancer", freelancerEarningsRouter);
+app.use("/api/freelancer", freelancerPayoutsRouter);
+
+// PayPal Webhook Route
+app.use("/api/webhooks/paypal", paypalWebhooksRouter);
+
+// Dev-Only Payments Stand-in Routes
+app.use("/api/dev/payments", devPaymentsRouter);
 
 // Client Overview Routes
 app.use("/api/client", clientRouter);

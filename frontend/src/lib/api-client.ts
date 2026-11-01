@@ -2968,3 +2968,302 @@ export async function deletePrivateAiChat(chatId: string): Promise<{
     };
   }
 }
+
+// -------------------------------------------------------------
+// Phase 7: Earnings, Payments and Evidence (PayPal Sandbox)
+// -------------------------------------------------------------
+
+export interface EarningsSummary {
+  availableMinor: number;
+  fundedMinor: number;
+  inReviewMinor: number;
+  withdrawnMinor: number;
+  onHoldMinor: number;
+  currency: string;
+  demoRate: number;
+}
+
+export interface EarningsMilestoneItem {
+  id: string;
+  milestoneKey?: string | null;
+  sequence?: number | null;
+  title: string;
+  projectId: string;
+  projectTitle: string;
+  clientName: string;
+  amountMinor: number;
+  currency: string;
+  workStatus: string;
+  paymentStatus: string;
+  earningsLabel: string;
+  lastVerifiedAt?: string | null;
+  dueDate?: string | null;
+  acceptedAt?: string | null;
+}
+
+export interface PayoutAccount {
+  id: string;
+  label: string;
+  accountEmail: string;
+  last4: string;
+  createdAt: string;
+}
+
+export interface Payout {
+  id: string;
+  amountMinor: number;
+  currency: string;
+  status: string;
+  methodLabel: string;
+  idempotencyKey: string;
+  createdAt: string;
+}
+
+export interface EvidencePacket {
+  id: string;
+  paymentId: string;
+  canonicalPayload: Record<string, any>;
+  sha256Hash: string;
+  createdAt: string;
+  verified: boolean;
+}
+
+export async function fetchEarningsSummary(): Promise<{
+  success: boolean;
+  summary?: EarningsSummary;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/earnings/summary`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, summary: json.summary };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch earnings summary",
+    };
+  }
+}
+
+export async function fetchEarningsMilestones(query?: {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  projectId?: string;
+}): Promise<{
+  success: boolean;
+  milestones?: EarningsMilestoneItem[];
+  pagination?: { page: number; pageSize: number; total: number; totalPages: number };
+  error?: string;
+}> {
+  try {
+    const params = new URLSearchParams();
+    if (query?.page) params.set("page", String(query.page));
+    if (query?.pageSize) params.set("pageSize", String(query.pageSize));
+    if (query?.status) params.set("status", query.status);
+    if (query?.projectId) params.set("projectId", query.projectId);
+
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/earnings/milestones${qs}`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, milestones: json.milestones, pagination: json.pagination };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch earnings milestones",
+    };
+  }
+}
+
+export async function fetchEarningsMilestoneDetail(
+  projectId: string,
+  milestoneKey: string
+): Promise<{
+  success: boolean;
+  milestone?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/api/freelancer/earnings/milestones/${projectId}/${milestoneKey}`,
+      {
+        method: "GET",
+        credentials: "include",
+      }
+    );
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, milestone: json.milestone };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch milestone detail",
+    };
+  }
+}
+
+export async function fetchPaymentEvidence(paymentId: string): Promise<{
+  success: boolean;
+  evidence?: EvidencePacket;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/api/freelancer/payments/${paymentId}/evidence`,
+      {
+        method: "GET",
+        credentials: "include",
+      }
+    );
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, evidence: json.evidence };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch payment evidence",
+    };
+  }
+}
+
+export async function fetchPayoutAccount(): Promise<{
+  success: boolean;
+  account?: PayoutAccount | null;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/payout-account`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, account: json.account };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch payout account",
+    };
+  }
+}
+
+export async function updatePayoutAccount(data: {
+  label?: string;
+  accountEmail: string;
+  last4?: string;
+}): Promise<{
+  success: boolean;
+  account?: PayoutAccount;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/payout-account`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, account: json.account };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to update payout account",
+    };
+  }
+}
+
+export async function deletePayoutAccount(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/payout-account`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to delete payout account",
+    };
+  }
+}
+
+export async function requestPayout(data: {
+  amountMinor: number;
+  currency?: string;
+  idempotencyKey: string;
+}): Promise<{
+  success: boolean;
+  payout?: Payout;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/payouts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, payout: json.payout };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to request payout",
+    };
+  }
+}
+
+export async function fetchPayouts(): Promise<{
+  success: boolean;
+  payouts?: Payout[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/payouts`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, payouts: json.payouts };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch payouts",
+    };
+  }
+}

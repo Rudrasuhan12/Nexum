@@ -13,7 +13,10 @@ import {
   ChangeRequestStatus,
   AgreementStatus,
   ProjectState,
+  LedgerEntryKind,
+  PaymentState,
 } from "@prisma/client";
+import { buildEvidencePacket } from "../../domain/payments/evidence.js";
 import { NotFoundError, ConflictError, ValidationError } from "../../lib/errors.js";
 import { appendAuditEvent } from "../../lib/audit.js";
 import { transitionMilestone } from "../../domain/milestones/stateMachine.js";
@@ -137,6 +140,63 @@ router.post("/:id/client", async (req: Request, res: Response, next: NextFunctio
             where: { id: agreement.projectId },
             data: { state: ProjectState.COMPLETED },
           });
+        }
+
+        // Phase 7: Release captured payment and create immutable ledger entry + evidence packet
+        const capturedPayment = await tx.payment.findFirst({
+          where: { milestoneId: milestone.id, status: PaymentState.CAPTURED },
+          include: { events: true },
+        });
+
+        if (capturedPayment) {
+          const existingLedger = await tx.ledgerEntry.findFirst({
+            where: { milestoneId: milestone.id, kind: LedgerEntryKind.RELEASED },
+          });
+
+          if (!existingLedger) {
+            await tx.ledgerEntry.create({
+              data: {
+                userId: agreement.freelancerId,
+                projectId: milestone.projectId || agreement.projectId,
+                milestoneId: milestone.id,
+                milestoneKey: milestone.milestoneKey || null,
+                paymentId: capturedPayment.id,
+                amountMinor: capturedPayment.amountMinor,
+                currency: capturedPayment.currency,
+                kind: LedgerEntryKind.RELEASED,
+              },
+            });
+
+            const packetData = buildEvidencePacket({
+              projectId: (milestone.projectId || agreement.projectId)!,
+              milestoneId: milestone.id,
+              milestoneKey: milestone.milestoneKey || null,
+              paypalOrderId: capturedPayment.paypalOrderId || "",
+              paypalCaptureId: capturedPayment.paypalCaptureId || "",
+              amountMinor: capturedPayment.amountMinor,
+              currency: capturedPayment.currency,
+              acceptanceRecord: {
+                acceptedAt: new Date().toISOString(),
+                acceptedByRole: Role.CLIENT,
+                decision: "ACCEPTED",
+              },
+              eventTimeline: capturedPayment.events.map((e) => ({
+                eventType: e.eventType,
+                source: e.source,
+                receivedAt: e.receivedAt.toISOString(),
+              })),
+            });
+
+            await tx.evidencePacket.create({
+              data: {
+                paymentId: capturedPayment.id,
+                projectId: (milestone.projectId || agreement.projectId)!,
+                milestoneId: milestone.id,
+                payload: packetData.payload,
+                sha256: packetData.sha256,
+              },
+            });
+          }
         }
 
         // 5. Append audit event
@@ -265,6 +325,31 @@ router.post("/:id/client", async (req: Request, res: Response, next: NextFunctio
             status: DisputeStatus.OPEN,
           },
         });
+
+        // Phase 7: Place payment on HOLD in ledger
+        const activePayment = await tx.payment.findFirst({
+          where: { milestoneId: milestone.id, status: PaymentState.CAPTURED },
+        });
+
+        if (activePayment) {
+          await tx.ledgerEntry.create({
+            data: {
+              userId: agreement.freelancerId,
+              projectId: (milestone.projectId || agreement.projectId)!,
+              milestoneId: milestone.id,
+              milestoneKey: milestone.milestoneKey || null,
+              paymentId: activePayment.id,
+              amountMinor: activePayment.amountMinor,
+              currency: activePayment.currency,
+              kind: LedgerEntryKind.HOLD,
+            },
+          });
+
+          await tx.payment.update({
+            where: { id: activePayment.id },
+            data: { status: PaymentState.NEEDS_SUPPORT },
+          });
+        }
 
         await appendAuditEvent(
           {

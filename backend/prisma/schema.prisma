@@ -282,6 +282,9 @@ model User {
   meetingResponses       MeetingResponse[]
   aiChats                AIChat[]
   aiCalls                AICall[]
+  ledgerEntries          LedgerEntry[]
+  payouts                Payout[]
+  payoutAccount          PayoutAccount?
 }
 
 model FreelancerProfile {
@@ -386,6 +389,9 @@ model Project {
   workspaceTasks   WorkspaceTask[]
   meetings         Meeting[]
   projectDecisions ProjectDecision[]
+  requireFunding   Boolean             @default(false)
+  payments         Payment[]
+  ledgerEntries    LedgerEntry[]
 
   @@index([state, visibility])
   @@index([budgetCents])
@@ -587,8 +593,10 @@ model Milestone {
   submissions           MilestoneSubmission[]
   disputes              Dispute[]
   paymentAttempts       PaymentAttempt[]
-  ledgerEntries         LedgerEntry[]
+  legacyLedgerEntries   LegacyLedgerEntry[] @relation("LegacyLedger")
   disputeHolds          DisputeHold[]
+  payments              Payment[]
+  ledgerEntries         LedgerEntry[]
 
   @@index([agreementId, sequence])
   @@index([projectId, workStatus])
@@ -739,10 +747,10 @@ model AIOutput {
   createdAt        DateTime       @default(now())
 }
 
-model LedgerEntry {
+model LegacyLedgerEntry {
   id             String     @id @default(cuid())
   milestoneId    String
-  milestone      Milestone  @relation(fields: [milestoneId], references: [id], onDelete: Restrict)
+  milestone      Milestone  @relation("LegacyLedger", fields: [milestoneId], references: [id], onDelete: Restrict)
   type           LedgerType
   amountCents    Int
   currency       String     @default("USD")
@@ -750,6 +758,7 @@ model LedgerEntry {
   createdAt      DateTime   @default(now())
 
   @@index([milestoneId, type])
+  @@map("LedgerEntry")
 }
 
 model AuditEvent {
@@ -1485,4 +1494,132 @@ model AICall {
 
   @@index([userId, purpose])
   @@map("ai_calls")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: Earnings, Payments & Evidence (PayPal Sandbox)
+// ---------------------------------------------------------------------------
+
+enum PaymentEventSource {
+  API
+  WEBHOOK
+  RECONCILE
+  DEV
+}
+
+enum LedgerEntryKind {
+  FUNDED
+  RELEASED
+  REFUNDED
+  HOLD
+  PAYOUT_SIMULATED
+}
+
+enum PayoutStatus {
+  SIMULATED_PAID
+  CANCELLED
+}
+
+model Payment {
+  id                   String        @id @default(cuid())
+  projectId            String
+  project              Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId          String
+  milestone            Milestone     @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  milestoneKey         String?
+  amountMinor          Int           @default(0)
+  currency             String        @default("USD")
+  status               PaymentState  @default(NOT_STARTED)
+  paypalOrderId        String?       @unique
+  paypalCaptureId      String?       @unique
+  requestId            String        @default(cuid())
+  agreementVersionHash String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  events               PaymentEvent[]
+  ledgerEntries        LedgerEntry[]
+  evidencePacket       EvidencePacket?
+
+  @@index([projectId, status])
+  @@index([milestoneId])
+  @@map("payments")
+}
+
+model PaymentEvent {
+  id            String             @id @default(cuid())
+  paymentId     String
+  payment       Payment            @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  source        PaymentEventSource @default(API)
+  paypalEventId String?            @unique
+  eventType     String
+  rawPayload    Json
+  verified      Boolean            @default(false)
+  receivedAt    DateTime           @default(now())
+
+  @@index([paymentId])
+  @@map("payment_events")
+}
+
+model LedgerEntry {
+  id           String          @id @default(cuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  projectId    String
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneKey String?
+  milestoneId  String?
+  milestone    Milestone?      @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  kind         LedgerEntryKind
+  amountMinor  Int
+  currency     String          @default("USD")
+  paymentId    String?
+  payment      Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdAt    DateTime        @default(now())
+
+  @@index([userId, kind])
+  @@index([projectId])
+  @@map("ledger_entries")
+}
+
+model Payout {
+  id             String       @id @default(cuid())
+  freelancerId   String
+  freelancer     User         @relation(fields: [freelancerId], references: [id], onDelete: Restrict)
+  amountMinor    Int
+  currency       String       @default("USD")
+  status         PayoutStatus @default(SIMULATED_PAID)
+  methodLabel    String       @default("PayPal (Demo)")
+  idempotencyKey String       @unique
+  createdAt      DateTime     @default(now())
+
+  @@index([freelancerId, status])
+  @@map("payouts")
+}
+
+model PayoutAccount {
+  id           String   @id @default(cuid())
+  freelancerId String   @unique
+  freelancer   User     @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+  label        String   @default("Personal PayPal")
+  accountEmail String
+  last4        String   @default("0000")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("payout_accounts")
+}
+
+model EvidencePacket {
+  id          String   @id @default(cuid())
+  paymentId   String   @unique
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  projectId   String
+  milestoneId String
+  payload     Json
+  sha256      String
+  createdAt   DateTime @default(now())
+
+  @@index([projectId, milestoneId])
+  @@map("evidence_packets")
 }

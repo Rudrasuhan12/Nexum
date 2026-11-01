@@ -4,7 +4,8 @@ import { prisma } from "../../prisma.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { NotFoundError, ValidationError, ConflictError, ForbiddenError } from "../../lib/errors.js";
 import { appendAuditEvent } from "../../lib/audit.js";
-import { Role, MilestoneWorkStatus, SubmissionStatus, ProjectState } from "@prisma/client";
+import { Role, MilestoneWorkStatus,
+  PaymentState, SubmissionStatus, ProjectState } from "@prisma/client";
 import { transitionMilestone } from "../../domain/milestones/stateMachine.js";
 import { isOverdue } from "../../domain/milestones/isOverdue.js";
 import { deriveProjectStatus } from "../../domain/milestones/projectStatus.js";
@@ -183,6 +184,10 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
               client: { select: { id: true, name: true } },
             },
           },
+          payments: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
         },
         orderBy,
         skip: (page - 1) * pageSize,
@@ -202,14 +207,17 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
         dueDate: m.dueDate ? m.dueDate.toISOString() : null,
         overdue,
         isOverdue: overdue,
-        paymentStatus: { available: false, status: "NOT_STARTED" },
+        paymentStatus: {
+          available: (m.payments[0]?.status === PaymentState.CAPTURED && m.workStatus === MilestoneWorkStatus.ACCEPTED),
+          status: m.payments[0]?.status || "NOT_STARTED",
+        },
         amountMinor: m.amountMinor,
         currency: m.currency,
         workStatus: m.workStatus,
         nextAction: getMilestoneNextAction(m.workStatus, overdue),
         payment: {
-          available: false,
-          status: "NOT_STARTED",
+          available: (m.payments[0]?.status === PaymentState.CAPTURED && m.workStatus === MilestoneWorkStatus.ACCEPTED),
+          status: m.payments[0]?.status || "NOT_STARTED",
         },
       };
     });
@@ -259,6 +267,10 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction): Prom
         disputes: {
           orderBy: { createdAt: "desc" },
         },
+        payments: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
       },
     });
 
@@ -290,9 +302,15 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction): Prom
         acceptedAt: milestone.acceptedAt ? milestone.acceptedAt.toISOString() : null,
         overdue,
         isOverdue: overdue,
-        paymentStatus: { available: false, status: "NOT_STARTED" },
+        paymentStatus: {
+          available: (milestone.payments[0]?.status === PaymentState.CAPTURED && milestone.workStatus === MilestoneWorkStatus.ACCEPTED),
+          status: milestone.payments[0]?.status || "NOT_STARTED",
+        },
         nextAction: getMilestoneNextAction(milestone.workStatus, overdue),
-        payment: { available: false, status: "NOT_STARTED" },
+        payment: {
+          available: (milestone.payments[0]?.status === PaymentState.CAPTURED && milestone.workStatus === MilestoneWorkStatus.ACCEPTED),
+          status: milestone.payments[0]?.status || "NOT_STARTED",
+        },
         project: milestone.project,
         submissions: milestone.submissions.map((s) => ({
           id: s.id,
@@ -344,8 +362,25 @@ router.post("/:id/start", async (req: Request, res: Response, next: NextFunction
 
     const milestone = await prisma.milestone.findFirst({
       where: { id, agreement: { freelancerId } },
+      include: {
+        project: true,
+        payments: {
+          orderBy: { createdAt: "desc" },
+        },
+      },
     });
     if (!milestone) throw new NotFoundError("Milestone not found");
+
+    // Phase 7 Milestone Funding Gate
+    if (milestone.project?.requireFunding) {
+      const isFunded = milestone.payments.some((p) => p.status === PaymentState.CAPTURED);
+      if (!isFunded) {
+        throw new ConflictError(
+          "Funding gate: Milestone work cannot start until payment is funded and CAPTURED",
+          "PAYMENT_NOT_FUNDED"
+        );
+      }
+    }
 
     const { newStatus } = transitionMilestone(milestone.workStatus, "start", Role.FREELANCER);
 
