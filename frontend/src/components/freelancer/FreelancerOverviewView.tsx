@@ -389,7 +389,7 @@ export default function FreelancerOverviewView({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50/80 border border-slate-100">
               <div>
                 <div className="text-2xl sm:text-3xl font-extrabold font-mono text-slate-900">
-                  ₹1,20,000
+                  {dashboardData ? `${(((dashboardData.earningsSnapshot.availableMinor || 0) + (dashboardData.earningsSnapshot.withdrawnMinor || 0)) / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${dashboardData.earningsSnapshot.currency}` : "$4,000.00 USD"}
                 </div>
                 <div className="text-xs text-slate-500 font-medium">Total Earnings</div>
               </div>
@@ -397,13 +397,17 @@ export default function FreelancerOverviewView({
               <div className="flex flex-wrap items-center gap-6 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-md bg-[#4f46e5] shrink-0" />
-                  <span className="text-slate-600">Completed Payments</span>
-                  <strong className="font-mono text-slate-900">₹1,00,000</strong>
+                  <span className="text-slate-600">Available / Released</span>
+                  <strong className="font-mono text-slate-900">
+                    {dashboardData ? `${((dashboardData.earningsSnapshot.availableMinor || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "$3,000.00"}
+                  </strong>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-md bg-[#c7d2fe] shrink-0" />
-                  <span className="text-slate-600">Pending Payments</span>
-                  <strong className="font-mono text-slate-900">₹20,000</strong>
+                  <span className="text-slate-600">Funded in Escrow</span>
+                  <strong className="font-mono text-slate-900">
+                    {dashboardData ? `${(((dashboardData.earningsSnapshot.fundedMinor || 0) + (dashboardData.earningsSnapshot.inReviewMinor || 0)) / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "$9,500.00"}
+                  </strong>
                 </div>
               </div>
 
@@ -490,7 +494,7 @@ export default function FreelancerOverviewView({
                   <span className="w-1.5 h-1.5 rounded-full bg-[#4f46e5]" />
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#eef2ff] text-[#4f46e5] border border-indigo-100">
-                  3 in progress
+                  {dashboardData ? `${dashboardData.activeProjects.count} in progress` : "3 in progress"}
                 </span>
               </div>
               <button
@@ -505,185 +509,73 @@ export default function FreelancerOverviewView({
 
             {/* Inner Cards Container */}
             <div className="space-y-3">
-              {/* Project 1: E-commerce Website */}
-              <div
-                onClick={() => onNavigateTab("workspace")}
-                className="p-4 sm:p-4.5 rounded-xl border border-slate-200/80 bg-slate-50/90 hover:bg-white hover:border-[#4f46e5]/40 hover:shadow-xs transition-all duration-200 cursor-pointer group space-y-3"
-              >
-                <div className="flex items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/90 text-[#4f46e5] shadow-2xs flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:border-indigo-200 transition-all">
-                      <ShoppingCart className="w-5 h-5" />
+              {(dashboardData && dashboardData.activeProjects.items.length > 0
+                ? dashboardData.activeProjects.items
+                : [
+                    { id: "prj_techkart_ecommerce", title: "TechKart – E-commerce Website", client: { name: "TechKart" }, status: "ACTIVE", milestonesTotal: 3, milestonesAccepted: 1 },
+                    { id: "prj_fitlife_mobile", title: "Mobile Fitness App", client: { name: "FitLife" }, status: "ACTIVE", milestonesTotal: 2, milestonesAccepted: 0 },
+                    { id: "prj_nexaai_platform", title: "AI Support Platform", client: { name: "NexaAI" }, status: "ACTIVE", milestonesTotal: 2, milestonesAccepted: 0 },
+                  ]
+              ).map((proj: any, idx: number) => {
+                const completionPct = proj.milestonesTotal > 0 ? Math.round((proj.milestonesAccepted / proj.milestonesTotal) * 100) : (idx === 0 ? 60 : idx === 1 ? 100 : 40);
+                return (
+                  <div
+                    key={`${proj.id}_${idx}`}
+                    onClick={() => onNavigateTab("workspace")}
+                    className="p-4 sm:p-4.5 rounded-xl border border-slate-200/80 bg-slate-50/90 hover:bg-white hover:border-[#4f46e5]/40 hover:shadow-xs transition-all duration-200 cursor-pointer group space-y-3"
+                  >
+                    <div className="flex items-start sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/90 text-[#4f46e5] shadow-2xs flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:border-indigo-200 transition-all">
+                          {idx === 0 ? <ShoppingCart className="w-5 h-5" /> : idx === 1 ? <Smartphone className="w-5 h-5 text-purple-600" /> : <Code2 className="w-5 h-5 text-sky-600" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#4f46e5] transition-colors truncate">
+                              {proj.title}
+                            </h3>
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                              {proj.status === "ACTIVE" ? "In Progress" : proj.status}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5 truncate">
+                            Client: <strong className="text-slate-700 font-semibold">{proj.client?.name || "Client"}</strong> · Verified Escrow Contract
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="hidden sm:inline-flex px-3 py-1.5 rounded-xl border border-slate-200 bg-white group-hover:bg-[#4f46e5] group-hover:border-[#4f46e5] group-hover:text-white text-xs font-bold text-slate-700 shadow-2xs transition">
+                          Open Workspace →
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#4f46e5] group-hover:translate-x-0.5 transition-all" />
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#4f46e5] transition-colors truncate">
-                          E-commerce Website
-                        </h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-                          In Progress
+
+                    {/* Progress & Milestone Meta Bar */}
+                    <div className="pt-2.5 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                      <div className="flex items-center gap-2 min-w-0 text-slate-600">
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
+                          Milestones:
+                        </span>
+                        <span className="font-bold text-slate-800 truncate">
+                          {proj.milestonesAccepted || 0} of {proj.milestonesTotal || 0} Accepted
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">
-                        Client: <strong className="text-slate-700 font-semibold">TechKart</strong> · UI/UX Design & Frontend Development
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="hidden sm:inline-flex px-3 py-1.5 rounded-xl border border-slate-200 bg-white group-hover:bg-[#4f46e5] group-hover:border-[#4f46e5] group-hover:text-white text-xs font-bold text-slate-700 shadow-2xs transition">
-                      Open Workspace →
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#4f46e5] group-hover:translate-x-0.5 transition-all" />
-                  </div>
-                </div>
-
-                {/* Progress & Milestone Meta Bar */}
-                <div className="pt-2.5 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
-                  <div className="flex items-center gap-2 min-w-0 text-slate-600">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
-                      Next Milestone:
-                    </span>
-                    <span className="font-bold text-slate-800 truncate">
-                      Admin Dashboard UI
-                    </span>
-                    <span className="text-slate-300 shrink-0">·</span>
-                    <span className="text-slate-500 font-medium shrink-0">
-                      Due Oct 28, 2026
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3 w-full sm:w-52 shrink-0">
-                    <span className="text-[11px] text-slate-500 font-medium">Completion</span>
-                    <div className="flex-1 h-2 rounded-full bg-slate-200/80 overflow-hidden">
-                      <div className="h-full rounded-full bg-[#4f46e5] transition-all duration-300" style={{ width: "60%" }} />
-                    </div>
-                    <span className="font-mono font-bold text-slate-900 text-xs shrink-0 w-8 text-right">
-                      60%
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Project 2: Mobile Fitness App */}
-              <div
-                onClick={() => onNavigateTab("projects")}
-                className="p-4 sm:p-4.5 rounded-xl border border-slate-200/80 bg-slate-50/90 hover:bg-white hover:border-purple-300 hover:shadow-xs transition-all duration-200 cursor-pointer group space-y-3"
-              >
-                <div className="flex items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/90 text-purple-600 shadow-2xs flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:border-purple-200 transition-all">
-                      <Smartphone className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-sm font-bold text-slate-900 group-hover:text-purple-600 transition-colors truncate">
-                          Mobile Fitness App
-                        </h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/80">
-                          In Review
+                      <div className="flex items-center gap-3 w-full sm:w-52 shrink-0">
+                        <span className="text-[11px] text-slate-500 font-medium">Completion</span>
+                        <div className="flex-1 h-2 rounded-full bg-slate-200/80 overflow-hidden">
+                          <div className="h-full rounded-full bg-[#4f46e5] transition-all duration-300" style={{ width: `${completionPct}%` }} />
+                        </div>
+                        <span className="font-mono font-bold text-slate-900 text-xs shrink-0 w-8 text-right">
+                          {completionPct}%
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">
-                        Client: <strong className="text-slate-700 font-semibold">FitLife</strong> · API Integration & Backend Deliverables
-                      </p>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="hidden sm:inline-flex px-3 py-1.5 rounded-xl border border-slate-200 bg-white group-hover:bg-purple-600 group-hover:border-purple-600 group-hover:text-white text-xs font-bold text-slate-700 shadow-2xs transition">
-                      View Deliverables →
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
-                  </div>
-                </div>
-
-                {/* Progress & Milestone Meta Bar */}
-                <div className="pt-2.5 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
-                  <div className="flex items-center gap-2 min-w-0 text-slate-600">
-                    <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wider shrink-0">
-                      Review Status:
-                    </span>
-                    <span className="font-bold text-slate-800 truncate">
-                      Core Workflows & Biometric Sync
-                    </span>
-                    <span className="text-slate-300 shrink-0">·</span>
-                    <span className="text-amber-600 font-semibold shrink-0">
-                      Submitted Oct 20 (Under Review)
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3 w-full sm:w-52 shrink-0">
-                    <span className="text-[11px] text-slate-500 font-medium">Completion</span>
-                    <div className="flex-1 h-2 rounded-full bg-slate-200/80 overflow-hidden">
-                      <div className="h-full rounded-full bg-purple-600 transition-all duration-300" style={{ width: "100%" }} />
-                    </div>
-                    <span className="font-mono font-bold text-purple-700 text-xs shrink-0 w-8 text-right">
-                      100%
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Project 3: AI Support Platform */}
-              <div
-                onClick={() => onNavigateTab("workspace")}
-                className="p-4 sm:p-4.5 rounded-xl border border-slate-200/80 bg-slate-50/90 hover:bg-white hover:border-sky-300 hover:shadow-xs transition-all duration-200 cursor-pointer group space-y-3"
-              >
-                <div className="flex items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/90 text-sky-600 shadow-2xs flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:border-sky-200 transition-all">
-                      <Code2 className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-sm font-bold text-slate-900 group-hover:text-sky-600 transition-colors truncate">
-                          AI Support Platform
-                        </h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-                          In Progress
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">
-                        Client: <strong className="text-slate-700 font-semibold">NexaAI</strong> · Full Stack Development & LLM Agent
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="hidden sm:inline-flex px-3 py-1.5 rounded-xl border border-slate-200 bg-white group-hover:bg-sky-600 group-hover:border-sky-600 group-hover:text-white text-xs font-bold text-slate-700 shadow-2xs transition">
-                      Open Workspace →
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-sky-600 group-hover:translate-x-0.5 transition-all" />
-                  </div>
-                </div>
-
-                {/* Progress & Milestone Meta Bar */}
-                <div className="pt-2.5 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
-                  <div className="flex items-center gap-2 min-w-0 text-slate-600">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
-                      Next Milestone:
-                    </span>
-                    <span className="font-bold text-slate-800 truncate">
-                      Core Features & Streaming Agent
-                    </span>
-                    <span className="text-slate-300 shrink-0">·</span>
-                    <span className="text-slate-500 font-medium shrink-0">
-                      Due Nov 5, 2026
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3 w-full sm:w-52 shrink-0">
-                    <span className="text-[11px] text-slate-500 font-medium">Completion</span>
-                    <div className="flex-1 h-2 rounded-full bg-slate-200/80 overflow-hidden">
-                      <div className="h-full rounded-full bg-sky-600 transition-all duration-300" style={{ width: "40%" }} />
-                    </div>
-                    <span className="font-mono font-bold text-slate-900 text-xs shrink-0 w-8 text-right">
-                      40%
-                    </span>
-                  </div>
-                </div>
-              </div>
+                );
+              })}
             </div>
           </section>
 

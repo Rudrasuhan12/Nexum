@@ -12,6 +12,7 @@ import {
   MessageDeliveryStatus,
   MessageClass,
   MediationState,
+  LedgerEntryKind,
 } from "@prisma/client";
 import { hashPassword } from "../src/lib/auth.js";
 
@@ -938,7 +939,7 @@ async function main() {
       update: {
         clientId: clientAlexChen.id,
         title: "TechKart – E-commerce Website",
-        state: ProjectState.IN_PROGRESS,
+        state: ProjectState.ACTIVE,
         budgetCents: 1000000,
       },
       create: {
@@ -950,7 +951,7 @@ async function main() {
         budgetType: "FIXED_PRICE",
         budgetCents: 1000000,
         currency: "USD",
-        state: ProjectState.IN_PROGRESS,
+        state: ProjectState.ACTIVE,
         visibility: "PUBLIC",
       },
     });
@@ -1137,6 +1138,292 @@ async function main() {
     });
 
     console.log(`✅ Seeded TechKart Workspace project, agreement v3, and conversation for ${rohanUser.name}.`);
+
+    // Payments & Ledger for TechKart
+    const p1 = await prisma.payment.upsert({
+      where: { paypalCaptureId: 'cap_techkart_1' },
+      update: { status: PaymentState.CAPTURED },
+      create: {
+        projectId: techKartProject.id,
+        milestoneId: 'mls_techkart_1',
+        amountMinor: 200000,
+        currency: 'USD',
+        status: PaymentState.CAPTURED,
+        paypalOrderId: 'order_techkart_1',
+        paypalCaptureId: 'cap_techkart_1',
+      },
+    });
+
+    const le1 = await prisma.ledgerEntry.findFirst({ where: { userId: rohanUser.id, milestoneId: 'mls_techkart_1', kind: LedgerEntryKind.RELEASED } });
+    if (!le1) {
+      await prisma.ledgerEntry.create({
+        data: {
+          userId: rohanUser.id,
+          projectId: techKartProject.id,
+          milestoneId: 'mls_techkart_1',
+          kind: LedgerEntryKind.RELEASED,
+          amountMinor: 200000,
+          currency: 'USD',
+          paymentId: p1.id,
+        },
+      });
+    }
+
+    await prisma.payment.upsert({
+      where: { paypalCaptureId: 'cap_techkart_2' },
+      update: { status: PaymentState.CAPTURED },
+      create: {
+        projectId: techKartProject.id,
+        milestoneId: 'mls_techkart_2',
+        amountMinor: 400000,
+        currency: 'USD',
+        status: PaymentState.CAPTURED,
+        paypalOrderId: 'order_techkart_2',
+        paypalCaptureId: 'cap_techkart_2',
+      },
+    });
+
+    // 4c. Seed FitLife Mobile Project (Active, In Review)
+    const clientSarah = await prisma.user.upsert({
+      where: { email: 'sarah.jenkins@fitlife.demo' },
+      update: {},
+      create: {
+        id: 'usr_client_sarah_jenkins',
+        email: 'sarah.jenkins@fitlife.demo',
+        name: 'Sarah Jenkins',
+        role: Role.CLIENT,
+        status: 'ACTIVE',
+        locale: 'en-US',
+        timezone: 'America/New_York',
+        passwordHash: defaultPasswordHash,
+      },
+    });
+
+    const fitlifeProject = await prisma.project.upsert({
+      where: { id: 'prj_fitlife_mobile' },
+      update: { state: ProjectState.ACTIVE },
+      create: {
+        id: 'prj_fitlife_mobile',
+        clientId: clientSarah.id,
+        title: 'Mobile Fitness App',
+        description: 'Cross-platform biometric tracking and offline sync application.',
+        category: 'Mobile Development',
+        budgetType: 'FIXED_PRICE',
+        budgetCents: 600000,
+        currency: 'USD',
+        state: ProjectState.ACTIVE,
+        visibility: 'PUBLIC',
+      },
+    });
+
+    const agrFitlife = await prisma.agreement.upsert({
+      where: { id: 'agr_fitlife_active' },
+      update: { status: AgreementStatus.ACTIVE },
+      create: {
+        id: 'agr_fitlife_active',
+        projectId: fitlifeProject.id,
+        clientId: clientSarah.id,
+        freelancerId: rohanUser.id,
+        status: AgreementStatus.ACTIVE,
+      },
+    });
+
+    const mlsFitlife1 = await prisma.milestone.upsert({
+      where: { id: 'mls_fitlife_1' },
+      update: { workStatus: MilestoneWorkStatus.AWAITING_CLIENT_REVIEW },
+      create: {
+        id: 'mls_fitlife_1',
+        projectId: fitlifeProject.id,
+        agreementId: agrFitlife.id,
+        title: 'Core Workflows & Biometric Sync',
+        description: 'Sensor data pipeline and workout summaries',
+        sequence: 1,
+        amountMinor: 300000,
+        currency: 'USD',
+        workStatus: MilestoneWorkStatus.AWAITING_CLIENT_REVIEW,
+        dueDate: new Date(Date.now() + 86400000 * 5),
+      },
+    });
+
+    await prisma.payment.upsert({
+      where: { paypalCaptureId: 'cap_fitlife_1' },
+      update: { status: PaymentState.CAPTURED },
+      create: {
+        projectId: fitlifeProject.id,
+        milestoneId: mlsFitlife1.id,
+        amountMinor: 300000,
+        currency: 'USD',
+        status: PaymentState.CAPTURED,
+        paypalOrderId: 'order_fitlife_1',
+        paypalCaptureId: 'cap_fitlife_1',
+      },
+    });
+
+    // 4d. Seed NexaAI Support Platform (Active, In Progress)
+    const clientMarcus = await prisma.user.upsert({
+      where: { email: 'marcus.vance@nexaai.demo' },
+      update: {},
+      create: {
+        id: 'usr_client_marcus_vance',
+        email: 'marcus.vance@nexaai.demo',
+        name: 'Marcus Vance',
+        role: Role.CLIENT,
+        status: 'ACTIVE',
+        locale: 'en-US',
+        timezone: 'America/Los_Angeles',
+        passwordHash: defaultPasswordHash,
+      },
+    });
+
+    const nexaaiProject = await prisma.project.upsert({
+      where: { id: 'prj_nexaai_platform' },
+      update: { state: ProjectState.ACTIVE },
+      create: {
+        id: 'prj_nexaai_platform',
+        clientId: clientMarcus.id,
+        title: 'AI Support Platform',
+        description: 'Real-time LLM support agent with tool calling and vector retrieval.',
+        category: 'AI & Data',
+        budgetType: 'FIXED_PRICE',
+        budgetCents: 500000,
+        currency: 'USD',
+        state: ProjectState.ACTIVE,
+        visibility: 'PUBLIC',
+      },
+    });
+
+    const agrNexaai = await prisma.agreement.upsert({
+      where: { id: 'agr_nexaai_active' },
+      update: { status: AgreementStatus.ACTIVE },
+      create: {
+        id: 'agr_nexaai_active',
+        projectId: nexaaiProject.id,
+        clientId: clientMarcus.id,
+        freelancerId: rohanUser.id,
+        status: AgreementStatus.ACTIVE,
+      },
+    });
+
+    const mlsNexaai1 = await prisma.milestone.upsert({
+      where: { id: 'mls_nexaai_1' },
+      update: { workStatus: MilestoneWorkStatus.IN_PROGRESS },
+      create: {
+        id: 'mls_nexaai_1',
+        projectId: nexaaiProject.id,
+        agreementId: agrNexaai.id,
+        title: 'Core Features & Streaming Agent',
+        description: 'SSE streaming response and tool validation',
+        sequence: 1,
+        amountMinor: 250000,
+        currency: 'USD',
+        workStatus: MilestoneWorkStatus.IN_PROGRESS,
+        dueDate: new Date(Date.now() + 86400000 * 12),
+      },
+    });
+
+    await prisma.payment.upsert({
+      where: { paypalCaptureId: 'cap_nexaai_1' },
+      update: { status: PaymentState.CAPTURED },
+      create: {
+        projectId: nexaaiProject.id,
+        milestoneId: mlsNexaai1.id,
+        amountMinor: 250000,
+        currency: 'USD',
+        status: PaymentState.CAPTURED,
+        paypalOrderId: 'order_nexaai_1',
+        paypalCaptureId: 'cap_nexaai_1',
+      },
+    });
+
+    // 4e. Completed Project: SaaS Analytics Platform
+    const saasProject = await prisma.project.upsert({
+      where: { id: 'prj_saas_analytics' },
+      update: { state: ProjectState.COMPLETED },
+      create: {
+        id: 'prj_saas_analytics',
+        clientId: clientAlexChen.id,
+        title: 'SaaS Analytics Platform',
+        description: 'Analytics reporting dashboard and metric queries.',
+        category: 'Web Development',
+        budgetType: 'FIXED_PRICE',
+        budgetCents: 400000,
+        currency: 'USD',
+        state: ProjectState.COMPLETED,
+        visibility: 'PUBLIC',
+      },
+    });
+
+    const agrSaas = await prisma.agreement.upsert({
+      where: { id: 'agr_saas_completed' },
+      update: { status: AgreementStatus.COMPLETED },
+      create: {
+        id: 'agr_saas_completed',
+        projectId: saasProject.id,
+        clientId: clientAlexChen.id,
+        freelancerId: rohanUser.id,
+        status: AgreementStatus.COMPLETED,
+      },
+    });
+
+    const mlsSaas1 = await prisma.milestone.upsert({
+      where: { id: 'mls_saas_1' },
+      update: { workStatus: MilestoneWorkStatus.ACCEPTED },
+      create: {
+        id: 'mls_saas_1',
+        projectId: saasProject.id,
+        agreementId: agrSaas.id,
+        title: 'Dashboard Architecture & Visuals',
+        sequence: 1,
+        amountMinor: 200000,
+        currency: 'USD',
+        workStatus: MilestoneWorkStatus.ACCEPTED,
+        dueDate: new Date('2026-09-15'),
+      },
+    });
+
+    const pSaas1 = await prisma.payment.upsert({
+      where: { paypalCaptureId: 'cap_saas_1' },
+      update: { status: PaymentState.CAPTURED },
+      create: {
+        projectId: saasProject.id,
+        milestoneId: mlsSaas1.id,
+        amountMinor: 200000,
+        currency: 'USD',
+        status: PaymentState.CAPTURED,
+        paypalOrderId: 'order_saas_1',
+        paypalCaptureId: 'cap_saas_1',
+      },
+    });
+
+    const leSaas1 = await prisma.ledgerEntry.findFirst({ where: { userId: rohanUser.id, milestoneId: 'mls_saas_1', kind: LedgerEntryKind.RELEASED } });
+    if (!leSaas1) {
+      await prisma.ledgerEntry.create({
+        data: {
+          userId: rohanUser.id,
+          projectId: saasProject.id,
+          milestoneId: mlsSaas1.id,
+          kind: LedgerEntryKind.RELEASED,
+          amountMinor: 200000,
+          currency: 'USD',
+          paymentId: pSaas1.id,
+        },
+      });
+    }
+
+    const lePayout = await prisma.ledgerEntry.findFirst({ where: { userId: rohanUser.id, kind: LedgerEntryKind.PAYOUT_SIMULATED } });
+    if (!lePayout) {
+      await prisma.ledgerEntry.create({
+        data: {
+          userId: rohanUser.id,
+          projectId: saasProject.id,
+          kind: LedgerEntryKind.PAYOUT_SIMULATED,
+          amountMinor: 100000,
+          currency: 'USD',
+        },
+      });
+    }
+
+    console.log(`✅ Seeded 3 active projects, 1 completed project, payments and ledger for ${rohanUser.name}.`);
   }
 
 
