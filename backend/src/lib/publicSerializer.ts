@@ -10,12 +10,18 @@ export interface ViewerContext {
  * - Omit empty/null fields.
  * - Handles hidden profiles: returns null if hidden and viewer is not the owner (caller sends 404).
  * - Handles resume visibility: includes public resume URL only if visibility is PUBLIC.
+ * - Phase 8: respects user.visibility, user.showRate, and user.showPortfolio privacy flags.
  */
 export function toPublicProfile(profile: any, context: ViewerContext = { isOwner: false }) {
   if (!profile) return null;
 
-  // If searchVisibility is HIDDEN and viewer is not the profile owner, reject
-  if (profile.searchVisibility === "HIDDEN" && !context.isOwner) {
+  // Privacy flag checks from User settings (Phase 8)
+  const userVisibility = profile.user?.visibility || "PUBLIC";
+  const showRate = profile.user?.showRate !== false;
+  const showPortfolio = profile.user?.showPortfolio !== false;
+
+  // If searchVisibility is HIDDEN or user visibility is PRIVATE and viewer is not the profile owner, reject
+  if ((profile.searchVisibility === "HIDDEN" || userVisibility === "PRIVATE") && !context.isOwner) {
     return null;
   }
 
@@ -52,8 +58,8 @@ export function toPublicProfile(profile: any, context: ViewerContext = { isOwner
   }
   if (profile.experienceLevel) result.experienceLevel = profile.experienceLevel;
 
-  // Rates in integer minor units
-  if (profile.rateHourlyMinor !== null && profile.rateHourlyMinor !== undefined) {
+  // Rates in integer minor units (omitted if user set showRate: false and viewer not owner)
+  if ((showRate || context.isOwner) && profile.rateHourlyMinor !== null && profile.rateHourlyMinor !== undefined) {
     result.hourlyRate = {
       amountMinor: profile.rateHourlyMinor,
       currency: profile.rateCurrency || "USD",
@@ -83,8 +89,8 @@ export function toPublicProfile(profile: any, context: ViewerContext = { isOwner
     });
   }
 
-  // Portfolio
-  const rawPortfolio = profile.portfolioProjects || [];
+  // Portfolio (omitted if user set showPortfolio: false and viewer not owner)
+  const rawPortfolio = (showPortfolio || context.isOwner) ? (profile.portfolioProjects || []) : [];
   if (rawPortfolio.length > 0) {
     result.portfolio = rawPortfolio.map((p: any) => {
       const portObj: Record<string, any> = {
@@ -184,4 +190,3 @@ export function toPublicProfile(profile: any, context: ViewerContext = { isOwner
 
   return result;
 }
-

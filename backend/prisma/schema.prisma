@@ -285,6 +285,19 @@ model User {
   ledgerEntries          LedgerEntry[]
   payouts                Payout[]
   payoutAccount          PayoutAccount?
+
+  // Phase 8 additions:
+  deletedAt                  DateTime?
+  pendingEmail               String?
+  emailChangeToken           String?
+  emailChangeTokenExpiresAt  DateTime?
+  workingHours               Json?
+  visibility                 String    @default("PUBLIC")
+  showRate                   Boolean   @default(true)
+  showPortfolio              Boolean   @default(true)
+
+  notifications              Notification[]
+  notificationPrefs          NotificationPref[]
 }
 
 model FreelancerProfile {
@@ -1623,3 +1636,40 @@ model EvidencePacket {
   @@index([projectId, milestoneId])
   @@map("evidence_packets")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 8: Notifications & Preferences
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String
+  title      String
+  body       String
+  linkKind   String
+  linkId     String
+  readAt     DateTime?
+  dedupeKey  String?   @unique
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, readAt])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model NotificationPref {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  inApp     Boolean  @default(true)
+  email     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type])
+  @@map("notification_prefs")
+}
+

@@ -40,6 +40,10 @@ import freelancerEarningsRouter from "./routes/freelancer/earnings.js";
 import freelancerPayoutsRouter from "./routes/freelancer/payouts.js";
 import paypalWebhooksRouter from "./routes/webhooks/paypal.js";
 import devPaymentsRouter from "./routes/dev/payments.js";
+import freelancerDashboardRouter from "./routes/freelancer/dashboard.js";
+import notificationsRouter from "./routes/notifications.js";
+import freelancerSettingsRouter from "./routes/freelancer/settings.js";
+import freelancerAssistantRouter from "./routes/freelancer/assistant.js";
 
 const app = express();
 const port = env.PORT || 4000;
@@ -91,6 +95,12 @@ app.use("/api/users", usersRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/payments", paymentsRouter);
 
+// Phase 8: Dashboard Summary, Notifications, Settings & Scoped Nexum AI Assistant
+app.use("/api/freelancer/dashboard", freelancerDashboardRouter);
+app.use("/api/freelancer/settings", freelancerSettingsRouter);
+app.use("/api/freelancer/assistant", freelancerAssistantRouter);
+app.use("/api/notifications", notificationsRouter);
+
 // Freelancer Onboarding & Resume Routes
 app.use("/api/freelancer", freelancerOnboardingRouter);
 app.use("/api/freelancer/onboarding", freelancerOnboardingRouter);
@@ -140,6 +150,8 @@ app.use("/api/dev/payments", devPaymentsRouter);
 
 // Client Overview Routes
 app.use("/api/client", clientRouter);
+
+
 
 // Root fallback
 app.get("/", (_req: express.Request, res: express.Response) => {

@@ -22,6 +22,7 @@
     "verify:phase5": "tsx --env-file=.env tests/verify-phase5.ts",
     "verify:phase6": "tsx --env-file=.env tests/verify-phase6.ts",
     "verify:phase7": "tsx --env-file=.env tests/verify-phase7.ts",
+    "verify:phase8": "tsx --env-file=.env tests/verify-phase8.ts",
     "agreements:backfill": "tsx --env-file=.env src/scripts/backfillAgreements.ts"
   },
   "prisma": {

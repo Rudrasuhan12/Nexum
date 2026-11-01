@@ -3267,3 +3267,299 @@ export async function fetchPayouts(): Promise<{
     };
   }
 }
+
+
+// ============================================================================
+// Phase 8: Dashboard, Notifications, Settings & Assistant Methods
+// ============================================================================
+
+export interface DashboardSummaryData {
+  activeProjects: { count: number; items: any[] };
+  allProposals: { count: number; byStatus: Record<string, number> };
+  milestonesDueSoon: { count: number; items: any[] };
+  overdue: { count: number; items: any[] };
+  awaitingClientReview: { count: number; items: any[] };
+  earningsSnapshot: {
+    availableMinor: number;
+    fundedMinor: number;
+    inReviewMinor: number;
+    withdrawnMinor: number;
+    onHoldMinor: number;
+    currency: string;
+    demoRate: string;
+  };
+  needsYourReply: { count: number; items: any[] };
+  recommendedProjects: Array<{
+    id: string;
+    title: string;
+    budget: string;
+    clientName: string;
+    reason: string;
+    category: string;
+  }>;
+  profileCompleteness: {
+    score: number;
+    nextAction: string;
+    missingItems: string[];
+  };
+  recentActivity: Array<{
+    id: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    timestamp: string;
+  }>;
+}
+
+export async function fetchFreelancerDashboard(): Promise<{
+  success: boolean;
+  dashboard?: DashboardSummaryData;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/dashboard`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, dashboard: json };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch dashboard summary",
+    };
+  }
+}
+
+export async function fetchFreelancerAccountSettings(): Promise<{
+  success: boolean;
+  account?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/settings/account`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, account: json.account };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to fetch settings" };
+  }
+}
+
+export async function updateFreelancerAccountSettings(data: {
+  name?: string;
+  timezone?: string;
+  locale?: string;
+  workingHours?: any;
+}): Promise<{ success: boolean; account?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/settings/account`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, account: json.account };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to update settings" };
+  }
+}
+
+export async function requestEmailChange(newEmail: string): Promise<{
+  success: boolean;
+  token?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/settings/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ newEmail }),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, token: json.token };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to request email change" };
+  }
+}
+
+export async function verifyEmailChange(token: string): Promise<{
+  success: boolean;
+  email?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/settings/email/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ token }),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, email: json.email };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to verify email change" };
+  }
+}
+
+export async function updatePassword(currentPassword: string, newPassword: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/settings/password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to update password" };
+  }
+}
+
+export async function fetchFreelancerSessions(): Promise<{
+  success: boolean;
+  sessions?: any[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/settings/sessions`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, sessions: json.sessions };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to fetch sessions" };
+  }
+}
+
+export async function revokeFreelancerSession(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/settings/sessions/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchPrivacySettings(): Promise<{
+  success: boolean;
+  privacy?: { visibility: string; showRate: boolean; showPortfolio: boolean };
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/settings/privacy`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, privacy: json.privacy };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to fetch privacy settings" };
+  }
+}
+
+export async function updatePrivacySettings(data: {
+  visibility?: "PUBLIC" | "PRIVATE";
+  showRate?: boolean;
+  showPortfolio?: boolean;
+}): Promise<{ success: boolean; privacy?: any; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/settings/privacy`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, privacy: json.privacy };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to update privacy settings" };
+  }
+}
+
+export async function exportFreelancerData(): Promise<{
+  success: boolean;
+  export?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/settings/export`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true, export: json.export };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to export data" };
+  }
+}
+
+export async function deleteFreelancerAccount(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/settings/account`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to delete account" };
+  }
+}
+
+export async function sendAssistantMessage(content: string, chatId?: string): Promise<{
+  success: boolean;
+  message?: string;
+  refusal?: boolean;
+  toolCalled?: string;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/assistant/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ content, chatId }),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    return {
+      success: true,
+      message: json.message,
+      refusal: json.refusal,
+      toolCalled: json.toolCalled,
+      data: json.data,
+    };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to contact assistant" };
+  }
+}
