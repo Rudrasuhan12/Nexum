@@ -90,18 +90,55 @@ export default function FreelancerProjectsMilestonesView({
       try {
         const res = await fetchActiveProjects();
         if (mounted && res.success && res.projects && res.projects.length > 0) {
-          const enriched: FreelancerProjectItem[] = INITIAL_FREELANCER_PROJECTS.map((baseProj, idx) => {
-            const live = res.projects![idx];
+          const enriched: FreelancerProjectItem[] = INITIAL_FREELANCER_PROJECTS.map((baseProj) => {
+            // Match with live database project by ID or keyword
+            const live = res.projects!.find(
+              (p: any) =>
+                p.id === baseProj.id ||
+                (baseProj.title.toLowerCase().includes("e-commerce") && (p.title.toLowerCase().includes("techkart") || p.title.toLowerCase().includes("commerce"))) ||
+                (baseProj.title.toLowerCase().includes("fitness") && p.title.toLowerCase().includes("fitness")) ||
+                (baseProj.title.toLowerCase().includes("ai") && (p.title.toLowerCase().includes("ai support") || p.title.toLowerCase().includes("streaming"))) ||
+                (baseProj.title.toLowerCase().includes("landing") && p.title.toLowerCase().includes("landing")) ||
+                (baseProj.title.toLowerCase().includes("analytics") && p.title.toLowerCase().includes("analytics"))
+            );
+
             if (!live) return baseProj;
+
+            // Map live backend status to UI lifecycle status
+            let mappedState = baseProj.state;
+            let statusLabel = baseProj.statusLabel;
+            let statusBadgeColor = baseProj.statusBadgeColor;
+
+            if (live.derivedStatus === "COMPLETED" || live.agreementStatus === "COMPLETED") {
+              mappedState = "COMPLETED";
+              statusLabel = "Completed";
+              statusBadgeColor = "bg-purple-50 text-purple-700 border-purple-200";
+            } else if (live.derivedStatus === "CANCELLED" || live.agreementStatus === "TERMINATED") {
+              mappedState = "CANCELLED";
+              statusLabel = "Cancelled";
+              statusBadgeColor = "bg-rose-50 text-rose-700 border-rose-200";
+            } else if (live.agreementStatus === "PENDING_APPROVAL" || live.derivedStatus === "INTAKE") {
+              mappedState = "AWAITING_APPROVAL";
+              statusLabel = "Awaiting Approval";
+              statusBadgeColor = "bg-amber-50 text-amber-700 border-amber-200/80";
+            } else {
+              // "ACTIVE", "IN_PROGRESS", "IN_REVIEW" are active ongoing contracts
+              mappedState = "ACTIVE";
+              statusLabel = live.derivedStatus === "IN_REVIEW" ? "In Review" : "In Progress";
+              statusBadgeColor = live.derivedStatus === "IN_REVIEW" ? "bg-amber-50 text-amber-700 border-amber-200/80" : "bg-emerald-50 text-emerald-700 border-emerald-200/80";
+            }
+
             return {
               ...baseProj,
               id: live.id || baseProj.id,
               title: live.title || baseProj.title,
-              state: (live.derivedStatus === "IN_PROGRESS" ? "ACTIVE" : (live.derivedStatus || baseProj.state)) as any,
+              state: mappedState,
+              statusLabel,
+              statusBadgeColor,
               totalBudgetCents: live.totalAmountMinor || baseProj.totalBudgetCents,
-              totalBudgetDisplay: `${((live.totalAmountMinor || baseProj.totalBudgetCents) / 100).toLocaleString()} USD`,
+              totalBudgetDisplay: '$' + ((live.totalAmountMinor || baseProj.totalBudgetCents) / 100).toLocaleString() + ' USD',
               currency: live.currency || "USD",
-              agreementVersion: `v${live.activeVersionNumber || 1} Active`,
+              agreementVersion: 'v' + (live.activeVersionNumber || 1) + ' Active',
               progressPercent: live.totalMilestones > 0 ? Math.round((live.completedMilestones / live.totalMilestones) * 100) : baseProj.progressPercent,
             };
           });
