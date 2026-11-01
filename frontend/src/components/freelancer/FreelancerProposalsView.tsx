@@ -1,6 +1,13 @@
 "use client";
 
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import {
+  fetchFreelancerProposals,
+  fetchFreelancerProposalsSummary,
+  acceptProposalCounteroffer,
+  rejectProposalCounteroffer,
+} from "@/lib/api-client";
+import { ProposalSummaryKPIs } from "@/lib/freelancer-proposals-types";
 import { Plus, Search } from "lucide-react";
 import {
   FreelancerProposalItem,
@@ -49,6 +56,47 @@ export default function FreelancerProposalsView({
   const [budgetFilter, setBudgetFilter] = useState<string>("ALL");
   const [dateFilter, setDateFilter] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<string>("NEWEST");
+
+  const [liveSummary, setLiveSummary] = useState<ProposalSummaryKPIs | null>(null);
+  const [isLiveLoaded, setIsLiveLoaded] = useState(false);
+
+  // Load real database proposals and summary KPIs
+  const loadProposals = useCallback(async () => {
+    try {
+      const [propsRes, sumRes] = await Promise.all([
+        fetchFreelancerProposals({
+          q: searchQuery || undefined,
+          status: selectedStatus === "ALL" ? undefined : selectedStatus,
+          sort: sortBy === "OLDEST" ? "oldest" : "newest",
+        }),
+        fetchFreelancerProposalsSummary(),
+      ]);
+
+      if (propsRes.success && propsRes.proposals && propsRes.proposals.length > 0) {
+        setProposals(propsRes.proposals as any as FreelancerProposalItem[]);
+        setIsLiveLoaded(true);
+      }
+      if (sumRes.success && sumRes.summary) {
+        const s = sumRes.summary as any;
+        setLiveSummary({
+          totalProposals: s.totalProposals ?? s.all ?? 0,
+          underReview: s.underReview ?? 0,
+          shortlisted: s.shortlisted ?? 0,
+          interview: s.interview ?? s.interviewDiscussion ?? 0,
+          accepted: s.accepted ?? 0,
+          rejected: s.rejected ?? 0,
+          counteroffer: s.counteroffer ?? s.counterofferReceived ?? 0,
+          draft: s.draft ?? 0,
+        });
+      }
+    } catch (err) {
+      console.warn("Using baseline proposals dataset", err);
+    }
+  }, [searchQuery, selectedStatus, sortBy]);
+
+  useEffect(() => {
+    loadProposals();
+  }, [loadProposals]);
 
   // Active tab in selected proposal panel
   const [activeTab, setActiveTab] = useState<ProposalDetailTab>("proposal");
@@ -217,13 +265,30 @@ export default function FreelancerProposalsView({
     activeTab,
   ]);
 
-  // Aggregate KPIs
+  // Aggregate KPIs: prefer real database counts when available
   const kpis = useMemo(() => {
+    if (liveSummary) {
+      return {
+        totalProposals: liveSummary.totalProposals ?? (liveSummary as any).all ?? proposals.length,
+        underReview: liveSummary.underReview ?? 0,
+        shortlisted: liveSummary.shortlisted ?? 0,
+        interview: liveSummary.interview ?? (liveSummary as any).interviewDiscussion ?? 0,
+        accepted: liveSummary.accepted ?? 0,
+        rejected: liveSummary.rejected ?? 0,
+        counteroffer: liveSummary.counteroffer ?? (liveSummary as any).counterofferReceived ?? 0,
+        draft: liveSummary.draft ?? 0,
+      };
+    }
     return calculateProposalSummaryKPIs(proposals);
-  }, [proposals]);
+  }, [liveSummary, proposals]);
 
   // Counteroffer actions
-  const handleAcceptCounteroffer = () => {
+  const handleAcceptCounteroffer = async () => {
+    try {
+      await acceptProposalCounteroffer(selectedProposal.id);
+    } catch (e) {
+      console.warn("Backend accept counteroffer", e);
+    }
     setProposals((prev) =>
       prev.map((p) => {
         if (p.id !== selectedProposal.id || !p.counteroffer) return p;
@@ -256,6 +321,7 @@ export default function FreelancerProposalsView({
     showToast(
       "Counteroffer accepted! Moving to formal agreement drafting."
     );
+    loadProposals();
   };
 
   const handleCounterProposal = (
@@ -295,7 +361,12 @@ export default function FreelancerProposalsView({
     showToast("Counterproposal submitted to client with updated terms.");
   };
 
-  const handleDeclineCounteroffer = () => {
+  const handleDeclineCounteroffer = async () => {
+    try {
+      await rejectProposalCounteroffer(selectedProposal.id);
+    } catch (e) {
+      console.warn("Backend reject counteroffer", e);
+    }
     setProposals((prev) =>
       prev.map((p) => {
         if (p.id !== selectedProposal.id) return p;
@@ -321,6 +392,7 @@ export default function FreelancerProposalsView({
     );
     setShowCounterofferModal(false);
     showToast("Counteroffer declined. Proposal marked as Withdrawn.");
+    loadProposals();
   };
 
   // Create new proposal

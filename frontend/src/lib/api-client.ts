@@ -1300,12 +1300,15 @@ export async function declineFreelancerInvitation(
 
 export interface ProposalSummaryKPIs {
   all: number;
+  totalProposals?: number;
   draft: number;
   submitted: number;
   underReview: number;
   shortlisted: number;
   interviewDiscussion: number;
+  interview?: number;
   counterofferReceived: number;
+  counteroffer?: number;
   accepted: number;
   rejected: number;
   withdrawn: number;
@@ -1587,14 +1590,14 @@ export async function reviseProposal(
 
 export async function acceptProposalCounteroffer(
   id: string,
-  expectedVersionId: string
+  expectedVersionId?: string
 ): Promise<{
   success: boolean;
   proposal?: any;
   error?: string;
 }> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/${id}/accept`, {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/${id}/counteroffer/accept`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -1612,6 +1615,36 @@ export async function acceptProposalCounteroffer(
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to accept counteroffer",
+    };
+  }
+}
+
+
+export async function rejectProposalCounteroffer(
+  id: string
+): Promise<{
+  success: boolean;
+  proposal?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/${id}/counteroffer/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      proposal: json.proposal,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to reject counteroffer",
     };
   }
 }

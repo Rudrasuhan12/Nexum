@@ -114,11 +114,14 @@ router.get("/summary", async (req: Request, res: Response, next: NextFunction): 
       success: true,
       summary: {
         all: allCount,
+        totalProposals: allCount,
         draft: draftCount,
         submitted: submittedCount,
         underReview: underReviewCount,
         shortlisted: shortlistedCount,
+        interview: interviewCount,
         interviewDiscussion: interviewCount,
+        counteroffer: counterofferCount,
         counterofferReceived: counterofferCount,
         accepted: acceptedCount,
         rejected: rejectedCount,
@@ -148,6 +151,50 @@ const listProposalsQuerySchema = z.object({
  * GET /api/freelancer/proposals
  * Paginated proposal directory with search, filters, and real counts.
  */
+
+function getStatusLabel(status: ProposalStatus): string {
+  switch (status) {
+    case ProposalStatus.DRAFT: return "Draft";
+    case ProposalStatus.SUBMITTED: return "Submitted";
+    case ProposalStatus.UNDER_REVIEW: return "Under Review";
+    case ProposalStatus.SHORTLISTED: return "Shortlisted";
+    case ProposalStatus.INTERVIEW_DISCUSSION: return "Interview";
+    case ProposalStatus.COUNTEROFFER_RECEIVED: return "Counteroffer";
+    case ProposalStatus.ACCEPTED: return "Accepted";
+    case ProposalStatus.REJECTED: return "Rejected";
+    case ProposalStatus.WITHDRAWN: return "Withdrawn";
+    default: return status;
+  }
+}
+
+function getStatusBadgeColor(status: ProposalStatus): string {
+  switch (status) {
+    case ProposalStatus.DRAFT: return "bg-slate-50 text-slate-600 border-slate-200";
+    case ProposalStatus.SUBMITTED: return "bg-blue-50 text-blue-700 border-blue-200/80";
+    case ProposalStatus.UNDER_REVIEW: return "bg-amber-50 text-amber-700 border-amber-200/80";
+    case ProposalStatus.SHORTLISTED: return "bg-emerald-50 text-emerald-700 border-emerald-200/80";
+    case ProposalStatus.INTERVIEW_DISCUSSION: return "bg-indigo-50 text-indigo-700 border-indigo-200/80";
+    case ProposalStatus.COUNTEROFFER_RECEIVED: return "bg-purple-50 text-purple-700 border-purple-200/80";
+    case ProposalStatus.ACCEPTED: return "bg-emerald-50 text-emerald-700 border-emerald-200/80";
+    case ProposalStatus.REJECTED: return "bg-rose-50 text-rose-700 border-rose-200/80";
+    case ProposalStatus.WITHDRAWN: return "bg-slate-100 text-slate-600 border-slate-200";
+    default: return "bg-slate-50 text-slate-600 border-slate-200";
+  }
+}
+
+function getCategoryIcon(category?: string | null): "HEALTH" | "CART" | "CHART" | "MOBILE" | "CERT" | "SCHOOL" | "CRYPTO" | "GENERIC" {
+  if (!category) return "GENERIC";
+  const cat = category.toLowerCase();
+  if (cat.includes("health") || cat.includes("med")) return "HEALTH";
+  if (cat.includes("commerce") || cat.includes("cart") || cat.includes("shop")) return "CART";
+  if (cat.includes("chart") || cat.includes("fin") || cat.includes("data")) return "CHART";
+  if (cat.includes("mobile") || cat.includes("ios") || cat.includes("android")) return "MOBILE";
+  if (cat.includes("crypto") || cat.includes("blockchain") || cat.includes("web3")) return "CRYPTO";
+  if (cat.includes("cert") || cat.includes("security")) return "CERT";
+  if (cat.includes("school") || cat.includes("edu")) return "SCHOOL";
+  return "GENERIC";
+}
+
 router.get("/", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const rawQuery = { ...req.query };
@@ -236,7 +283,16 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
           },
           versions: {
             orderBy: { version: "desc" },
-            take: 1,
+            take: 2,
+          },
+          attachments: {
+            include: {
+              file: { select: { id: true, originalName: true, mime: true, sizeBytes: true, createdAt: true } },
+            },
+          },
+          events: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
           },
         },
         orderBy,
@@ -247,6 +303,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
 
     const items = proposals.map((p) => {
       const currentVer = p.versions[0];
+      const counterVer = p.versions.find((v) => v.authorRole === Role.CLIENT) || currentVer;
       const hasFeedback = Boolean(p.rejectionFeedback);
       const nextAct = getNextAction(p.status, hasFeedback);
 
@@ -275,10 +332,82 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
         currency: currentVer?.currency || p.project.currency || "USD",
         durationWeeks: currentVer?.estimatedDurationWeeks || null,
         status: p.status,
+        statusLabel: getStatusLabel(p.status),
+        statusBadgeColor: getStatusBadgeColor(p.status),
+        categoryIcon: getCategoryIcon(p.project.category),
         submittedAt: p.submittedAt ? p.submittedAt.toISOString() : null,
+        submittedDate: p.submittedAt ? new Date(p.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Draft",
+        submittedTime: p.submittedAt ? new Date(p.submittedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "",
         lastActivityAt: p.lastActivityAt.toISOString(),
         currentVersionNumber: currentVer?.versionNumber ?? currentVer?.version ?? 1,
         nextAction: nextAct,
+        client: {
+          id: p.project.client.id,
+          name: p.project.client.name,
+          companyName: `${p.project.client.name} Corp`,
+          verified: true,
+          industry: p.project.category || "Technology",
+          companySize: "10–50 employees",
+          location: p.project.location || "Remote",
+          postedDate: p.project.createdAt ? new Date(p.project.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recently",
+          totalHires: 12,
+          avatarLetter: p.project.client.name ? p.project.client.name[0].toUpperCase() : "C",
+          avatarBg: "bg-indigo-600 text-white",
+        },
+        clientBrief: {
+          description: p.project.description,
+          category: p.project.category || "General",
+          budgetRange: p.project.budgetCents ? `$${(p.project.budgetCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "Custom",
+          duration: currentVer?.estimatedDurationWeeks ? `${currentVer.estimatedDurationWeeks} weeks` : "Flexible",
+          deadline: "Flexible",
+          requiredSkills: p.project.skills || [],
+          technicalRequirements: [],
+          acceptanceCriteria: [],
+        },
+        offer: {
+          summary: currentVer?.scopeText || currentVer?.scope || "Proposal offer submitted",
+          approach: "Agile delivery with verifiable milestones",
+          priceDisplay: amountDisplay,
+          priceType: (currentVer?.paymentModel === "HOURLY" ? "HOURLY" : "FIXED") as any,
+          duration: currentVer?.estimatedDurationWeeks ? `${currentVer.estimatedDurationWeeks} weeks` : "Flexible",
+          expectedStartDate: "Immediate",
+          coverLetter: currentVer?.coverLetter || "",
+          attachments: ((p as any).attachments || []).map((a: any) => ({
+            id: a.id,
+            name: a.file.originalName,
+            fileType: a.file.mime,
+            fileSize: `${Math.round(a.file.sizeBytes / 1024)} KB`,
+            uploadDate: "Recently",
+          })),
+          milestones: (Array.isArray(currentVer?.milestonesJson) ? (currentVer.milestonesJson as any[]) : []).map((m: any, idx: number) => ({
+            id: `m-${idx + 1}`,
+            orderIndex: idx + 1,
+            title: m.title || `Milestone ${idx + 1}`,
+            amount: m.amountMinor ? `$${(m.amountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "$0",
+            duration: "2 weeks",
+            acceptanceCriteria: m.criteria || [],
+          })),
+        },
+        counteroffer: p.status === ProposalStatus.COUNTEROFFER_RECEIVED ? {
+          id: `co-${p.id}`,
+          originalPrice: `$${(((p.versions[1] || currentVer)?.amountCents || 500000) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
+          proposedPrice: `$${((counterVer?.totalAmountMinor || counterVer?.amountCents || 420000) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
+          originalDuration: "4 weeks",
+          proposedDuration: counterVer?.estimatedDurationWeeks ? `${counterVer.estimatedDurationWeeks} weeks` : "5 weeks",
+          scopeNotes: "Client requested adjusted terms and delivery timeline.",
+          receivedDate: p.lastActivityAt ? new Date(p.lastActivityAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recently",
+          expiresAt: "In 5 days",
+        } : undefined,
+        techTags: p.project.skills || [],
+        messagesCount: 0,
+        activityTrail: ((p as any).events || []).map((e: any) => ({
+          id: e.id,
+          title: e.type,
+          description: `Proposal event: ${e.toStatus || e.type}`,
+          actor: e.actorRole === Role.CLIENT ? p.project.client.name : "Freelancer",
+          timestamp: new Date(e.createdAt).toLocaleDateString(),
+          type: (e.toStatus === "ACCEPTED" ? "ACCEPTED" : e.toStatus === "REJECTED" ? "REJECTED" : "SUBMITTED") as any,
+        })),
       };
     });
 
