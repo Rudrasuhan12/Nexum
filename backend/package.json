@@ -17,7 +17,8 @@
     "verify:phase0": "tsx --env-file=.env tests/verify-phase0.ts",
     "verify:phase1": "tsx --env-file=.env tests/verify-phase1.ts",
     "verify:phase2": "tsx --env-file=.env tests/verify-phase2.ts",
-    "verify:phase3": "tsx --env-file=.env tests/verify-phase3.ts"
+    "verify:phase3": "tsx --env-file=.env tests/verify-phase3.ts",
+    "verify:phase4": "tsx --env-file=.env tests/verify-phase4.ts"
   },
   "prisma": {
     "seed": "tsx --env-file=.env prisma/seed.ts"

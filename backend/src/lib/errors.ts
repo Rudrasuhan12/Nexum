@@ -56,8 +56,12 @@ export class NotFoundError extends AppError {
 }
 
 export class ConflictError extends AppError {
-  constructor(message: string, details: Record<string, unknown> = {}) {
-    super("CONFLICT", message, 409, details);
+  constructor(message: string, codeOrDetails?: string | Record<string, unknown>, details: Record<string, unknown> = {}) {
+    if (typeof codeOrDetails === "string") {
+      super(codeOrDetails as any, message, 409, details);
+    } else {
+      super("CONFLICT", message, 409, codeOrDetails || {});
+    }
   }
 }
 

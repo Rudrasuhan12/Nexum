@@ -1,3 +1,4 @@
+import { handleCreateDraftProposal } from "./proposals.js";
 import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { prisma } from "../../prisma.js";
@@ -583,6 +584,9 @@ router.post("/invitations/:id/decline", async (req: Request, res: Response, next
  * - Closed (e.g. NEGOTIATION, COMPLETED) -> 404
  * - INVITE_ONLY without invitation for this freelancer -> 404
  */
+router.post("/:projectId/proposals", handleCreateDraftProposal);
+router.post("/:id/proposals", handleCreateDraftProposal);
+
 router.get("/:id", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { id } = req.params;

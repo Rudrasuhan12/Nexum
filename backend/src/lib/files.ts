@@ -143,6 +143,7 @@ export const FILE_SIZE_LIMITS: Record<FilePurpose, number> = {
   PROFILE_PHOTO: 2 * 1024 * 1024, // 2 MB
   PROFILE_COVER: 4 * 1024 * 1024, // 4 MB
   PORTFOLIO_IMAGE: 4 * 1024 * 1024, // 4 MB
+  PROPOSAL_ATTACHMENT: 10 * 1024 * 1024, // 10 MB
 };
 
 export const RESUME_SIZE_LIMIT = 5 * 1024 * 1024; // 5 MB

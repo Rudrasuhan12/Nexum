@@ -66,6 +66,7 @@ enum FilePurpose {
   PROFILE_PHOTO
   PROFILE_COVER
   PORTFOLIO_IMAGE
+  PROPOSAL_ATTACHMENT
 }
 
 enum ResumeVisibility {
@@ -107,6 +108,11 @@ enum PRDStatus {
 enum ProposalStatus {
   DRAFT
   SUBMITTED
+  UNDER_REVIEW
+  SHORTLISTED
+  INTERVIEW_DISCUSSION
+  COUNTEROFFER_RECEIVED
+  WITHDRAWN
   COUNTERED
   ACCEPTED
   REJECTED
@@ -207,6 +213,7 @@ model User {
   portfolioProjects      PortfolioProject[]
   savedProjects          SavedProject[]          @relation("FreelancerSavedProjects")
   projectInvitations     ProjectInvitation[]     @relation("FreelancerProjectInvitations")
+  freelancerProposals    Proposal[]              @relation("FreelancerProposalsList")
 }
 
 model FreelancerProfile {
@@ -303,6 +310,7 @@ model Project {
   budgetMinCents  Int?
   budgetMaxCents  Int?
   invitations     ProjectInvitation[] @relation("ProjectInvitations")
+  projectProposals Proposal[]          @relation("ProjectProposals")
 
   @@index([state, visibility])
   @@index([budgetCents])
@@ -319,7 +327,7 @@ model ProjectBriefVersion {
   status          String   @default("CURRENT")
   createdAt       DateTime @default(now())
 
-  @@unique([projectId, version])
+  @@index([projectId, version])
 }
 
 model Opportunity {
@@ -367,33 +375,105 @@ model PRDVersion {
   status        PRDStatus @default(DRAFT)
   createdAt     DateTime  @default(now())
 
-  @@unique([projectId, version])
+  @@index([projectId, version])
+}
+
+model Proposal {
+  id                String            @id @default(cuid())
+  projectId         String
+  project           Project           @relation("ProjectProposals", fields: [projectId], references: [id], onDelete: Cascade)
+  freelancerId      String
+  freelancer        User              @relation("FreelancerProposalsList", fields: [freelancerId], references: [id], onDelete: Restrict)
+  status            ProposalStatus    @default(DRAFT)
+  currentVersionId  String?
+  rejectionFeedback String?
+  submittedAt       DateTime?
+  lastActivityAt    DateTime          @default(now())
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  versions          ProposalVersion[] @relation("ProposalToVersions")
+  attachments       ProposalAttachment[]
+  events            ProposalEvent[]
+
+  @@index([freelancerId, status])
+  @@index([projectId, status])
 }
 
 model ProposalVersion {
   id              String            @id @default(cuid())
+  proposalId      String?
+  proposal        Proposal?         @relation("ProposalToVersions", fields: [proposalId], references: [id], onDelete: Cascade)
   projectId       String
   project         Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   freelancerId    String
   freelancer      User              @relation("FreelancerProposals", fields: [freelancerId], references: [id], onDelete: Restrict)
   version         Int
+  versionNumber   Int?
+  authorRole      Role              @default(FREELANCER)
   parentVersionId String?
   parentVersion   ProposalVersion?  @relation("ProposalHistory", fields: [parentVersionId], references: [id])
   childVersions   ProposalVersion[] @relation("ProposalHistory")
   versionHash     String            @unique // SHA-256 canonical hash
-  scope           String
+  contentHash     String?
+  coverLetter     String?
+  approach        String?
+  scopeText       String?
+  scope           String            @default("")
+  deliverables    Json              @default("[]")
   exclusions      Json              @default("[]")
-  amountCents     Int // Integer minor units (USD cents)
-  currency        String            @default("USD")
-  milestonesJson  Json              @default("[]")
+  exclusionsText  String?
   assumptions     Json              @default("[]")
+  assumptionsText String?
+  dependencies    String?
+  paymentModel    String?
+  totalAmountMinor Int?
+  hourlyRateMinor  Int?
+  estimatedHours   Int?
+  amountCents     Int               @default(0) // Integer minor units (USD cents)
+  currency        String            @default("USD")
+  estimatedDurationWeeks Int?
+  startAvailableOn DateTime?
+  milestonesJson  Json              @default("[]")
+  portfolioSnapshot Json            @default("[]")
   expiresAt       DateTime?
+  submittedAt     DateTime?
   status          ProposalStatus    @default(DRAFT)
   createdAt       DateTime          @default(now())
 
   milestones Milestone[]
+  events     ProposalEvent[]
 
-  @@unique([projectId, version])
+  @@index([projectId, version])
+  @@index([proposalId])
+}
+
+model ProposalAttachment {
+  id         String   @id @default(cuid())
+  proposalId String
+  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  fileId     String
+  file       File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([proposalId, fileId])
+}
+
+model ProposalEvent {
+  id                String          @id @default(cuid())
+  proposalId        String
+  proposal          Proposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  proposalVersionId String?
+  proposalVersion   ProposalVersion? @relation(fields: [proposalVersionId], references: [id], onDelete: SetNull)
+  actorRole         Role
+  actorId           String?
+  type              String
+  fromStatus        ProposalStatus
+  toStatus          ProposalStatus
+  metadata          Json            @default("{}")
+  createdAt         DateTime        @default(now())
+
+  @@index([proposalId, createdAt])
 }
 
 model Milestone {
@@ -693,7 +773,8 @@ model File {
 
   photoProfiles     FreelancerProfile[] @relation("ProfilePhoto")
   coverProfiles     FreelancerProfile[] @relation("ProfileCover")
-  portfolioProjects PortfolioProject[]  @relation("PortfolioCover")
+  portfolioProjects   PortfolioProject[]  @relation("PortfolioCover")
+  proposalAttachments ProposalAttachment[]
 
   @@index([ownerId, purpose])
 }

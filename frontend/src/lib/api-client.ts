@@ -1294,3 +1294,415 @@ export async function declineFreelancerInvitation(
   }
 }
 
+// ===========================================================================
+// Phase 4: Proposals & Versioned Negotiation API Client
+// ===========================================================================
+
+export interface ProposalSummaryKPIs {
+  all: number;
+  draft: number;
+  submitted: number;
+  underReview: number;
+  shortlisted: number;
+  interviewDiscussion: number;
+  counterofferReceived: number;
+  accepted: number;
+  rejected: number;
+  withdrawn: number;
+}
+
+export interface ProposalListItem {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  clientName: string;
+  skills: string[];
+  amountDisplay: string;
+  amountMinor: number;
+  currency: string;
+  durationWeeks: number | null;
+  status: string;
+  submittedAt: string | null;
+  lastActivityAt: string;
+  currentVersionNumber: number;
+  nextAction: { code: string; label: string };
+}
+
+export interface ListProposalsParams {
+  q?: string;
+  status?: string;
+  category?: string;
+  budgetMin?: number;
+  budgetMax?: number;
+  submittedFrom?: string;
+  submittedTo?: string;
+  sort?: "newest" | "oldest" | "latest_update";
+  page?: number;
+  pageSize?: number;
+}
+
+export async function fetchFreelancerProposalsSummary(): Promise<{
+  success: boolean;
+  summary?: ProposalSummaryKPIs;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/summary`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, summary: json.summary };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch proposals summary",
+    };
+  }
+}
+
+export async function fetchFreelancerProposals(
+  params?: ListProposalsParams
+): Promise<{
+  success: boolean;
+  proposals: ProposalListItem[];
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+  error?: string;
+}> {
+  try {
+    const query = new URLSearchParams();
+    if (params?.q) query.set("q", params.q);
+    if (params?.status && params.status !== "ALL") query.set("status", params.status);
+    if (params?.category && params.category !== "ALL") query.set("category", params.category);
+    if (params?.budgetMin !== undefined) query.set("budgetMin", String(params.budgetMin));
+    if (params?.budgetMax !== undefined) query.set("budgetMax", String(params.budgetMax));
+    if (params?.submittedFrom) query.set("submittedFrom", params.submittedFrom);
+    if (params?.submittedTo) query.set("submittedTo", params.submittedTo);
+    if (params?.sort) query.set("sort", params.sort);
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.pageSize) query.set("pageSize", String(params.pageSize));
+
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals?${query.toString()}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        success: false,
+        proposals: [],
+        pagination: { page: 1, pageSize: 10, total: 0, totalPages: 1 },
+        error: json.error?.message || `HTTP ${res.status}`,
+      };
+    }
+    return {
+      success: true,
+      proposals: json.proposals || [],
+      pagination: json.pagination || { page: 1, pageSize: 10, total: 0, totalPages: 1 },
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      proposals: [],
+      pagination: { page: 1, pageSize: 10, total: 0, totalPages: 1 },
+      error: err instanceof Error ? err.message : "Failed to fetch proposals",
+    };
+  }
+}
+
+export async function fetchFreelancerProposalDetails(id: string): Promise<{
+  success: boolean;
+  proposal?: any;
+  currentVersion?: any;
+  versions?: any[];
+  projectDetails?: any;
+  client?: any;
+  activity?: any[];
+  attachments?: any[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/${id}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      proposal: json.proposal,
+      currentVersion: json.currentVersion,
+      versions: json.versions,
+      projectDetails: json.projectDetails,
+      client: json.client,
+      activity: json.activity,
+      attachments: json.attachments,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to load proposal details",
+    };
+  }
+}
+
+export async function createDraftProposal(
+  projectId: string,
+  invitationId?: string
+): Promise<{
+  success: boolean;
+  proposal?: any;
+  currentVersion?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${projectId}/proposals`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ invitationId }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      proposal: json.proposal,
+      currentVersion: json.currentVersion,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to create draft proposal",
+    };
+  }
+}
+
+export async function updateDraftProposal(
+  id: string,
+  data: any
+): Promise<{
+  success: boolean;
+  proposal?: any;
+  currentVersion?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/${id}/draft`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      proposal: json.proposal,
+      currentVersion: json.currentVersion,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to update draft proposal",
+    };
+  }
+}
+
+export async function submitProposal(id: string): Promise<{
+  success: boolean;
+  proposal?: any;
+  currentVersion?: any;
+  warnings?: string[];
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/${id}/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      proposal: json.proposal,
+      currentVersion: json.currentVersion,
+      warnings: json.warnings,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to submit proposal",
+    };
+  }
+}
+
+export async function reviseProposal(
+  id: string,
+  expectedVersionId: string,
+  terms: any
+): Promise<{
+  success: boolean;
+  proposal?: any;
+  newVersion?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/${id}/revise`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ expectedVersionId, terms }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      proposal: json.proposal,
+      newVersion: json.newVersion,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to revise proposal",
+    };
+  }
+}
+
+export async function acceptProposalCounteroffer(
+  id: string,
+  expectedVersionId: string
+): Promise<{
+  success: boolean;
+  proposal?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/${id}/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ expectedVersionId }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      proposal: json.proposal,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to accept counteroffer",
+    };
+  }
+}
+
+export async function withdrawProposal(
+  id: string,
+  reason?: string
+): Promise<{
+  success: boolean;
+  proposal?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/${id}/withdraw`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ reason }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      proposal: json.proposal,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to withdraw proposal",
+    };
+  }
+}
+
+export async function fetchProposalDiff(
+  id: string,
+  from: string,
+  to: string
+): Promise<{
+  success: boolean;
+  diff?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/${id}/diff?from=${from}&to=${to}`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      diff: json.diff,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch proposal diff",
+    };
+  }
+}
+
+export async function generateProposalAiDraft(id: string): Promise<{
+  success: boolean;
+  suggestedDraft?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/proposals/${id}/ai-draft`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return {
+      success: true,
+      suggestedDraft: json.suggestedDraft,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to generate AI draft",
+    };
+  }
+}
+
+

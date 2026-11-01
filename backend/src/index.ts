@@ -21,6 +21,8 @@ import {
   publicFreelancersRouter,
 } from "./routes/freelancer/files.js";
 import freelancerProjectsRouter from "./routes/freelancer/projects.js";
+import freelancerProposalsRouter from "./routes/freelancer/proposals.js";
+import devProposalsRouter from "./routes/dev/proposals.js";
 import clientRouter from "./routes/client.js";
 
 const app = express();
@@ -67,6 +69,13 @@ app.use("/api/users", usersRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/payments", paymentsRouter);
 
+// Freelancer Onboarding & Resume Routes
+app.use("/api/freelancer", freelancerOnboardingRouter);
+app.use("/api/freelancer/onboarding", freelancerOnboardingRouter);
+
+// Freelancer Proposals Routes
+app.use("/api/freelancer/proposals", freelancerProposalsRouter);
+
 // Freelancer Profile, Portfolio & Files Routes
 app.use("/api/freelancer/profile", freelancerProfileRouter);
 app.use("/api/freelancer/projects", freelancerProjectsRouter);
@@ -75,9 +84,8 @@ app.use("/api/freelancer", freelancerFilesRouter);
 app.use("/api/files", publicFilesRouter);
 app.use("/api/public/freelancers", publicFreelancersRouter);
 
-// Freelancer Onboarding & Resume Routes
-app.use("/api/freelancer", freelancerOnboardingRouter);
-app.use("/api/freelancer/onboarding", freelancerOnboardingRouter);
+// Dev-Only Client Stand-in Routes (guards internally for ENABLE_DEV_TOOLS)
+app.use("/api/dev/proposals", devProposalsRouter);
 
 // Client Overview Routes
 app.use("/api/client", clientRouter);
