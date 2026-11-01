@@ -742,3 +742,212 @@ export async function fetchClientInvitations(clientId?: string): Promise<{
     return { success: false, count: 0, data: [], error: msg };
   }
 }
+
+export interface ClientSettingsProfile {
+  name: string;
+  email: string;
+  phone: string;
+  location: string;
+  company: string;
+  website: string;
+  timezone: string;
+  bio: string;
+  avatar: string;
+}
+
+export interface ClientSettingsSecurity {
+  twoFactorEnabled: boolean;
+  passwordLastChanged: string;
+  activeSessions: Array<{
+    id: string;
+    device: string;
+    location: string;
+    ip: string;
+    isCurrent: boolean;
+    lastActive: string;
+  }>;
+}
+
+export interface BillingReceiptItem {
+  id: string;
+  orderId: string;
+  projectTitle: string;
+  date: string;
+  amount: string;
+  status: string;
+  receiptUrl?: string;
+}
+
+export interface ClientSettingsPayments {
+  autoFundMilestones: boolean;
+  disputeMediationBuffer: boolean;
+  paypalSandboxStatus: "CONNECTED" | "DISCONNECTED";
+  paypalEmail: string;
+  defaultCurrency: string;
+  vatOrTaxId: string;
+  billingReceipts?: BillingReceiptItem[];
+}
+
+export interface ClientSettingsNotifications {
+  proposalsEmail: boolean;
+  proposalsInApp: boolean;
+  messagesEmail: boolean;
+  messagesInApp: boolean;
+  milestonesEmail: boolean;
+  milestonesInApp: boolean;
+  revisionsEmail: boolean;
+  revisionsInApp: boolean;
+  paymentsEmail: boolean;
+  paymentsInApp: boolean;
+  deadlinesEmail: boolean;
+  deadlinesInApp: boolean;
+}
+
+export interface ClientSettingsHiring {
+  budgetMin: number;
+  budgetMax: number;
+  preferredExpLevel: "ENTRY" | "INTERMEDIATE" | "SENIOR" | "EXPERT" | string;
+  preferredSkills: string[];
+  autoMatchThreshold: number;
+}
+
+export interface ClientSettingsPrivacy {
+  profileVisibility: "PUBLIC" | "VERIFIED_ONLY" | "PRIVATE";
+  shareAuditTelemetry: boolean;
+}
+
+export interface ClientSettingsData {
+  profile: ClientSettingsProfile;
+  security: ClientSettingsSecurity;
+  payments: ClientSettingsPayments;
+  notifications: ClientSettingsNotifications;
+  hiring: ClientSettingsHiring;
+  privacy: ClientSettingsPrivacy;
+  updatedAt: string;
+}
+
+/**
+ * Fetch full workspace settings for a client
+ */
+export async function fetchClientSettings(clientId?: string): Promise<{
+  success: boolean;
+  data: ClientSettingsData;
+  error?: string;
+}> {
+  try {
+    const q = clientId ? `?clientId=${clientId}` : "";
+    const res = await fetch(`/api/client/settings${q}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch settings";
+    return { success: false, data: {} as any, error: msg };
+  }
+}
+
+/**
+ * Update client workspace settings
+ */
+export async function updateClientSettings(
+  settings: Partial<ClientSettingsData>,
+  clientId?: string
+): Promise<{
+  success: boolean;
+  data?: ClientSettingsData;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/client/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...settings, clientId }),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || `HTTP ${res.status}`);
+    }
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to update settings";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Change client password securely
+ */
+export async function changeClientPassword(payload: {
+  currentPassword: string;
+  newPassword: string;
+  userId?: string;
+}): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/client/settings/change-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error || `HTTP ${res.status}` };
+    }
+    return json;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to change password";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Revoke other active device sessions
+ */
+export async function revokeOtherClientSessions(userId?: string): Promise<{
+  success: boolean;
+  remainingSessions?: number;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/client/settings/sessions/revoke-others`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to revoke sessions";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Submit priority support or mediation ticket
+ */
+export async function submitClientSupportTicket(ticket: {
+  category: string;
+  issue: string;
+  projectId?: string;
+  userId?: string;
+}): Promise<{
+  success: boolean;
+  ticketId?: string;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/client/settings/support`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ticket),
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to submit ticket";
+    return { success: false, error: msg };
+  }
+}

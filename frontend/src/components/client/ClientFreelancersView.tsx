@@ -77,22 +77,21 @@ function ExplainableFitScoreBadge({ profile }: { profile: FreelancerProfile }) {
       <button
         type="button"
         onClick={() => setShowTooltip((prev) => !prev)}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-150 cursor-pointer select-none ${
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-150 cursor-pointer select-none shadow-xs ${
           isElite
-            ? "bg-emerald-50/90 text-emerald-800 border border-emerald-200 hover:bg-emerald-100/80"
+            ? "bg-emerald-50 text-emerald-900 border border-emerald-400 hover:bg-emerald-100/90"
             : isHigh
-            ? "bg-indigo-50/90 text-indigo-800 border border-indigo-200 hover:bg-indigo-100/80"
-            : "bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100"
+            ? "bg-teal-50 text-teal-900 border border-teal-300 hover:bg-teal-100/90"
+            : "bg-slate-50 text-slate-800 border border-slate-300 hover:bg-slate-100"
         }`}
         title="Click to view match breakdown"
       >
-        <span
-          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-            isElite ? "bg-emerald-500" : isHigh ? "bg-indigo-500" : "bg-slate-400"
+        <Sparkles
+          className={`w-3.5 h-3.5 shrink-0 ${
+            isElite ? "text-emerald-600" : isHigh ? "text-teal-600" : "text-slate-500"
           }`}
         />
-        <span className="font-bold text-slate-900">{score}%</span>
-        <span className="text-[11px] text-slate-500 font-medium">Fit</span>
+        <span>{score}% Match</span>
       </button>
 
       {/* Popover Card - Clean Light Mode SaaS Theme */}
@@ -828,7 +827,7 @@ export default function ClientFreelancersView({
                 {recommendedCandidates.slice(0, 3).map((candidate) => (
                   <div
                     key={`rec_${candidate.id}`}
-                    className="p-5 rounded-2xl bg-gradient-to-br from-white via-white to-indigo-50/40 border border-indigo-100 shadow-xs hover:border-indigo-300 transition-all duration-200 flex flex-col justify-between"
+                    className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all duration-200 flex flex-col justify-between"
                   >
                     <div>
                       {/* Top Header */}
@@ -854,23 +853,24 @@ export default function ClientFreelancersView({
                         <ExplainableFitScoreBadge profile={candidate} />
                       </div>
 
-                      {/* Why Recommended Pill */}
-                      <div className="mt-3.5 p-2.5 rounded-xl bg-indigo-50/80 border border-indigo-100/80 text-[11px] text-indigo-900 leading-relaxed">
-                        <span className="font-bold">Why recommended:</span> {candidate.recommendationReason}
+                      {/* Why Recommended Callout - Clean, high-legibility insight */}
+                      <div className="mt-3.5 p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-700 leading-relaxed">
+                        <span className="font-bold text-slate-900">Why recommended:</span>{" "}
+                        <span className="text-slate-600">{candidate.recommendationReason}</span>
                       </div>
 
                       {/* Key Skills */}
-                      <div className="mt-3 flex flex-wrap gap-1">
+                      <div className="mt-3.5 flex flex-wrap gap-1.5">
                         {candidate.skills.slice(0, 4).map((skill) => (
                           <span
                             key={skill}
-                            className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-white text-slate-700 border border-slate-200"
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-100/80 text-slate-700 border border-slate-200/60"
                           >
                             {skill}
                           </span>
                         ))}
                         {candidate.skills.length > 4 && (
-                          <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium text-slate-400">
+                          <span className="px-2 py-1 rounded-lg text-[11px] font-medium text-slate-400 bg-slate-50 border border-slate-200/40">
                             +{candidate.skills.length - 4}
                           </span>
                         )}
@@ -878,9 +878,9 @@ export default function ClientFreelancersView({
                     </div>
 
                     {/* Footer Actions */}
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                    <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between">
                       <div className="text-xs">
-                        <span className="font-extrabold text-slate-900">
+                        <span className="text-sm font-extrabold text-slate-900 font-mono">
                           {candidate.hourlyRateDisplay || "Contact for rate"}
                         </span>
                       </div>
@@ -889,14 +889,14 @@ export default function ClientFreelancersView({
                         <button
                           type="button"
                           onClick={() => setSelectedProfileForDetail(candidate)}
-                          className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                          className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
                         >
                           View Profile
                         </button>
                         <button
                           type="button"
                           onClick={() => handleOpenInviteModal(candidate)}
-                          className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#4f46e5] hover:bg-[#4338ca] text-white shadow-xs transition cursor-pointer"
+                          className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#4f46e5] hover:bg-[#4338ca] text-white shadow-xs transition cursor-pointer"
                         >
                           Invite
                         </button>
@@ -1508,9 +1508,9 @@ export default function ClientFreelancersView({
                 </span>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <span className="text-slate-400 text-[10px] uppercase font-bold block">Nexum Fit Score</span>
+                <span className="text-slate-400 text-[10px] uppercase font-bold block">Nexum Match Score</span>
                 <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                  {selectedProfileForDetail.fitScore}% Fit
+                  {selectedProfileForDetail.fitScore}% Match
                 </span>
               </div>
             </div>
@@ -1529,8 +1529,9 @@ export default function ClientFreelancersView({
                     </p>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  {selectedProfileForDetail.fitScore}% Fit
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-400">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>{selectedProfileForDetail.fitScore}% Match</span>
                 </span>
               </div>
 

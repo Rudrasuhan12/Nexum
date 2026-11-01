@@ -199,6 +199,83 @@ router.post("/talent/invite", async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/client/settings - fetch client workspace settings
+router.get("/settings", async (req: Request, res: Response) => {
+  try {
+    const clientId = (req.query.clientId as string) || "usr_client_alex";
+    const data = await clientOverviewService.getClientSettings(clientId);
+    res.json({ success: true, data });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch settings";
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// PATCH /api/client/settings - update client workspace settings
+router.patch("/settings", async (req: Request, res: Response) => {
+  try {
+    const clientId = (req.body?.clientId as string) || (req.query?.clientId as string) || "usr_client_alex";
+    const result = await clientOverviewService.updateClientSettings(clientId, req.body || {});
+    res.json(result);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to update settings";
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// POST /api/client/settings/change-password - change password
+router.post("/settings/change-password", async (req: Request, res: Response) => {
+  try {
+    const { userId = "usr_client_alex", currentPassword, newPassword } = req.body || {};
+    const result = await clientOverviewService.changePassword(userId, currentPassword, newPassword);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to change password";
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// POST /api/client/settings/sessions/revoke-others - revoke other active sessions
+router.post("/settings/sessions/revoke-others", async (req: Request, res: Response) => {
+  try {
+    const { userId = "usr_client_alex" } = req.body || {};
+    const result = await clientOverviewService.revokeOtherSessions(userId);
+    res.json(result);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to revoke sessions";
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// GET /api/client/settings/export - export full workspace data package
+router.get("/settings/export", async (req: Request, res: Response) => {
+  try {
+    const userId = (req.query.userId as string) || (req.query.clientId as string) || "usr_client_alex";
+    const data = await clientOverviewService.exportUserData(userId);
+    res.setHeader("Content-Disposition", `attachment; filename="nexum-export-${userId}.json"`);
+    res.setHeader("Content-Type", "application/json");
+    res.json(data);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to export user data";
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// POST /api/client/settings/support - submit support/mediation ticket
+router.post("/settings/support", async (req: Request, res: Response) => {
+  try {
+    const { userId = "usr_client_alex", category = "General", issue = "", projectId } = req.body || {};
+    const result = await clientOverviewService.submitSupportTicket(userId, { category, issue, projectId });
+    res.json(result);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to submit support ticket";
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
 // POST /api/client/overview/reset - reset overview state for testing
 router.post("/overview/reset", (_req: Request, res: Response) => {
   clientOverviewService.reset();

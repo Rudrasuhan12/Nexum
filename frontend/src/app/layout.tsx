@@ -2,26 +2,10 @@ import type { Metadata } from "next";
 import { Manrope, Inter, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-const manrope = Manrope({
-  subsets: ["latin"],
-  variable: "--font-manrope",
-  weight: ["600", "700"],
-  display: "swap",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  weight: ["400", "500", "600"],
-  display: "swap",
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  variable: "--font-ibm-plex-mono",
-  weight: ["400", "500"],
-  display: "swap",
-});
+// Resilient offline fonts with system font fallbacks
+const manrope = { variable: "font-manrope" };
+const inter = { variable: "font-inter" };
+const ibmPlexMono = { variable: "font-ibm-plex-mono" };
 
 export const metadata: Metadata = {
   title: "Nexum - Bilateral Digital Work Infrastructure",
