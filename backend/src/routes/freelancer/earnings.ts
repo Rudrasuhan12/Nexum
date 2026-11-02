@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { Role, MilestoneWorkStatus, LedgerEntryKind, PaymentState } from "@prisma/client";
 import { NotFoundError, ForbiddenError } from "../../lib/errors.js";
 import { getEarningsLabel } from "../../domain/payments/state.js";
+import { getMonthlyEarnings } from "../../domain/dashboard/queries.js";
 
 const router = Router();
 
@@ -73,6 +74,40 @@ router.get("/summary", async (req: Request, res: Response, next: NextFunction): 
     // 3. Hourly demo rate default ($85.00/hr = 8500 minor units)
     const demoRate = 8500;
 
+    // 4. Live database counts and category shares
+    const [completedProjectsCount, milestonesUnderReviewCount, successfulPayoutsCount, userAgreements] = await Promise.all([
+      prisma.agreement.count({ where: { freelancerId, status: "COMPLETED" } }),
+      prisma.milestone.count({ where: { agreement: { freelancerId }, workStatus: MilestoneWorkStatus.AWAITING_CLIENT_REVIEW, removedAt: null } }),
+      prisma.ledgerEntry.count({ where: { userId: freelancerId, kind: LedgerEntryKind.PAYOUT_SIMULATED } }),
+      prisma.agreement.findMany({
+        where: { freelancerId },
+        include: {
+          project: { select: { category: true } },
+          milestones: { where: { removedAt: null } },
+        },
+      }),
+    ]);
+
+    const categoryMap: Record<string, number> = {};
+    for (const a of userAgreements) {
+      const cat = a.project?.category || "Web Development";
+      const total = a.milestones.reduce((acc, m) => acc + m.amountMinor, 0);
+      categoryMap[cat] = (categoryMap[cat] || 0) + total;
+    }
+
+    const grandTotal = Object.values(categoryMap).reduce((a, b) => a + b, 0) || 1;
+    const categoryColors = ["#3b82f6", "#8b5cf6", "#6366f1", "#f59e0b", "#ec4899", "#10b981"];
+    const categoriesDistribution = Object.entries(categoryMap).map(([name, minor], idx) => {
+      const pct = Math.round((minor / grandTotal) * 100);
+      return {
+        name,
+        percentage: pct,
+        amount: minor / 100,
+        formattedAmount: `$${(minor / 100).toLocaleString("en-US", { minimumFractionDigits: 0 })} USD`,
+        color: categoryColors[idx % categoryColors.length],
+      };
+    });
+
     res.status(200).json({
       success: true,
       summary: {
@@ -83,7 +118,28 @@ router.get("/summary", async (req: Request, res: Response, next: NextFunction): 
         onHoldMinor: totalOnHold,
         currency: "USD",
         demoRate,
+        completedProjectsCount,
+        milestonesUnderReviewCount,
+        successfulPayoutsCount,
+        categoriesDistribution,
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/freelancer/earnings/monthly
+ * Trailing 6 months breakdown derived strictly from database ledger entries.
+ */
+router.get("/monthly", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const freelancerId = req.user!.id;
+    const series = await getMonthlyEarnings(freelancerId);
+    res.status(200).json({
+      success: true,
+      monthly: series,
     });
   } catch (err) {
     next(err);

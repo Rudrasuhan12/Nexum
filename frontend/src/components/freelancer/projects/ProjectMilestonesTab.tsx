@@ -61,7 +61,16 @@ export default function ProjectMilestonesTab({
 
       {/* 2. Milestones List */}
       <div className="space-y-3.5">
-        {project.milestones.map((ms) => {
+        {project.milestones.length === 0 ? (
+          <div className="p-10 text-center rounded-2xl bg-white border border-slate-200/90 text-slate-500">
+            <Circle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <h3 className="text-sm font-bold text-slate-800">No milestones established</h3>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
+              No milestones have been defined for this agreement yet. Propose a milestone above to define deliverables.
+            </p>
+          </div>
+        ) : (
+          project.milestones.map((ms) => {
           const workConfig = getWorkStatusConfig(ms.workStatus);
           const payConfig = getPaymentStatusConfig(ms.paymentStatus);
 
@@ -155,7 +164,8 @@ export default function ProjectMilestonesTab({
               </div>
             </div>
           );
-        })}
+        })
+        )}
       </div>
 
       {/* 3. Bottom Cards: Project Progress & Next Actions */}
@@ -218,7 +228,12 @@ export default function ProjectMilestonesTab({
           </div>
 
           <div className="space-y-2.5">
-            {project.nextActions.map((action) => (
+            {!project.nextActions || project.nextActions.length === 0 ? (
+              <p className="text-xs text-slate-400 py-3 text-center">
+                No pending actions. All milestones are up to date.
+              </p>
+            ) : (
+              project.nextActions.map((action) => (
               <div
                 key={action.id}
                 className="p-3 rounded-xl bg-slate-50/70 border border-slate-100 flex items-center justify-between gap-3"
@@ -259,7 +274,8 @@ export default function ProjectMilestonesTab({
                   {action.actionLabel}
                 </button>
               </div>
-            ))}
+            ))
+            )}
           </div>
         </div>
       </div>

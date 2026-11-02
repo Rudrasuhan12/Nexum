@@ -1109,6 +1109,134 @@ async function run() {
       isCheck27Ok,
       `totalEvents=${auditEvents.length}, actions=${actions.slice(0, 5).join(", ")}`
     );
+    // -------------------------------------------------------------
+    // CHECK 28: Transactional confirmation idempotency (Condition 3)
+    // -------------------------------------------------------------
+    // Create an awaiting-confirmation message for Freelancer A
+    const msgAwaiting = await prisma.message.create({
+      data: {
+        conversationId: conv1.id,
+        senderId: freelancerAId,
+        senderKind: "USER",
+        originalBody: "I need +$400 for additional testing.",
+        status: MessageDeliveryStatus.AWAITING_SENDER_CONFIRMATION,
+        mediationState: MediationState.REVIEWED,
+        messageClass: MessageClass.SCOPE_CHANGE,
+      },
+    });
+
+    const crCountBefore = await prisma.changeRequest.count({
+      where: { projectId: project1.id },
+    });
+
+    const firstConfirmRes = await fetch(`${baseUrl}/api/freelancer/messages/${msgAwaiting.id}/confirm`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokenA}`,
+      },
+      body: JSON.stringify({ editedSummary: "Scope addition +$400" }),
+    });
+
+    const duplicateConfirmRes = await fetch(`${baseUrl}/api/freelancer/messages/${msgAwaiting.id}/confirm`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokenA}`,
+      },
+      body: JSON.stringify({ editedSummary: "Scope addition +$400 duplicate" }),
+    });
+
+    const crCountAfter = await prisma.changeRequest.count({
+      where: { projectId: project1.id },
+    });
+
+    const isCheck28Ok =
+      firstConfirmRes.status === 200 &&
+      duplicateConfirmRes.status === 409 &&
+      crCountAfter === crCountBefore + 1;
+
+    record(
+      28,
+      "Mediation confirmation idempotency & atomic ChangeRequest creation",
+      isCheck28Ok,
+      `firstStatus=${firstConfirmRes.status}, secondStatus=${duplicateConfirmRes.status}, crCountDelta=${crCountAfter - crCountBefore}`
+    );
+
+    // -------------------------------------------------------------
+    // CHECK 29: AI draft promotion idempotency & authorization (Condition 4)
+    // -------------------------------------------------------------
+    const testDraft = await prisma.aIDraft.create({
+      data: {
+        chatId: chatAId,
+        ownerId: freelancerAId,
+        body: "Promoted response from private AI draft.",
+        status: AIDraftStatus.DRAFT,
+      },
+    });
+
+    // 1. Promote to unauthorized conversation (conv2 belongs to B) -> 404
+    const unauthPromoteRes = await fetch(`${baseUrl}/api/freelancer/ai/drafts/${testDraft.id}/send`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokenA}`,
+      },
+      body: JSON.stringify({ conversationId: conv2.id }),
+    });
+
+    // 2. Legitimate first promotion -> 202
+    const firstPromoteRes = await fetch(`${baseUrl}/api/freelancer/ai/drafts/${testDraft.id}/send`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokenA}`,
+      },
+      body: JSON.stringify({ conversationId: conv1.id }),
+    });
+
+    // 3. Replay / re-promotion of already sent draft -> 409
+    const replayPromoteRes = await fetch(`${baseUrl}/api/freelancer/ai/drafts/${testDraft.id}/send`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokenA}`,
+      },
+      body: JSON.stringify({ conversationId: conv1.id }),
+    });
+
+    const isCheck29Ok =
+      unauthPromoteRes.status === 404 &&
+      firstPromoteRes.status === 202 &&
+      replayPromoteRes.status === 409;
+
+    record(
+      29,
+      "AI draft promotion independent authorization & replay guard",
+      isCheck29Ok,
+      `unauthStatus=${unauthPromoteRes.status}, firstStatus=${firstPromoteRes.status}, replayStatus=${replayPromoteRes.status}`
+    );
+
+    // -------------------------------------------------------------
+    // CHECK 30: Private AI project grounding authorization (Condition 5)
+    // -------------------------------------------------------------
+    // Freelancer A attempting to create chat grounded on unowned project2 -> 404
+    const unauthGroundingRes = await fetch(`${baseUrl}/api/freelancer/ai/chats`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokenA}`,
+      },
+      body: JSON.stringify({ title: "Unauth Grounding", projectId: project2.id }),
+    });
+
+    const isCheck30Ok = unauthGroundingRes.status === 404;
+    record(
+      30,
+      "Private AI project grounding verifies access before scoping",
+      isCheck30Ok,
+      `unauthGroundingStatus=${unauthGroundingRes.status}`
+    );
   } finally {
     server.close();
   }
@@ -1126,7 +1254,7 @@ async function run() {
   console.log(`Failed:       ${totalCount - passedCount}`);
 
   if (passedCount === totalCount) {
-    console.log("\n🎉 ALL 27 PHASE 6 CHECKS PASSED PERFECTLY!\n");
+    console.log(`\n🎉 ALL ${totalCount} PHASE 6 CHECKS PASSED PERFECTLY!\n`);
     process.exit(0);
   } else {
     console.error("\n❌ SOME PHASE 6 CHECKS FAILED!\n");

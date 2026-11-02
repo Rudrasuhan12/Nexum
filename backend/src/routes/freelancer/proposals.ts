@@ -303,7 +303,10 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
 
     const items = proposals.map((p) => {
       const currentVer = p.versions[0];
-      const counterVer = p.versions.find((v) => v.authorRole === Role.CLIENT) || currentVer;
+      const clientVer = p.versions.find((v) => v.authorRole === Role.CLIENT);
+      const freelancerVer = p.versions.find((v) => v.authorRole === Role.FREELANCER) || currentVer;
+      const fAmount = freelancerVer?.totalAmountMinor ?? freelancerVer?.amountCents ?? 0;
+      const cAmount = clientVer?.totalAmountMinor ?? clientVer?.amountCents ?? fAmount;
       const hasFeedback = Boolean(p.rejectionFeedback);
       const nextAct = getNextAction(p.status, hasFeedback);
 
@@ -388,15 +391,15 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
             acceptanceCriteria: m.criteria || [],
           })),
         },
-        counteroffer: p.status === ProposalStatus.COUNTEROFFER_RECEIVED ? {
+        counteroffer: p.status === ProposalStatus.COUNTEROFFER_RECEIVED && clientVer ? {
           id: `co-${p.id}`,
-          originalPrice: `$${(((p.versions[1] || currentVer)?.amountCents || 500000) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
-          proposedPrice: `$${((counterVer?.totalAmountMinor || counterVer?.amountCents || 420000) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
-          originalDuration: "4 weeks",
-          proposedDuration: counterVer?.estimatedDurationWeeks ? `${counterVer.estimatedDurationWeeks} weeks` : "5 weeks",
-          scopeNotes: "Client requested adjusted terms and delivery timeline.",
-          receivedDate: p.lastActivityAt ? new Date(p.lastActivityAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recently",
-          expiresAt: "In 5 days",
+          originalPrice: `$${(fAmount / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
+          proposedPrice: `$${(cAmount / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
+          originalDuration: freelancerVer?.estimatedDurationWeeks ? `${freelancerVer.estimatedDurationWeeks} weeks` : "Flexible",
+          proposedDuration: clientVer?.estimatedDurationWeeks ? `${clientVer.estimatedDurationWeeks} weeks` : "Flexible",
+          scopeNotes: clientVer?.coverLetter || clientVer?.scopeText || "Client requested adjusted terms and delivery timeline.",
+          receivedDate: clientVer?.submittedAt ? new Date(clientVer.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : (p.lastActivityAt ? new Date(p.lastActivityAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recently"),
+          expiresAt: "Open for review",
         } : undefined,
         techTags: p.project.skills || [],
         messagesCount: 0,
@@ -1149,6 +1152,139 @@ router.post("/:id/accept", async (req: Request, res: Response, next: NextFunctio
       previousStatus: proposal.status,
       newStatus: nextStatus,
       metadata: { currentVersionId: proposal.currentVersionId },
+    });
+
+    res.status(200).json({
+      success: true,
+      proposal: updatedProposal,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/counteroffer/accept", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  // Alias for /:id/accept
+  const { id } = req.params;
+  const freelancerId = req.user!.id;
+  const { expectedVersionId } = req.body || {};
+
+  try {
+    const proposal = await prisma.proposal.findFirst({
+      where: { id, freelancerId },
+    });
+
+    if (!proposal) {
+      throw new NotFoundError("Proposal not found");
+    }
+
+    if (proposal.status !== ProposalStatus.COUNTEROFFER_RECEIVED) {
+      throw new ConflictError(
+        `Cannot accept proposal from status ${proposal.status}. Freelancer acceptance is only valid from COUNTEROFFER_RECEIVED.`,
+        "INVALID_TRANSITION"
+      );
+    }
+
+    if (expectedVersionId && proposal.currentVersionId !== expectedVersionId) {
+      throw new ConflictError("Stale version: expected version does not match current counteroffer", "STALE_VERSION");
+    }
+
+    const nextStatus = transitionProposal(proposal.status, "accept", Role.FREELANCER);
+    const now = new Date();
+
+    const updatedProposal = await prisma.$transaction(async (tx) => {
+      const p = await tx.proposal.update({
+        where: { id: proposal.id },
+        data: {
+          status: nextStatus,
+          lastActivityAt: now,
+        },
+      });
+
+      await tx.proposalEvent.create({
+        data: {
+          proposalId: p.id,
+          proposalVersionId: proposal.currentVersionId,
+          actorRole: Role.FREELANCER,
+          actorId: freelancerId,
+          type: "ACCEPTED",
+          fromStatus: proposal.status,
+          toStatus: nextStatus,
+        },
+      });
+
+      return p;
+    });
+
+    await appendAuditEvent({
+      actorId: freelancerId,
+      action: "PROPOSAL_ACCEPTED",
+      objectType: "Proposal",
+      objectId: proposal.id,
+      previousStatus: proposal.status,
+      newStatus: nextStatus,
+      metadata: { currentVersionId: proposal.currentVersionId },
+    });
+
+    res.status(200).json({
+      success: true,
+      proposal: updatedProposal,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/counteroffer/reject", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const freelancerId = req.user!.id;
+    const { reason } = req.body || {};
+
+    const proposal = await prisma.proposal.findFirst({
+      where: { id, freelancerId },
+    });
+
+    if (!proposal) {
+      throw new NotFoundError("Proposal not found");
+    }
+
+    const nextStatus = transitionProposal(proposal.status, "withdraw", Role.FREELANCER);
+    const now = new Date();
+
+    const updatedProposal = await prisma.$transaction(async (tx) => {
+      const p = await tx.proposal.update({
+        where: { id: proposal.id },
+        data: {
+          status: nextStatus,
+          lastActivityAt: now,
+        },
+      });
+
+      await tx.proposalEvent.create({
+        data: {
+          proposalId: p.id,
+          proposalVersionId: proposal.currentVersionId,
+          actorRole: Role.FREELANCER,
+          actorId: freelancerId,
+          type: "WITHDRAWN",
+          fromStatus: proposal.status,
+          toStatus: nextStatus,
+          metadata: { reason: reason || "Declined client counteroffer" },
+        },
+      });
+
+      return p;
+    });
+
+    await appendAuditEvent({
+      actorId: freelancerId,
+      action: "PROPOSAL_WITHDRAWN",
+      objectType: "Proposal",
+      objectId: proposal.id,
+      previousStatus: proposal.status,
+      newStatus: nextStatus,
+      metadata: { reason: reason || "Declined client counteroffer" },
     });
 
     res.status(200).json({

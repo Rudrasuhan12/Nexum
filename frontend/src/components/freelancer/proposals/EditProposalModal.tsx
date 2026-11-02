@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, CheckCircle2 } from "lucide-react";
+import { X, CheckCircle2, AlertCircle } from "lucide-react";
 import { FreelancerProposalItem } from "@/lib/freelancer-proposals-types";
+import { updateDraftProposal } from "@/lib/api-client";
 
 interface EditProposalModalProps {
   proposal: FreelancerProposalItem;
@@ -21,38 +22,62 @@ export default function EditProposalModal({
   const [summary, setSummary] = useState(proposal.offer.summary);
   const [coverLetter, setCoverLetter] = useState(proposal.offer.coverLetter);
   const [isSaving, setIsSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setErrorMsg("");
 
-    const updated: FreelancerProposalItem = {
-      ...proposal,
-      offer: {
-        ...proposal.offer,
-        priceDisplay,
-        duration,
-        approach,
-        summary,
-        coverLetter,
-      },
-      activityTrail: [
-        {
-          id: `act-edit-${Date.now()}`,
-          title: "Proposal Terms Updated",
-          description: `Updated proposed quote to ${priceDisplay} and duration to ${duration}.`,
-          actor: "Sambit Mohanty (Freelancer)",
-          timestamp: "Just now",
-          type: "SUBMITTED",
+    try {
+      const cleanPrice = parseFloat(priceDisplay.replace(/[^0-9.]/g, "")) || 0;
+      const weeks = parseInt(duration.replace(/[^0-9]/g, ""), 10) || 4;
+
+      if (proposal.status === "DRAFT") {
+        const res = await updateDraftProposal(proposal.id, {
+          totalAmountMinor: Math.round(cleanPrice * 100),
+          estimatedDurationWeeks: weeks,
+          coverLetter: coverLetter.trim(),
+          scopeText: approach.trim() || summary.trim(),
+        });
+
+        if (!res.success) {
+          setErrorMsg(res.error || "Failed to update draft proposal on backend.");
+          setIsSaving(false);
+          return;
+        }
+      }
+
+      const updated: FreelancerProposalItem = {
+        ...proposal,
+        offer: {
+          ...proposal.offer,
+          priceDisplay: `$${cleanPrice.toLocaleString("en-US", { minimumFractionDigits: 2 })} (fixed)`,
+          duration,
+          approach,
+          summary,
+          coverLetter,
         },
-        ...proposal.activityTrail,
-      ],
-    };
+        activityTrail: [
+          {
+            id: `act-edit-${Date.now()}`,
+            title: "Proposal Terms Updated",
+            description: `Updated proposed quote to $${cleanPrice.toLocaleString("en-US", { minimumFractionDigits: 2 })} and duration to ${duration}.`,
+            actor: "Freelancer",
+            timestamp: "Just now",
+            type: "SUBMITTED",
+          },
+          ...proposal.activityTrail,
+        ],
+      };
 
-    setTimeout(() => {
-      setIsSaving(false);
       onSave(updated);
-    }, 500);
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || "An unexpected error occurred while updating proposal.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

@@ -243,8 +243,8 @@ export default function FreelancerFindProjectsView({
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   // Interaction state
-  const [savedProjectIds, setSavedProjectIds] = useState<string[]>(["opp_1", "opp_4"]);
-  const [appliedProjectIds, setAppliedProjectIds] = useState<string[]>(["opp_3"]);
+  const [savedProjectIds, setSavedProjectIds] = useState<string[]>([]);
+  const [appliedProjectIds, setAppliedProjectIds] = useState<string[]>([]);
   const [backendProjects, setBackendProjects] = useState<ProjectOpportunity[]>([]);
   const [isLiveLoaded, setIsLiveLoaded] = useState(false);
 
@@ -259,7 +259,7 @@ export default function FreelancerFindProjectsView({
     })
       .then((res) => {
         if (!isCurrent) return;
-        if (res.success && res.projects && res.projects.length > 0) {
+        if (res.success && res.projects) {
           const mapped: ProjectOpportunity[] = res.projects.map((p) => ({
             id: p.id,
             title: p.title,
@@ -290,10 +290,17 @@ export default function FreelancerFindProjectsView({
           }));
           setBackendProjects(mapped);
           setSavedProjectIds(res.projects.filter((p) => p.isSaved).map((p) => p.id));
+        } else {
+          setBackendProjects([]);
+        }
+        setIsLiveLoaded(true);
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setBackendProjects([]);
           setIsLiveLoaded(true);
         }
-      })
-      .catch(() => {});
+      });
 
     return () => {
       isCurrent = false;
@@ -339,7 +346,7 @@ export default function FreelancerFindProjectsView({
 
   // Filter & Sort Logic
   const filteredProjects = useMemo(() => {
-    const baseList = isLiveLoaded && backendProjects.length > 0 ? backendProjects : OPPORTUNITIES;
+    const baseList = isLiveLoaded ? backendProjects : [];
     return baseList.filter((opp) => {
       // 1. Text Search (title, company, description, skills)
       const q = searchQuery.toLowerCase().trim();
@@ -547,21 +554,21 @@ export default function FreelancerFindProjectsView({
               </label>
               <div className="space-y-2 text-xs">
                 {[
-                  { id: "Any", label: "Any", count: OPPORTUNITIES.length },
+                  { id: "Any", label: "Any", count: backendProjects.length },
                   {
                     id: "Entry Level",
                     label: "Entry Level",
-                    count: OPPORTUNITIES.filter((o) => o.experienceLevel === "Entry Level").length,
+                    count: backendProjects.filter((o) => o.experienceLevel === "Entry Level").length,
                   },
                   {
                     id: "Intermediate",
                     label: "Intermediate",
-                    count: OPPORTUNITIES.filter((o) => o.experienceLevel === "Intermediate").length,
+                    count: backendProjects.filter((o) => o.experienceLevel === "Intermediate").length,
                   },
                   {
                     id: "Expert",
                     label: "Expert",
-                    count: OPPORTUNITIES.filter((o) => o.experienceLevel === "Expert").length,
+                    count: backendProjects.filter((o) => o.experienceLevel === "Expert").length,
                   },
                 ].map((tier) => (
                   <label

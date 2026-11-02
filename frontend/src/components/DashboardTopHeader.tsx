@@ -11,7 +11,6 @@ import {
   Check,
   CheckCheck,
   CreditCard,
-  GitPullRequest,
   Sparkles,
   ShieldCheck,
   CheckCircle2,
@@ -112,14 +111,24 @@ export default function DashboardTopHeader({
 
   // Fetch notifications on mount and whenever user changes
   const loadNotifications = useCallback(async () => {
+    if (!user?.id) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
     try {
       const data = await fetchNotifications(user?.role, user?.id);
       if (data && Array.isArray(data.notifications)) {
         setNotifications(data.notifications);
         setUnreadCount(typeof data.unreadCount === "number" ? data.unreadCount : 0);
+      } else {
+        setNotifications([]);
+        setUnreadCount(0);
       }
     } catch (err) {
       console.warn("Could not load notifications:", err);
+      setNotifications([]);
+      setUnreadCount(0);
     }
   }, [user?.role, user?.id]);
 
@@ -163,7 +172,11 @@ export default function DashboardTopHeader({
     // Optimistic update
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnreadCount(0);
-    await markAllNotificationsAsRead(user?.role, user?.id);
+    const ok = await markAllNotificationsAsRead(user?.role, user?.id);
+    if (!ok) {
+      // Re-fetch to roll back if mutation failed
+      loadNotifications();
+    }
   };
 
   const handleNotificationClick = async (notif: AppNotification) => {
@@ -173,7 +186,11 @@ export default function DashboardTopHeader({
         prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n))
       );
       setUnreadCount((c) => Math.max(0, c - 1));
-      await markNotificationAsRead(notif.id);
+      const ok = await markNotificationAsRead(notif.id);
+      if (!ok) {
+        // Re-fetch to roll back if mutation failed
+        loadNotifications();
+      }
     }
     if (notif.actionUrl) {
       setIsNotifMenuOpen(false);
@@ -230,9 +247,8 @@ export default function DashboardTopHeader({
     }
   };
 
-  // Fallback display names
-  const displayName =
-    user?.name || (user?.role === "FREELANCER" ? "Sambit Kumar Mohanty" : "Alex Rivera");
+  // Real display name from authenticated session
+  const displayName = user?.name || user?.email?.split("@")[0] || "User";
 
   return (
     <header className="h-16 border-b border-slate-100 bg-white px-5 sm:px-7 flex items-center justify-between sticky top-0 z-20 select-none shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
@@ -411,14 +427,6 @@ export default function DashboardTopHeader({
                             </div>
                           )}
                         </div>
-
-                        {/* Unread indicator */}
-                        {!notif.read && (
-                          <span
-                            className="w-2 h-2 rounded-full bg-[#4f46e5] shrink-0 mt-2 ring-2 ring-indigo-200"
-                            title="Unread"
-                          />
-                        )}
                       </div>
                     );
                   })
@@ -426,19 +434,14 @@ export default function DashboardTopHeader({
               </div>
 
               {/* Dropdown Footer */}
-              <div className="p-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                <span>Nexum Bilateral Consensus Engine</span>
+              <div className="p-3 bg-slate-50/60 border-t border-slate-100 text-center">
                 <button
                   type="button"
                   onClick={() => {
                     setIsNotifMenuOpen(false);
-                    if (user?.role === "FREELANCER") {
-                      router.push("/freelancer/dashboard");
-                    } else {
-                      router.push("/client/workspace");
-                    }
+                    router.push(user?.role === "FREELANCER" ? "/freelancer/workspace" : "/client/workspace");
                   }}
-                  className="font-semibold text-[#4f46e5] hover:underline cursor-pointer"
+                  className="font-semibold text-xs text-[#4f46e5] hover:underline cursor-pointer"
                 >
                   View Workspace Activity
                 </button>
@@ -451,7 +454,7 @@ export default function DashboardTopHeader({
         <div className="flex items-center gap-2.5 pl-1 sm:pl-2 border-l border-slate-100">
           <div className="relative w-9 h-9 shrink-0">
             {user?.avatar ? (
-              <div className="w-full h-full rounded-full overflow-hidden border border-slate-200">
+              <div className="w-full h-full rounded-full overflow-hidden border border-slate-200 bg-slate-100">
                 <Image
                   src={user.avatar}
                   alt={displayName}

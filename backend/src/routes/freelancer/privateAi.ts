@@ -2,11 +2,12 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { prisma } from "../../prisma.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
-import { NotFoundError, ValidationError, ForbiddenError } from "../../lib/errors.js";
+import { NotFoundError, ValidationError, ForbiddenError, ConflictError } from "../../lib/errors.js";
 import { appendAuditEvent } from "../../lib/audit.js";
 import { Role, AIDraftStatus, MessageDeliveryStatus, MediationState } from "@prisma/client";
 import { buildSafeProjectContext } from "../../domain/mediation/context.js";
 import { processMediationJob } from "../../jobs/mediationWorker.js";
+import { verifyProjectAccess } from "../../domain/mediation/access.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -78,11 +79,8 @@ router.post("/chats", async (req: Request, res: Response, next: NextFunction): P
 
     // If projectId provided, verify user has access to it
     if (projectId) {
-      const p = await prisma.project.findUnique({
-        where: { id: projectId },
-        include: { agreement: true },
-      });
-      if (!p || (p.agreement?.freelancerId !== ownerId)) {
+      const access = await verifyProjectAccess(projectId, ownerId, prisma);
+      if (!access.allowed) {
         throw new NotFoundError("Project not found");
       }
     }
@@ -205,14 +203,17 @@ router.post("/chats/:id/messages", async (req: Request, res: Response, next: Nex
     let inputRecordRefs: string[] = [];
     let contextSnippet = "";
     if (chat.projectId) {
-      const projectContext = await buildSafeProjectContext(chat.projectId, prisma);
-      inputRecordRefs.push(chat.projectId);
-      if (projectContext.milestones.length > 0) {
-        inputRecordRefs.push(...projectContext.milestones.map((m) => m.id));
+      const access = await verifyProjectAccess(chat.projectId, ownerId, prisma);
+      if (access.allowed) {
+        const projectContext = await buildSafeProjectContext(chat.projectId, prisma);
+        inputRecordRefs.push(chat.projectId);
+        if (projectContext.milestones.length > 0) {
+          inputRecordRefs.push(...projectContext.milestones.map((m) => m.id));
+        }
+        contextSnippet = `Project has ${projectContext.milestones.length} milestones. Active version: ${
+          projectContext.activeAgreementVersion || 1
+        }.`;
       }
-      contextSnippet = `Project has ${projectContext.milestones.length} milestones. Active version: ${
-        projectContext.activeAgreementVersion || 1
-      }.`;
     }
 
     // 3. Generate assistant response
@@ -293,35 +294,54 @@ router.post("/drafts/:id/send", async (req: Request, res: Response, next: NextFu
       where: { id: conversationId },
       include: { project: true },
     });
-    if (!conv || (!conv.projectId)) {
+    if (!conv || !conv.projectId) {
       throw new NotFoundError("Conversation not found");
     }
 
-    // Fetch draft or fallback to draft message
-    const draft = await prisma.aIDraft.findFirst({
-      where: { id, ownerId },
-    });
+    const access = await verifyProjectAccess(conv.projectId, ownerId, prisma);
+    if (!access.allowed) {
+      throw new NotFoundError("Conversation not found");
+    }
 
-    const bodyText = draft?.body || "Proposal response drafted by freelancer via Nexum AI.";
+    // Send through standard message creation inside transaction
+    const message = await prisma.$transaction(async (tx) => {
+      // 1. Ownership & existence check inside transaction
+      const draft = await tx.aIDraft.findFirst({
+        where: { id, ownerId },
+      });
 
-    // Send through standard message creation
-    const message = await prisma.message.create({
-      data: {
-        conversationId,
-        senderId: ownerId,
-        senderKind: "USER",
-        originalBody: bodyText,
-        status: MessageDeliveryStatus.PENDING_REVIEW,
-        mediationState: MediationState.NOT_REVIEWED,
-      },
-    });
+      if (!draft) {
+        throw new NotFoundError("AI draft not found");
+      }
 
-    if (draft) {
-      await prisma.aIDraft.update({
-        where: { id },
+      if (draft.status === AIDraftStatus.SENT) {
+        throw new ConflictError("AI draft has already been promoted and cannot be sent again", "DRAFT_ALREADY_SENT");
+      }
+
+      // 2. Atomic conditional update to prevent race conditions
+      const updateResult = await tx.aIDraft.updateMany({
+        where: { id, ownerId, status: AIDraftStatus.DRAFT },
         data: { status: AIDraftStatus.SENT },
       });
-    }
+
+      if (updateResult.count === 0) {
+        throw new ConflictError("AI draft has already been promoted and cannot be sent again", "DRAFT_ALREADY_SENT");
+      }
+
+      // 3. Create client-visible message from authentic draft body (no fallback)
+      const msg = await tx.message.create({
+        data: {
+          conversationId,
+          senderId: ownerId,
+          senderKind: "USER",
+          originalBody: draft.body,
+          status: MessageDeliveryStatus.PENDING_REVIEW,
+          mediationState: MediationState.NOT_REVIEWED,
+        },
+      });
+
+      return msg;
+    });
 
     // Trigger async mediation
     setImmediate(() => {

@@ -59,14 +59,11 @@ export default function ProposalDirectory({
         }
 
         // Budget filter
-        if (budgetFilter === "UNDER_50K") {
-          if (p.clientBrief.budgetRange.includes("₹80,000") || p.clientBrief.budgetRange.includes("₹1,20,000")) {
-            return false;
-          }
-        } else if (budgetFilter === "ABOVE_100K") {
-          if (!p.clientBrief.budgetRange.includes("₹1,20,000") && !p.clientBrief.budgetRange.includes("₹1,00,000")) {
-            return false;
-          }
+        const priceNum = parseFloat((p.offer.priceDisplay || "").replace(/[^0-9.]/g, "")) || 0;
+        if (budgetFilter === "UNDER_50K" && priceNum > 5000) {
+          return false;
+        } else if (budgetFilter === "ABOVE_100K" && priceNum < 5000) {
+          return false;
         }
 
         // Search query

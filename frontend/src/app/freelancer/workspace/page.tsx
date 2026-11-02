@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Sparkles, MessageSquare } from "lucide-react";
@@ -9,25 +8,20 @@ import FreelancerWorkspaceChatsMode from "@/components/freelancer/workspace/Free
 import FreelancerWorkspaceNexumAIMode from "@/components/freelancer/workspace/FreelancerWorkspaceNexumAIMode";
 import HowMediationWorksModal from "@/components/client/workspace/HowMediationWorksModal";
 import { useAuth } from "@/context/AuthContext";
-
 type WorkspaceMode = "chats" | "ai";
-
 function FreelancerWorkspaceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isLoading } = useAuth();
-
   const modeParam = searchParams.get("mode");
   const helpParam = searchParams.get("help");
   const isStandalone = searchParams.get("standalone") === "true";
-
   // Derive mode directly from URL searchParams
   const mode: WorkspaceMode = modeParam === "ai" ? "ai" : "chats";
   const [isMediationHelpOpen, setIsMediationHelpOpen] = useState(
     helpParam === "mediation"
   );
   const [aiScope, setAiScope] = useState<string>("All my client contracts");
-
   // Auth enforcement
   useEffect(() => {
     if (!isLoading) {
@@ -38,23 +32,19 @@ function FreelancerWorkspaceContent() {
       }
     }
   }, [user, isLoading, router]);
-
   const handleModeSwitch = (newMode: WorkspaceMode) => {
     const standaloneQuery = isStandalone ? "&standalone=true" : "";
     router.replace(`/freelancer/workspace?mode=${newMode}${standaloneQuery}`, { scroll: false });
   };
-
   const handleOpenInChatsFromAI = () => {
     const standaloneQuery = isStandalone ? "&standalone=true" : "";
     router.replace(`/freelancer/workspace?mode=chats${standaloneQuery}`, { scroll: false });
   };
-
   const handleSwitchToAIModeWithScope = (scope?: string) => {
     if (scope) setAiScope(scope);
     const standaloneQuery = isStandalone ? "&standalone=true" : "";
     router.replace(`/freelancer/workspace?mode=ai${standaloneQuery}`, { scroll: false });
   };
-
   return (
     <div className="min-h-screen bg-white text-slate-900 flex font-sans selection:bg-[#4f46e5] selection:text-white">
       {/* 1. Global Navigation Sidebar */}
@@ -69,7 +59,6 @@ function FreelancerWorkspaceContent() {
           onHelpClick={() => setIsMediationHelpOpen(true)}
         />
       )}
-
       {/* 2. Main Workspace Layout */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Top Header with Centered Mode Toggle */}
@@ -92,7 +81,6 @@ function FreelancerWorkspaceContent() {
                   <Sparkles className="w-3.5 h-3.5 text-[#4f46e5]" />
                   <span>Nexum AI</span>
                 </button>
-
                 {/* Chats Mode Button */}
                 <button
                   type="button"
@@ -105,15 +93,11 @@ function FreelancerWorkspaceContent() {
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
                   <span>Chats</span>
-                  <span className="w-4.5 h-4.5 rounded-full bg-[#ef4444] text-white text-[10px] font-bold flex items-center justify-center shrink-0 shadow-2xs ml-0.5">
-                    2
-                  </span>
                 </button>
               </div>
             }
           />
         )}
-
         {/* 3. Render Selected Workspace Mode */}
         <div className="flex-1 flex overflow-hidden">
           {mode === "chats" ? (
@@ -131,7 +115,6 @@ function FreelancerWorkspaceContent() {
           )}
         </div>
       </div>
-
       {/* Mode 3: How Mediation Works Modal */}
       <HowMediationWorksModal
         isOpen={isMediationHelpOpen}
@@ -140,7 +123,6 @@ function FreelancerWorkspaceContent() {
     </div>
   );
 }
-
 export default function FreelancerWorkspacePage() {
   return (
     <Suspense
@@ -154,4 +136,3 @@ export default function FreelancerWorkspacePage() {
     </Suspense>
   );
 }
-

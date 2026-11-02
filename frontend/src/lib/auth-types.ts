@@ -19,6 +19,7 @@ export interface DemoUser {
   canLogin: boolean;
   isDemoData: boolean;
   presenceStatus?: UserPresenceStatus;
+  verified?: boolean;
 }
 
 export const DEMO_USERS: Record<string, DemoUser> = {

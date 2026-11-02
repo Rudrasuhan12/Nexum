@@ -11,19 +11,19 @@ import {
 } from "./freelancer-earnings-types";
 
 export const INITIAL_FREELANCER_KPIS: FreelancerEarningsKpis = {
-  totalEarnings: 248000,
-  totalEarningsDisplay: "₹2,48,000",
-  completedProjectsCount: 8,
-  pendingAmount: 48000,
-  pendingAmountDisplay: "₹48,000",
-  milestonesUnderReviewCount: 2,
-  availableForPayout: 75000,
-  availableForPayoutDisplay: "₹75,000",
+  totalEarnings: 4000,
+  totalEarningsDisplay: "$4,000.00 USD",
+  completedProjectsCount: 1,
+  pendingAmount: 3000,
+  pendingAmountDisplay: "$3,000.00 USD",
+  milestonesUnderReviewCount: 1,
+  availableForPayout: 3000,
+  availableForPayoutDisplay: "$3,000.00 USD",
   readyToWithdraw: true,
-  totalWithdrawn: 125000,
-  totalWithdrawnDisplay: "₹1,25,000",
-  successfulPayoutsCount: 5,
-  currency: "INR",
+  totalWithdrawn: 1000,
+  totalWithdrawnDisplay: "$1,000.00 USD",
+  successfulPayoutsCount: 1,
+  currency: "USD",
 };
 
 export const MONTHLY_EARNINGS_SERIES: MonthlyEarningPoint[] = [

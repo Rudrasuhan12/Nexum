@@ -59,6 +59,100 @@ router.get("/freelancers", async (_req: Request, res: Response) => {
   }
 });
 
+// GET /api/users/presence - Fetch authenticated user presence from session
+router.get("/presence", requireAuth, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    let current = userPresenceMap.get(userId);
+
+    if (!current) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { preferences: true },
+      });
+      const prefs = user?.preferences as Record<string, any> | null;
+      if (prefs?.presence && VALID_PRESENCES.includes(prefs.presence)) {
+        current = {
+          presence: prefs.presence,
+          updatedAt: prefs.presenceUpdatedAt || new Date().toISOString(),
+        };
+        userPresenceMap.set(userId, current);
+      }
+    }
+
+    const finalPresence = current || {
+      presence: "available",
+      updatedAt: new Date().toISOString(),
+    };
+
+    res.json({
+      success: true,
+      userId,
+      presence: finalPresence.presence,
+      updatedAt: finalPresence.updatedAt,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/users/presence - Update authenticated user presence from session
+router.patch("/presence", requireAuth, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const { presence } = req.body;
+
+    if (!presence || typeof presence !== "string" || !VALID_PRESENCES.includes(presence as ValidPresence)) {
+      throw new ValidationError(
+        `Invalid presence status. Must be one of [${VALID_PRESENCES.join(", ")}]`
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { preferences: true },
+    });
+
+    const currentPrefs =
+      existingUser?.preferences && typeof existingUser.preferences === "object"
+        ? (existingUser.preferences as Record<string, unknown>)
+        : {};
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        preferences: {
+          ...currentPrefs,
+          presence,
+          presenceUpdatedAt: now,
+        },
+      },
+    });
+
+    userPresenceMap.set(userId, { presence, updatedAt: now });
+
+    await appendAuditEvent({
+      actorId: userId,
+      action: "PRESENCE_CHANGED",
+      objectType: "USER",
+      objectId: userId,
+      metadata: { newPresence: presence, timestamp: now },
+    });
+
+    res.json({
+      success: true,
+      userId,
+      presence,
+      updatedAt: now,
+      message: `Presence updated to ${presence}`,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/users/:userId/presence - Fetch user presence
 router.get("/:userId/presence", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {

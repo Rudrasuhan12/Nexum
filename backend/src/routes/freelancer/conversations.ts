@@ -381,39 +381,60 @@ router.post("/messages/:id/confirm", async (req: Request, res: Response, next: N
       );
     }
 
-    // 1. If SCOPE_CHANGE or PRICE_OR_DEADLINE with active agreement, spawn ChangeRequest row
-    let changeRequestId: string | null = null;
-    if (
-      message.messageClass === MessageClass.SCOPE_CHANGE ||
-      message.messageClass === MessageClass.PRICE_OR_DEADLINE
-    ) {
-      const activeAgreement = await prisma.agreement.findUnique({
-        where: { projectId: message.conversation.projectId },
+    // Transactional, idempotent confirmation
+    const { updatedMessage, createdChangeRequestId } = await prisma.$transaction(async (tx) => {
+      // 1. Atomically check and transition message status
+      const updatedCount = await tx.message.updateMany({
+        where: {
+          id,
+          status: MessageDeliveryStatus.AWAITING_SENDER_CONFIRMATION,
+        },
+        data: {
+          status: MessageDeliveryStatus.DELIVERED,
+          deliveredAt: new Date(),
+        },
       });
 
-      if (activeAgreement && activeAgreement.activeVersionId) {
-        const cr = await prisma.changeRequest.create({
-          data: {
-            projectId: message.conversation.projectId,
-            agreementId: activeAgreement.id,
-            baseVersionId: activeAgreement.activeVersionId,
-            raisedByRole: Role.FREELANCER,
-            raisedById: freelancerId,
-            description: parsed.data?.editedSummary || message.mediationResult?.summaryForRecipient || message.originalBody,
-            classification:
-              message.messageClass === MessageClass.SCOPE_CHANGE
-                ? ChangeClassification.NEW_MILESTONE
-                : ChangeClassification.AMENDMENT,
-            status: "OPEN",
-            sourceMessageId: message.id,
-          },
-        });
-        changeRequestId = cr.id;
+      if (updatedCount.count === 0) {
+        throw new ConflictError(
+          "Message is not in AWAITING_SENDER_CONFIRMATION status or has already been decided",
+          "ALREADY_DECIDED"
+        );
       }
-    }
 
-    // 2. Deliver message
-    const updated = await prisma.$transaction(async (tx) => {
+      let changeRequestId: string | null = null;
+      if (
+        message.messageClass === MessageClass.SCOPE_CHANGE ||
+        message.messageClass === MessageClass.PRICE_OR_DEADLINE
+      ) {
+        const activeAgreement = await tx.agreement.findUnique({
+          where: { projectId: message.conversation.projectId },
+        });
+
+        if (activeAgreement && activeAgreement.activeVersionId) {
+          const cr = await tx.changeRequest.create({
+            data: {
+              projectId: message.conversation.projectId,
+              agreementId: activeAgreement.id,
+              baseVersionId: activeAgreement.activeVersionId,
+              raisedByRole: Role.FREELANCER,
+              raisedById: freelancerId,
+              description:
+                parsed.data?.editedSummary ||
+                message.mediationResult?.summaryForRecipient ||
+                message.originalBody,
+              classification:
+                message.messageClass === MessageClass.SCOPE_CHANGE
+                  ? ChangeClassification.NEW_MILESTONE
+                  : ChangeClassification.AMENDMENT,
+              status: "OPEN",
+              sourceMessageId: message.id,
+            },
+          });
+          changeRequestId = cr.id;
+        }
+      }
+
       if (parsed.data?.editedSummary && message.mediationResult) {
         await tx.mediationResult.update({
           where: { messageId: id },
@@ -424,16 +445,16 @@ router.post("/messages/:id/confirm", async (req: Request, res: Response, next: N
         });
       }
 
-      return await tx.message.update({
+      const finalMsg = await tx.message.update({
         where: { id },
         data: {
-          status: MessageDeliveryStatus.DELIVERED,
-          deliveredAt: new Date(),
           cardPayload: changeRequestId
             ? { ...(message.cardPayload as any), changeRequestId }
             : (message.cardPayload as any),
         },
       });
+
+      return { updatedMessage: finalMsg, createdChangeRequestId: changeRequestId };
     });
 
     await appendAuditEvent({
@@ -442,13 +463,13 @@ router.post("/messages/:id/confirm", async (req: Request, res: Response, next: N
       objectType: "MESSAGE",
       objectId: id,
       newStatus: "DELIVERED",
-      metadata: { changeRequestId },
+      metadata: { changeRequestId: createdChangeRequestId },
     });
 
     res.status(200).json({
       success: true,
-      message: updated,
-      changeRequestId,
+      message: updatedMessage,
+      changeRequestId: createdChangeRequestId,
     });
   } catch (err) {
     next(err);

@@ -6,6 +6,7 @@ import {
   fetchFreelancerProposalsSummary,
   acceptProposalCounteroffer,
   rejectProposalCounteroffer,
+  reviseProposal,
 } from "@/lib/api-client";
 import { ProposalSummaryKPIs } from "@/lib/freelancer-proposals-types";
 import { Plus, Search } from "lucide-react";
@@ -14,7 +15,6 @@ import {
   ProposalDetailTab,
 } from "@/lib/freelancer-proposals-types";
 import {
-  INITIAL_FREELANCER_PROPOSALS,
   calculateProposalSummaryKPIs,
 } from "@/lib/freelancer-proposals-data";
 import ProposalSummaryCards from "./proposals/ProposalSummaryCards";
@@ -40,14 +40,10 @@ export default function FreelancerProposalsView({
   onNavigateTab,
 }: FreelancerProposalsViewProps) {
   // Proposals dataset state
-  const [proposals, setProposals] = useState<FreelancerProposalItem[]>(
-    INITIAL_FREELANCER_PROPOSALS
-  );
+  const [proposals, setProposals] = useState<FreelancerProposalItem[]>([]);
 
-  // Selected proposal ID defaults strictly to the very first proposal
-  const [selectedProposalId, setSelectedProposalId] = useState<string>(
-    INITIAL_FREELANCER_PROPOSALS[0].id
-  );
+  // Selected proposal ID
+  const [selectedProposalId, setSelectedProposalId] = useState<string>("");
 
   // Filters & Search
   const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
@@ -72,8 +68,12 @@ export default function FreelancerProposalsView({
         fetchFreelancerProposalsSummary(),
       ]);
 
-      if (propsRes.success && propsRes.proposals && propsRes.proposals.length > 0) {
-        setProposals(propsRes.proposals as any as FreelancerProposalItem[]);
+      if (propsRes.success && propsRes.proposals) {
+        const mapped = propsRes.proposals as any as FreelancerProposalItem[];
+        setProposals(mapped);
+        if (mapped.length > 0) {
+          setSelectedProposalId((prev) => prev || mapped[0].id);
+        }
         setIsLiveLoaded(true);
       }
       if (sumRes.success && sumRes.summary) {
@@ -131,33 +131,28 @@ export default function FreelancerProposalsView({
         }
 
         // Budget filter
+        const offerNum = parseFloat((p.offer?.priceDisplay || "").replace(/[^0-9.]/g, "")) || 0;
         if (budgetFilter === "UNDER_50K") {
-          if (
-            p.clientBrief.budgetRange.includes("₹80,000") ||
-            p.clientBrief.budgetRange.includes("₹1,20,000")
-          ) {
+          if (offerNum > 5000) {
             return false;
           }
         } else if (budgetFilter === "ABOVE_100K") {
-          if (
-            !p.clientBrief.budgetRange.includes("₹1,20,000") &&
-            !p.clientBrief.budgetRange.includes("₹1,00,000")
-          ) {
+          if (offerNum < 5000) {
             return false;
           }
         }
 
         // Date filter
         if (dateFilter === "7_DAYS") {
-          if (
-            !p.submittedDate.includes("Oct 28") &&
-            !p.submittedDate.includes("Oct 26") &&
-            !p.submittedDate.includes("Oct 24")
-          ) {
+          const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+          const propTime = new Date(p.submittedDate).getTime();
+          if (!isNaN(propTime) && propTime < sevenDaysAgo) {
             return false;
           }
         } else if (dateFilter === "30_DAYS") {
-          if (!p.submittedDate.includes("Oct")) {
+          const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+          const propTime = new Date(p.submittedDate).getTime();
+          if (!isNaN(propTime) && propTime < thirtyDaysAgo) {
             return false;
           }
         }
@@ -200,7 +195,7 @@ export default function FreelancerProposalsView({
   const selectedProposal = useMemo(() => {
     const found = filteredProposals.find((p) => p.id === selectedProposalId);
     if (found) return found;
-    return filteredProposals[0] || proposals[0] || INITIAL_FREELANCER_PROPOSALS[0];
+    return filteredProposals[0] || proposals[0] || null;
   }, [filteredProposals, selectedProposalId, proposals]);
 
   // Selected proposal index for pagination within visible proposals
@@ -285,114 +280,62 @@ export default function FreelancerProposalsView({
   // Counteroffer actions
   const handleAcceptCounteroffer = async () => {
     try {
-      await acceptProposalCounteroffer(selectedProposal.id);
-    } catch (e) {
-      console.warn("Backend accept counteroffer", e);
+      const res = await acceptProposalCounteroffer(selectedProposal.id);
+      if (res.success) {
+        showToast("Counteroffer accepted! Moving to formal agreement drafting.");
+        await loadProposals();
+      } else {
+        showToast(`Failed to accept counteroffer: ${res.error || "Action not allowed"}`);
+      }
+    } catch (e: any) {
+      showToast(`Error accepting counteroffer: ${e.message || "Failed"}`);
+    } finally {
+      setShowCounterofferModal(false);
     }
-    setProposals((prev) =>
-      prev.map((p) => {
-        if (p.id !== selectedProposal.id || !p.counteroffer) return p;
-        return {
-          ...p,
-          status: "ACCEPTED",
-          statusLabel: "Accepted",
-          statusBadgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200/80",
-          offer: {
-            ...p.offer,
-            priceDisplay: `${p.counteroffer.proposedPrice} (fixed)`,
-            duration: p.counteroffer.proposedDuration,
-          },
-          counteroffer: undefined,
-          activityTrail: [
-            {
-              id: `act-acc-${Date.now()}`,
-              title: "Counteroffer Accepted by Freelancer",
-              description: `Agreed to client's revised terms. Moving to agreement ratification.`,
-              actor: "Sambit Mohanty (Freelancer)",
-              timestamp: "Just now",
-              type: "ACCEPTED",
-            },
-            ...p.activityTrail,
-          ],
-        };
-      })
-    );
-    setShowCounterofferModal(false);
-    showToast(
-      "Counteroffer accepted! Moving to formal agreement drafting."
-    );
-    loadProposals();
   };
 
-  const handleCounterProposal = (
+  const handleCounterProposal = async (
     newPrice: string,
     newDuration: string,
     note: string
   ) => {
-    setProposals((prev) =>
-      prev.map((p) => {
-        if (p.id !== selectedProposal.id) return p;
-        return {
-          ...p,
-          status: "SUBMITTED",
-          statusLabel: "Counterproposal Sent",
-          statusBadgeColor: "bg-blue-50 text-blue-700 border-blue-200/80",
-          offer: {
-            ...p.offer,
-            priceDisplay: newPrice,
-            duration: newDuration,
-          },
-          counteroffer: undefined,
-          activityTrail: [
-            {
-              id: `act-cnt-${Date.now()}`,
-              title: "Counterproposal Sent to Client",
-              description: `Submitted adjusted offer of ${newPrice} with note: "${note}"`,
-              actor: "Sambit Mohanty (Freelancer)",
-              timestamp: "Just now",
-              type: "COUNTEROFFER",
-            },
-            ...p.activityTrail,
-          ],
-        };
-      })
-    );
-    setShowCounterofferModal(false);
-    showToast("Counterproposal submitted to client with updated terms.");
+    try {
+      const cleanPrice = parseFloat(newPrice.replace(/[^0-9.]/g, "")) || 0;
+      const weeksNum = parseInt(newDuration.replace(/[^0-9]/g, ""), 10) || 4;
+      const res = await reviseProposal(selectedProposal.id, selectedProposal.id, {
+        totalAmountMinor: Math.round(cleanPrice * 100),
+        estimatedDurationWeeks: weeksNum,
+        coverLetter: note,
+        scopeText: note,
+      });
+
+      if (res.success) {
+        showToast("Counterproposal submitted to client with updated terms.");
+        await loadProposals();
+      } else {
+        showToast(`Failed to submit counterproposal: ${res.error || "Action not allowed"}`);
+      }
+    } catch (e: any) {
+      showToast(`Error submitting counterproposal: ${e.message || "Failed"}`);
+    } finally {
+      setShowCounterofferModal(false);
+    }
   };
 
   const handleDeclineCounteroffer = async () => {
     try {
-      await rejectProposalCounteroffer(selectedProposal.id);
-    } catch (e) {
-      console.warn("Backend reject counteroffer", e);
+      const res = await rejectProposalCounteroffer(selectedProposal.id);
+      if (res.success) {
+        showToast("Counteroffer declined. Proposal marked as Withdrawn.");
+        await loadProposals();
+      } else {
+        showToast(`Failed to decline counteroffer: ${res.error || "Action not allowed"}`);
+      }
+    } catch (e: any) {
+      showToast(`Error declining counteroffer: ${e.message || "Failed"}`);
+    } finally {
+      setShowCounterofferModal(false);
     }
-    setProposals((prev) =>
-      prev.map((p) => {
-        if (p.id !== selectedProposal.id) return p;
-        return {
-          ...p,
-          status: "WITHDRAWN",
-          statusLabel: "Withdrawn",
-          statusBadgeColor: "bg-slate-100 text-slate-600 border-slate-200",
-          counteroffer: undefined,
-          activityTrail: [
-            {
-              id: `act-dec-${Date.now()}`,
-              title: "Counteroffer Declined",
-              description: "Declined client counteroffer and withdrew proposal.",
-              actor: "Sambit Mohanty (Freelancer)",
-              timestamp: "Just now",
-              type: "REJECTED",
-            },
-            ...p.activityTrail,
-          ],
-        };
-      })
-    );
-    setShowCounterofferModal(false);
-    showToast("Counteroffer declined. Proposal marked as Withdrawn.");
-    loadProposals();
   };
 
   // Create new proposal
@@ -401,6 +344,7 @@ export default function FreelancerProposalsView({
     setSelectedProposalId(newProposal.id);
     setShowBuilderModal(false);
     showToast(`Proposal sent for "${newProposal.projectTitle}"!`);
+    loadProposals();
   };
 
   // Edit proposal
@@ -469,7 +413,7 @@ export default function FreelancerProposalsView({
         >
           <ProposalDirectory
             proposals={proposals}
-            selectedProposalId={selectedProposal.id}
+            selectedProposalId={selectedProposal ? selectedProposal.id : ""}
             onSelectProposal={handleSelectProposal}
             selectedStatus={selectedStatus}
             onSelectStatus={setSelectedStatus}
@@ -499,68 +443,82 @@ export default function FreelancerProposalsView({
               : undefined
           }
         >
-          {/* Selected Proposal Header */}
-          <SelectedProposalHeader
-            proposal={selectedProposal}
-            currentIndex={selectedIndex >= 0 ? selectedIndex : 0}
-            totalCount={filteredProposals.length}
-            onNavigatePrev={handleNavigatePrev}
-            onNavigateNext={handleNavigateNext}
-            onBackToDirectory={() => setMobileView("directory")}
-            onViewProject={() => {
-              setActiveTab("project_details");
-            }}
-          />
-
-          {/* Proposal Tabs */}
-          <ProposalTabs
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            messagesCount={selectedProposal.messagesCount}
-          />
-
-          {/* Selected Tab Content */}
-          <div className="pt-1">
-            {activeTab === "proposal" && (
-              <ProposalOfferTab
+          {selectedProposal ? (
+            <>
+              {/* Selected Proposal Header */}
+              <SelectedProposalHeader
                 proposal={selectedProposal}
-                onEditProposal={() => setShowEditModal(true)}
-                onReviewCounteroffer={() => setShowCounterofferModal(true)}
-                onSendFollowUp={() => {
-                  setActiveTab("messages");
-                  showToast(
-                    `Opened discussion thread for ${selectedProposal.client.companyName}.`
-                  );
+                currentIndex={selectedIndex >= 0 ? selectedIndex : 0}
+                totalCount={filteredProposals.length}
+                onNavigatePrev={handleNavigatePrev}
+                onNavigateNext={handleNavigateNext}
+                onBackToDirectory={() => setMobileView("directory")}
+                onViewProject={() => {
+                  setActiveTab("project_details");
                 }}
-                showToast={showToast}
               />
-            )}
 
-            {activeTab === "project_details" && (
-              <ProjectDetailsTab proposal={selectedProposal} />
-            )}
-
-            {activeTab === "client" && (
-              <ClientProfileTab proposal={selectedProposal} />
-            )}
-
-            {activeTab === "messages" && (
-              <ProposalMessagesTab
-                proposal={selectedProposal}
-                onOpenWorkspace={() => onNavigateTab("workspace")}
-                showToast={showToast}
+              {/* Proposal Tabs */}
+              <ProposalTabs
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                messagesCount={selectedProposal.messagesCount}
               />
-            )}
 
-            {activeTab === "activity" && (
-              <ProposalActivityTab proposal={selectedProposal} />
-            )}
-          </div>
+              {/* Selected Tab Content */}
+              <div className="pt-1">
+                {activeTab === "proposal" && (
+                  <ProposalOfferTab
+                    proposal={selectedProposal}
+                    onEditProposal={() => setShowEditModal(true)}
+                    onReviewCounteroffer={() => setShowCounterofferModal(true)}
+                    onSendFollowUp={() => {
+                      setActiveTab("messages");
+                      showToast(
+                        `Opened discussion thread for ${selectedProposal.client.companyName}.`
+                      );
+                    }}
+                    showToast={showToast}
+                  />
+                )}
+
+                {activeTab === "project_details" && (
+                  <ProjectDetailsTab proposal={selectedProposal} />
+                )}
+
+                {activeTab === "client" && (
+                  <ClientProfileTab proposal={selectedProposal} />
+                )}
+
+                {activeTab === "messages" && (
+                  <ProposalMessagesTab
+                    proposal={selectedProposal}
+                    onOpenWorkspace={() => onNavigateTab("workspace")}
+                    showToast={showToast}
+                  />
+                )}
+
+                {activeTab === "activity" && (
+                  <ProposalActivityTab proposal={selectedProposal} />
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="p-12 rounded-2xl bg-white border border-slate-200/90 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                <Search className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-800">No Proposals Selected</h3>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                No active or submitted proposals match your search or filter criteria.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Modals */}
-      {showCounterofferModal && selectedProposal.counteroffer && (
+      {showCounterofferModal && selectedProposal && selectedProposal.counteroffer && (
         <CounterofferComparisonModal
           proposal={selectedProposal}
           counteroffer={selectedProposal.counteroffer}
@@ -578,7 +536,7 @@ export default function FreelancerProposalsView({
         />
       )}
 
-      {showEditModal && (
+      {showEditModal && selectedProposal && (
         <EditProposalModal
           proposal={selectedProposal}
           onClose={() => setShowEditModal(false)}

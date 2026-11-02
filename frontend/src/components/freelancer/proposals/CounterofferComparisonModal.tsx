@@ -30,13 +30,20 @@ export default function CounterofferComparisonModal({
   const [showCounterForm, setShowCounterForm] = useState(false);
   const [counterPrice, setCounterPrice] = useState(counteroffer.proposedPrice);
   const [counterDuration, setCounterDuration] = useState(counteroffer.proposedDuration);
-  const [counterNote, setCounterNote] = useState(
-    "I can meet at ₹60,000 with a 3.5-week timeline, ensuring full E2E test coverage and audit signoff."
-  );
+  const [counterNote, setCounterNote] = useState("");
+
+  const origNum = parseFloat((counteroffer.originalPrice || "").replace(/[^0-9.]/g, "")) || 0;
+  const propNum = parseFloat((counteroffer.proposedPrice || "").replace(/[^0-9.]/g, "")) || 0;
+  const priceDiff = propNum - origNum;
+  const formattedDiff = priceDiff === 0
+    ? "$0.00"
+    : priceDiff > 0
+    ? `+$${priceDiff.toLocaleString("en-US", { minimumFractionDigits: 2 })} USD`
+    : `-$${Math.abs(priceDiff).toLocaleString("en-US", { minimumFractionDigits: 2 })} USD`;
 
   const handleSendCounter = (e: React.FormEvent) => {
     e.preventDefault();
-    onCounter(counterPrice, counterDuration, counterNote);
+    onCounter(counterPrice, counterDuration, counterNote.trim());
   };
 
   return (
@@ -45,9 +52,14 @@ export default function CounterofferComparisonModal({
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div>
-            <h3 className="text-base font-extrabold text-slate-900">
-              Review Client Counteroffer
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-extrabold text-slate-900">
+                Review Client Counteroffer
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                USD
+              </span>
+            </div>
             <p className="text-xs text-slate-500 mt-0.5 truncate max-w-md">
               {proposal.projectTitle} · {proposal.client.companyName}
             </p>
@@ -89,9 +101,14 @@ export default function CounterofferComparisonModal({
             </span>
             <div>
               <p className="text-xs text-slate-500">Proposed Price</p>
-              <p className="text-sm font-black text-orange-600">
-                {counteroffer.proposedPrice}
-              </p>
+              <div className="flex items-baseline gap-2">
+                <p className="text-sm font-black text-orange-600">
+                  {counteroffer.proposedPrice}
+                </p>
+                <span className={`text-[10px] font-bold ${priceDiff >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                  ({formattedDiff})
+                </span>
+              </div>
             </div>
             <div>
               <p className="text-xs text-slate-500">Proposed Timeline</p>
@@ -117,13 +134,15 @@ export default function CounterofferComparisonModal({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Proposed Price
+                  Proposed Price (USD)
                 </label>
                 <input
                   type="text"
                   value={counterPrice}
                   onChange={(e) => setCounterPrice(e.target.value)}
+                  placeholder="e.g. $5,500 USD"
                   className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold bg-white text-slate-900"
+                  required
                 />
               </div>
               <div>
@@ -134,7 +153,9 @@ export default function CounterofferComparisonModal({
                   type="text"
                   value={counterDuration}
                   onChange={(e) => setCounterDuration(e.target.value)}
+                  placeholder="e.g. 3 weeks"
                   className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold bg-white text-slate-900"
+                  required
                 />
               </div>
             </div>
@@ -146,6 +167,7 @@ export default function CounterofferComparisonModal({
                 rows={2}
                 value={counterNote}
                 onChange={(e) => setCounterNote(e.target.value)}
+                placeholder="State your proposed adjustments and rationale..."
                 className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs bg-white text-slate-900"
               />
             </div>

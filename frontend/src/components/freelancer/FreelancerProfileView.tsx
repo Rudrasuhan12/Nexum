@@ -93,10 +93,7 @@ export default function FreelancerProfileView({
   const [activeSubTab, setActiveSubTab] = useState<ProfileSubTabId>("basic");
 
   // Avatar & Banner State
-  const [avatarUrl, setAvatarUrl] = useState<string>(
-    freelancer.avatar ||
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&q=80"
-  );
+  const [avatarUrl, setAvatarUrl] = useState<string>(freelancer.avatar || "");
   const [bannerUrl, setBannerUrl] = useState<string>("");
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -107,156 +104,48 @@ export default function FreelancerProfileView({
     name: string;
     size: string;
     uploadedAt: string;
-  } | null>({
-    name: `${(freelancer.name || "Sambit_Mohanty").replace(/\s+/g, "_")}_Resume.pdf`,
-    size: "1.2 MB",
-    uploadedAt: "Oct 15, 2026",
-  });
+  } | null>(null);
 
   // 1. Basic Info State
-  const [fullName, setFullName] = useState(freelancer.name || "Sambit Kumar Mohanty");
-  const [professionalTitle, setProfessionalTitle] = useState(
-    freelancer.title || "Full Stack Developer"
-  );
-  const [headline, setHeadline] = useState(
-    "Full Stack Developer | Web, AI & Blockchain Solutions"
-  );
-  const [location, setLocation] = useState("Bhubaneswar, Odisha, India");
-  const [timeZone, setTimeZone] = useState("(GMT+5:30) India Standard Time");
-  const [aboutMe, setAboutMe] = useState(
-    "I'm a passionate full stack developer with experience in building scalable web applications, AI-powered products and blockchain solutions. I enjoy solving real-world problems and working with clients to turn ideas into high-quality, production-ready products."
-  );
-  const [linkedinUrl, setLinkedinUrl] = useState("https://linkedin.com/in/sambit-mohanty");
-  const [githubUrl, setGithubUrl] = useState("https://github.com/sambit-mohanty");
-  const [websiteUrl, setWebsiteUrl] = useState("https://sambitmohanty.dev");
+  const [fullName, setFullName] = useState(freelancer.name || "");
+  const [professionalTitle, setProfessionalTitle] = useState(freelancer.title || "");
+  const [headline, setHeadline] = useState("");
+  const [location, setLocation] = useState("");
+  const [timeZone, setTimeZone] = useState("");
+  const [aboutMe, setAboutMe] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [githubUrl, setGithubUrl] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
   const [resumeVisibility, setResumeVisibility] = useState<"Visible to clients" | "Hidden">("Visible to clients");
   const [liveCompleteness, setLiveCompleteness] = useState<ProfileCompleteness | null>(null);
-  const [, setPublicPreviewData] = useState<any>(null);
+  const [publicPreviewData, setPublicPreviewData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    async function loadData() {
-      try {
-        const res = await fetchFreelancerProfile();
-        if (active && res.success && res.profile) {
-          const p = res.profile;
-          if (p.professionalTitle) setProfessionalTitle(p.professionalTitle);
-          if (p.headline) setHeadline(p.headline);
-          if (p.locationText) setLocation(p.locationText);
-          if (p.timezone) setTimeZone(p.timezone);
-          if (p.bio) setAboutMe(p.bio);
-          if (p.user?.name) setFullName(p.user.name);
-          if (p.rateHourlyMinor) setHourlyRate(p.rateHourlyMinor / 100);
-          if (p.weeklyCapacityHours) setWeeklyHours(p.weeklyCapacityHours);
-          if (p.photoFileId) setAvatarUrl(`/api/files/${p.photoFileId}`);
-          if (p.coverFileId) setBannerUrl(`/api/files/${p.coverFileId}`);
-          if (p.servicesOffered && p.servicesOffered.length > 0) {
-            setServicesOffered(p.servicesOffered.map((title, idx) => ({ id: `srv_${idx}`, title, active: true })));
-          }
-          if (p.freelancerSkills && p.freelancerSkills.length > 0) {
-            setSkillsList(p.freelancerSkills.map((s) => ({ name: s.skillName, level: s.proficiency, verified: true })));
-          }
-          if (p.workExperiences && p.workExperiences.length > 0) {
-            setWorkExperiences(p.workExperiences.map((e) => ({
-              id: e.id,
-              role: e.role,
-              company: e.company,
-              location: e.location || "Remote",
-              duration: `${e.startMonth} – ${e.isCurrent ? "Present" : e.endMonth || ""}`,
-              current: e.isCurrent,
-              bullets: e.description ? [e.description] : ["Delivered core client features."],
-            })));
-          }
-          if (p.educationEntries && p.educationEntries.length > 0) {
-            setEducationList(p.educationEntries.map((ed) => ({
-              id: ed.id,
-              degree: ed.degree,
-              institution: ed.institution,
-              year: `${ed.startYear || ""} – ${ed.graduationYear || ""}`,
-              gpa: "Verified Degree",
-              details: ed.fieldOfStudy || "Degree coursework",
-            })));
-          }
-          if (p.certifications && p.certifications.length > 0) {
-            setCertificationsList(p.certifications.map((c) => ({
-              id: c.id,
-              title: c.name,
-              issuer: c.issuer,
-              issueDate: c.issuedMonth,
-              credentialId: c.credentialId || "NEX-VERIFIED",
-              verified: true,
-            })));
-          }
-          if (p.portfolioProjects && p.portfolioProjects.length > 0) {
-            setPortfolioProjects(p.portfolioProjects.map((port) => ({
-              id: port.id,
-              title: port.title,
-              role: port.role || "Lead Contributor",
-              timeline: "Verified",
-              description: port.description,
-              prUrl: port.projectUrl || undefined,
-              demoUrl: port.projectUrl || undefined,
-              tags: port.tools || ["TypeScript"],
-              metrics: "Verified project deliverable",
-            })));
-          }
-          if (p.resumeFiles && p.resumeFiles.length > 0) {
-            const activeRes = p.resumeFiles.find((r) => r.status === "ACTIVE") || p.resumeFiles[0];
-            const sizeStr = activeRes.sizeBytes > 1024 * 1024
-              ? `${(activeRes.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-              : `${Math.round(activeRes.sizeBytes / 1024)} KB`;
-            setResumeFile({
-              name: activeRes.originalName,
-              size: sizeStr,
-              uploadedAt: new Date(activeRes.uploadedAt).toLocaleDateString(),
-            });
-            setResumeVisibility(activeRes.visibility === "PUBLIC" ? "Visible to clients" : "Hidden");
-          }
-          if (res.completeness) {
-            setLiveCompleteness(res.completeness);
-          }
-        }
-      } catch (err) {
-        console.warn("Could not load freelancer profile:", err);
-      }
+  // URL formatter ensuring https:// protocol
+  const formatHttps = (url?: string): string | undefined => {
+    if (!url) return undefined;
+    const trimmed = url.trim();
+    if (!trimmed) return undefined;
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed.replace(/^http:\/\//i, "https://");
     }
-    loadData();
-    return () => {
-      active = false;
-    };
-  }, []);
+    return `https://${trimmed}`;
+  };
 
   // 2. Professional Details State
-  const [hourlyRate, setHourlyRate] = useState<number>(65);
-  const [minFixedRate, setMinFixedRate] = useState<number>(1000);
-  const [primaryDomain, setPrimaryDomain] = useState("Fintech, SaaS & High-Concurrency Web");
-  const [yearsExperience, setYearsExperience] = useState<number>(6);
+  const [hourlyRate, setHourlyRate] = useState<number>(0);
+  const [minFixedRate, setMinFixedRate] = useState<number>(0);
+  const [primaryDomain, setPrimaryDomain] = useState("");
+  const [yearsExperience, setYearsExperience] = useState<number>(0);
   const [englishLevel, setEnglishLevel] = useState("Fluent / Professional Working");
-  const [servicesOffered, setServicesOffered] = useState<ServiceOfferingItem[]>([
-    { id: "srv_1", title: "Full-Stack Web Applications (Next.js / Node.js)", active: true },
-    { id: "srv_2", title: "Bilateral Payment & Escrow Settlement Rails", active: true },
-    { id: "srv_3", title: "UI/UX Design Systems & Tailwind CSS Architecture", active: true },
-    { id: "srv_4", title: "Cryptographic Consensus State Machines", active: true },
-    { id: "srv_5", title: "High-Performance Webhook Ingestion & Worker Pools", active: true },
-  ]);
+  const [servicesOffered, setServicesOffered] = useState<ServiceOfferingItem[]>([]);
   const [newServiceInput, setNewServiceInput] = useState("");
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [editingServiceText, setEditingServiceText] = useState("");
 
   // 3. Skills State
   const [newSkillInput, setNewSkillInput] = useState("");
-  const [skillsList, setSkillsList] = useState<Array<{ name: string; level: string; verified: boolean }>>([
-    { name: "TypeScript", level: "Expert (5+ yrs)", verified: true },
-    { name: "Next.js 15 & React 19", level: "Expert (5+ yrs)", verified: true },
-    { name: "Node.js & Express", level: "Advanced (4 yrs)", verified: true },
-    { name: "PayPal REST v2 APIs", level: "Specialist", verified: true },
-    { name: "Dual SHA-256 State Consensus", level: "Specialist", verified: true },
-    { name: "Tailwind CSS", level: "Expert", verified: true },
-    { name: "PostgreSQL & Prisma", level: "Advanced (3 yrs)", verified: true },
-    { name: "Python & LangChain", level: "Intermediate", verified: true },
-    { name: "Docker & AWS S3", level: "Intermediate", verified: true },
-    { name: "Solana Pay / Web3", level: "Intermediate", verified: false },
-  ]);
+  const [skillsList, setSkillsList] = useState<Array<{ name: string; level: string; verified: boolean }>>([]);
 
   // 4. Portfolio Projects State
   const [portfolioProjects, setPortfolioProjects] = useState<Array<{
@@ -269,52 +158,7 @@ export default function FreelancerProfileView({
     demoUrl?: string;
     tags: string[];
     metrics: string;
-  }>>([
-    {
-      id: "port_1",
-      title: "Bilateral E-Commerce Payment Rails & Webhook Ingestion Engine",
-      role: "Lead Systems Architect",
-      timeline: "Oct 2026 – Present",
-      description:
-        "High-reliability payment webhook ingestion pipeline integrating PayPal REST Orders v2 with automated signature verification, 30s idempotency caching, and failover recovery.",
-      prUrl: "https://github.com/proofloop/gateway/pull/42",
-      demoUrl: "https://www.loom.com/share/proofloop-milestone2-demo",
-      tags: ["TypeScript", "PayPal REST v2", "Next.js", "Jest"],
-      metrics: "5,000+ invoices/hr throughput · 99.98% uptime",
-    },
-    {
-      id: "port_2",
-      title: "Nexum Dual SHA-256 Consensus Freelance Escrow Gateway",
-      role: "Core Developer",
-      timeline: "Aug 2026 – Oct 2026",
-      description:
-        "Engineered bilateral cryptographic state consensus ensuring milestone funds can only be released upon mutual digital signatures between buyer and seller.",
-      tags: ["Cryptography", "SHA-256", "State Machines", "Security"],
-      metrics: "Dual-key signature locking · Zero dispute fraud",
-    },
-    {
-      id: "port_3",
-      title: "Multi-Tenant PDF Invoice & Billing Generation Cluster",
-      role: "Backend Engineer",
-      timeline: "Jun 2026 – Aug 2026",
-      description:
-        "Developed a concurrency-managed headless Chrome worker pool rendering 5,000+ invoices/hour with zero memory leaks and S3 presigned asset distribution.",
-      prUrl: "https://github.com/apexretail/invoice-worker",
-      tags: ["Puppeteer", "Docker", "Node.js", "AWS S3"],
-      metrics: "120,000 PDFs rendered/month without leak",
-    },
-    {
-      id: "port_4",
-      title: "AI Customer Support Autonomous Mediation Copilot",
-      role: "Full-Stack AI Engineer",
-      timeline: "Apr 2026 – Jun 2026",
-      description:
-        "Autonomous multi-turn customer mediation assistant using LangChain, streaming Server-Sent Events (SSE), and verifiable audit logging.",
-      demoUrl: "https://aura-ai-copilot.nexum.dev",
-      tags: ["Python", "OpenAI API", "LangChain", "Next.js 15"],
-      metrics: "Sub-200ms TTFT streaming response",
-    },
-  ]);
+  }>>([]);
 
   // 5. Work Experience State
   const [workExperiences, setWorkExperiences] = useState<Array<{
@@ -325,45 +169,7 @@ export default function FreelancerProfileView({
     duration: string;
     current: boolean;
     bullets: string[];
-  }>>([
-    {
-      id: "exp_1",
-      role: "Senior Full Stack Systems Engineer",
-      company: "Horizon Commerce LLC",
-      location: "San Francisco, CA (Remote)",
-      duration: "Jan 2024 – Present",
-      current: true,
-      bullets: [
-        "Architected bilateral escrow state consensus machines handling $300k+ monthly transaction volume.",
-        "Engineered idempotent PayPal REST v2 webhook processing relays with automated re-try queues.",
-        "Refactored legacy React UI to Next.js 15 App Router, cutting LCP by 68%.",
-      ],
-    },
-    {
-      id: "exp_2",
-      role: "Lead Backend Developer",
-      company: "Apex Retail Group",
-      location: "London, UK (Remote)",
-      duration: "Mar 2022 – Dec 2023",
-      current: false,
-      bullets: [
-        "Built multi-tenant PDF invoice rendering worker pool processing 120k orders per month.",
-        "Implemented AWS S3 signed bucket pipelines and automated ledger reconciliation.",
-      ],
-    },
-    {
-      id: "exp_3",
-      role: "UI/UX & Frontend Architect",
-      company: "FinTech Labs Inc.",
-      location: "Bangalore, India",
-      duration: "Jan 2020 – Feb 2022",
-      current: false,
-      bullets: [
-        "Constructed design token system in Tailwind CSS adopted by 4 internal SaaS products.",
-        "Maintained 95%+ unit test code coverage using Vitest and React Testing Library.",
-      ],
-    },
-  ]);
+  }>>([]);
 
   // 6. Education State
   const [educationList, setEducationList] = useState<Array<{
@@ -373,16 +179,7 @@ export default function FreelancerProfileView({
     year: string;
     gpa: string;
     details: string;
-  }>>([
-    {
-      id: "edu_1",
-      degree: "B.Tech in Computer Science & Engineering",
-      institution: "National Institute of Technology (NIT)",
-      year: "2018 – 2022",
-      gpa: "8.7 / 10.0 (Magna Cum Laude)",
-      details: "Specialized in Distributed Systems, Cryptography, and Advanced Database Architectures.",
-    },
-  ]);
+  }>>([]);
 
   // 7. Certifications State
   const [certificationsList, setCertificationsList] = useState<Array<{
@@ -392,188 +189,13 @@ export default function FreelancerProfileView({
     issueDate: string;
     credentialId: string;
     verified: boolean;
-  }>>([
-    {
-      id: "cert_1",
-      title: "AWS Certified Solutions Architect – Professional",
-      issuer: "Amazon Web Services (AWS)",
-      issueDate: "Jan 2025 · Expires Jan 2028",
-      credentialId: "AWS-PSA-98241",
-      verified: true,
-    },
-    {
-      id: "cert_2",
-      title: "Meta Certified Advanced Frontend Engineer",
-      issuer: "Meta / Coursera",
-      issueDate: "Aug 2024 · No Expiration",
-      credentialId: "META-FRONTEND-5510",
-      verified: true,
-    },
-  ]);
-
-  // Modals Open State
-  const [showAddProjectModal, setShowAddProjectModal] = useState(false);
-  const [newProjTitle, setNewProjTitle] = useState("");
-  const [newProjRole, setNewProjRole] = useState("Lead Developer");
-  const [newProjTimeline, setNewProjTimeline] = useState("Oct 2026 – Present");
-  const [newProjDescription, setNewProjDescription] = useState("");
-  const [newProjGithubUrl, setNewProjGithubUrl] = useState("");
-  const [newProjDemoUrl, setNewProjDemoUrl] = useState("");
-  const [newProjTags, setNewProjTags] = useState("Next.js, TypeScript, Tailwind CSS");
-  const [newProjMetrics, setNewProjMetrics] = useState("99.9% uptime · Dual SHA-256 consensus");
-
-  const [showAddEducationModal, setShowAddEducationModal] = useState(false);
-  const [newEduDegree, setNewEduDegree] = useState("");
-  const [newEduInstitution, setNewEduInstitution] = useState("");
-  const [newEduYear, setNewEduYear] = useState("2020 – 2024");
-  const [newEduGpa, setNewEduGpa] = useState("3.9 / 4.0 (First Class with Distinction)");
-  const [newEduDetails, setNewEduDetails] = useState("");
-
-  const [showAddCertificationModal, setShowAddCertificationModal] = useState(false);
-  const [newCertTitle, setNewCertTitle] = useState("");
-  const [newCertIssuer, setNewCertIssuer] = useState("");
-  const [newCertIssueDate, setNewCertIssueDate] = useState("Nov 2026 · No Expiration");
-  const [newCertCredentialId, setNewCertCredentialId] = useState("");
-
-  const [showAddExperienceModal, setShowAddExperienceModal] = useState(false);
-  const [newExpRole, setNewExpRole] = useState("");
-  const [newExpCompany, setNewExpCompany] = useState("");
-  const [newExpLocation, setNewExpLocation] = useState("Remote");
-  const [newExpDuration, setNewExpDuration] = useState("2024 – Present");
-  const [newExpBullets, setNewExpBullets] = useState("");
-
-  const handleAddProjectSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newProjTitle.trim()) return;
-    try {
-      const res = await createPortfolioProject({
-        title: newProjTitle.trim(),
-        role: newProjRole.trim() || "Lead Developer",
-        description: newProjDescription.trim() || "Full-stack deliverable with zero-trust validation.",
-        tools: newProjTags.split(",").map((t) => t.trim()).filter(Boolean),
-        projectUrl: newProjDemoUrl.trim() || newProjGithubUrl.trim() || undefined,
-      });
-      const newProj = {
-        id: res.portfolio?.id || `port_${Date.now()}`,
-        title: newProjTitle.trim(),
-        role: newProjRole.trim() || "Lead Developer",
-        timeline: newProjTimeline.trim() || "2026",
-        description: newProjDescription.trim() || "Full-stack deliverable with zero-trust validation.",
-        prUrl: newProjGithubUrl.trim() || undefined,
-        demoUrl: newProjDemoUrl.trim() || undefined,
-        tags: newProjTags.split(",").map((t) => t.trim()).filter(Boolean),
-        metrics: newProjMetrics.trim() || "Verified milestone deliverable",
-      };
-      setPortfolioProjects((prev) => [newProj, ...prev]);
-      setShowAddProjectModal(false);
-      setNewProjTitle("");
-      setNewProjDescription("");
-      setNewProjGithubUrl("");
-      setNewProjDemoUrl("");
-      showToast(`Portfolio project "${newProj.title}" added successfully!`);
-    } catch {
-      showToast("Error adding portfolio project");
-    }
-  };
-
-  const handleAddEducationSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newEduDegree.trim() || !newEduInstitution.trim()) return;
-    try {
-      const res = await createEducation({
-        institution: newEduInstitution.trim(),
-        degree: newEduDegree.trim(),
-        fieldOfStudy: newEduDetails.trim() || "Computer Science",
-      });
-      const newEdu = {
-        id: res.education?.id || `edu_${Date.now()}`,
-        degree: newEduDegree.trim(),
-        institution: newEduInstitution.trim(),
-        year: newEduYear.trim() || "2022 – 2026",
-        gpa: newEduGpa.trim() || "Distinction Honors",
-        details: newEduDetails.trim() || "Advanced coursework in Software Engineering and Distributed Computing.",
-      };
-      setEducationList((prev) => [newEdu, ...prev]);
-      setShowAddEducationModal(false);
-      setNewEduDegree("");
-      setNewEduInstitution("");
-      setNewEduDetails("");
-      showToast(`Education credential "${newEdu.degree}" added!`);
-    } catch {
-      showToast("Error adding education");
-    }
-  };
-
-  const handleAddCertificationSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCertTitle.trim() || !newCertIssuer.trim()) return;
-    try {
-      const res = await createCertification({
-        name: newCertTitle.trim(),
-        issuer: newCertIssuer.trim(),
-        issuedMonth: "2026-01",
-        credentialId: newCertCredentialId.trim() || undefined,
-      });
-      const newCert = {
-        id: res.certification?.id || `cert_${Date.now()}`,
-        title: newCertTitle.trim(),
-        issuer: newCertIssuer.trim(),
-        issueDate: newCertIssueDate.trim() || "2026",
-        credentialId: newCertCredentialId.trim() || `NEX-${Math.floor(10000 + Math.random() * 90000)}`,
-        verified: true,
-      };
-      setCertificationsList((prev) => [newCert, ...prev]);
-      setShowAddCertificationModal(false);
-      setNewCertTitle("");
-      setNewCertIssuer("");
-      setNewCertCredentialId("");
-      showToast(`Certification "${newCert.title}" added with verified badge!`);
-    } catch {
-      showToast("Error adding certification");
-    }
-  };
-
-  const handleAddExperienceSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newExpRole.trim() || !newExpCompany.trim()) return;
-    try {
-      const bullets = newExpBullets
-        .split("\n")
-        .map((b) => b.trim())
-        .filter(Boolean);
-      const res = await createExperience({
-        company: newExpCompany.trim(),
-        role: newExpRole.trim(),
-        location: newExpLocation.trim() || "Remote",
-        startMonth: "2024-01",
-        isCurrent: newExpDuration.toLowerCase().includes("present"),
-        description: bullets.length > 0 ? bullets.join(". ") : "Delivered core features.",
-      });
-      const newExp = {
-        id: res.experience?.id || `exp_${Date.now()}`,
-        role: newExpRole.trim(),
-        company: newExpCompany.trim(),
-        location: newExpLocation.trim() || "Remote",
-        duration: newExpDuration.trim() || "2024 – Present",
-        current: newExpDuration.toLowerCase().includes("present"),
-        bullets: bullets.length > 0 ? bullets : ["Delivered core client features."],
-      };
-      setWorkExperiences((prev) => [newExp, ...prev]);
-      setShowAddExperienceModal(false);
-      setNewExpRole("");
-      setNewExpCompany("");
-      setNewExpBullets("");
-      showToast(`Work experience at "${newExp.company}" added!`);
-    } catch {
-      showToast("Error adding experience");
-    }
-  };
+  }>>([]);
 
   // 8. Availability State
-  const [weeklyHours, setWeeklyHours] = useState<number>(35);
+  const [weeklyHours, setWeeklyHours] = useState<number>(0);
   const [availabilityStatus, setAvailabilityStatus] = useState<"Available" | "Limited" | "Not Available">("Available");
-  const [timezoneOverlap, setTimezoneOverlap] = useState("US Eastern (EST) & European (CET)");
-  const [noticePeriod, setNoticePeriod] = useState("Immediate Start (Available now)");
+  const [timezoneOverlap, setTimezoneOverlap] = useState("");
+  const [noticePeriod, setNoticePeriod] = useState("");
 
   // 9. Preferences State
   const [preferredContractType, setPreferredContractType] = useState<"All" | "Fixed-Price Milestones" | "Hourly">("Fixed-Price Milestones");
@@ -595,6 +217,375 @@ export default function FreelancerProfileView({
     { id: "preferences", label: "Preferences", icon: Settings },
   ] as const;
 
+  // Modals Open State & Inputs
+  const [showAddProjectModal, setShowAddProjectModal] = useState(false);
+  const [newProjTitle, setNewProjTitle] = useState("");
+  const [newProjRole, setNewProjRole] = useState("Lead Developer");
+  const [newProjDescription, setNewProjDescription] = useState("");
+  const [newProjGithubUrl, setNewProjGithubUrl] = useState("");
+  const [newProjDemoUrl, setNewProjDemoUrl] = useState("");
+  const [newProjTags, setNewProjTags] = useState("");
+  const [newProjStartMonth, setNewProjStartMonth] = useState("");
+  const [newProjEndMonth, setNewProjEndMonth] = useState("");
+
+  const [showAddEducationModal, setShowAddEducationModal] = useState(false);
+  const [newEduDegree, setNewEduDegree] = useState("");
+  const [newEduInstitution, setNewEduInstitution] = useState("");
+  const [newEduFieldOfStudy, setNewEduFieldOfStudy] = useState("");
+  const [newEduStartYear, setNewEduStartYear] = useState(new Date().getFullYear().toString());
+  const [newEduGraduationYear, setNewEduGraduationYear] = useState("");
+
+  const [showAddCertificationModal, setShowAddCertificationModal] = useState(false);
+  const [newCertTitle, setNewCertTitle] = useState("");
+  const [newCertIssuer, setNewCertIssuer] = useState("");
+  const [newCertIssuedMonth, setNewCertIssuedMonth] = useState("");
+  const [newCertExpiresMonth, setNewCertExpiresMonth] = useState("");
+  const [newCertCredentialId, setNewCertCredentialId] = useState("");
+  const [newCertCredentialUrl, setNewCertCredentialUrl] = useState("");
+
+  const [showAddExperienceModal, setShowAddExperienceModal] = useState(false);
+  const [newExpRole, setNewExpRole] = useState("");
+  const [newExpCompany, setNewExpCompany] = useState("");
+  const [newExpLocation, setNewExpLocation] = useState("Remote");
+  const [newExpStartMonth, setNewExpStartMonth] = useState("");
+  const [newExpEndMonth, setNewExpEndMonth] = useState("");
+  const [newExpIsCurrent, setNewExpIsCurrent] = useState(false);
+  const [newExpBullets, setNewExpBullets] = useState("");
+
+  // Asynchronous Data Loading
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const res = await fetchFreelancerProfile();
+      if (res.success && res.profile) {
+        const p = res.profile;
+        if (p.user?.name) setFullName(p.user.name);
+        setProfessionalTitle(p.professionalTitle || "");
+        setHeadline(p.headline || "");
+        setLocation(p.locationText || "");
+        setTimeZone(p.timezone || "");
+        setAboutMe(p.bio || "");
+        setHourlyRate(p.rateHourlyMinor ? p.rateHourlyMinor / 100 : 0);
+        setWeeklyHours(p.weeklyCapacityHours || 0);
+        setAvailabilityStatus(
+          p.availabilityStatus === "UNAVAILABLE"
+            ? "Not Available"
+            : p.availabilityStatus === "LIMITED"
+            ? "Limited"
+            : "Available"
+        );
+        if (p.photoFileId) {
+          setAvatarUrl(`/api/files/${p.photoFileId}`);
+        } else {
+          setAvatarUrl(freelancer.avatar || "");
+        }
+        if (p.coverFileId) {
+          setBannerUrl(`/api/files/${p.coverFileId}`);
+        } else {
+          setBannerUrl("");
+        }
+
+        // Empty response integrity: explicitly replace state even when arrays are empty
+        setServicesOffered(
+          (p.servicesOffered || []).map((title, idx) => ({
+            id: `srv_${idx}`,
+            title,
+            active: true,
+          }))
+        );
+
+        setSkillsList(
+          (p.freelancerSkills || []).map((s) => ({
+            name: s.skillName,
+            level: s.proficiency || "INTERMEDIATE",
+            verified: false,
+          }))
+        );
+
+        setWorkExperiences(
+          (p.workExperiences || []).map((e) => ({
+            id: e.id,
+            role: e.role,
+            company: e.company,
+            location: e.location || "Remote",
+            duration: `${e.startMonth} – ${e.isCurrent ? "Present" : e.endMonth || ""}`,
+            current: e.isCurrent,
+            bullets: e.description ? [e.description] : [],
+          }))
+        );
+
+        setEducationList(
+          (p.educationEntries || []).map((ed) => ({
+            id: ed.id,
+            degree: ed.degree,
+            institution: ed.institution,
+            year: `${ed.startYear || ""}${ed.graduationYear ? ` – ${ed.graduationYear}` : ""}`,
+            gpa: "",
+            details: ed.fieldOfStudy || "",
+          }))
+        );
+
+        setCertificationsList(
+          (p.certifications || []).map((c) => ({
+            id: c.id,
+            title: c.name,
+            issuer: c.issuer,
+            issueDate: `${c.issuedMonth}${c.expiresMonth || c.expiryMonth ? ` · Expires ${c.expiresMonth || c.expiryMonth}` : ""}`,
+            credentialId: c.credentialId || "",
+            verified: false,
+          }))
+        );
+
+        setPortfolioProjects(
+          (p.portfolioProjects || []).map((port) => ({
+            id: port.id,
+            title: port.title,
+            role: port.role || "Lead Contributor",
+            timeline: port.startMonth ? `${port.startMonth}${port.endMonth ? ` – ${port.endMonth}` : ""}` : "",
+            description: port.description,
+            prUrl: port.repoUrl || undefined,
+            demoUrl: port.projectUrl || undefined,
+            tags: port.tools || [],
+            metrics: "",
+          }))
+        );
+
+        const userResumes = (p as any).user?.resumeFiles || p.resumeFiles;
+        if (userResumes && userResumes.length > 0) {
+          const activeRes =
+            userResumes.find((r: any) => r.status === "ACTIVE") || userResumes[0];
+          const sizeStr =
+            activeRes.sizeBytes > 1024 * 1024
+              ? `${(activeRes.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+              : `${Math.round(activeRes.sizeBytes / 1024)} KB`;
+          setResumeFile({
+            name: activeRes.originalName,
+            size: sizeStr,
+            uploadedAt: new Date(activeRes.uploadedAt).toLocaleDateString(),
+          });
+          setResumeVisibility(activeRes.visibility === "PUBLIC" ? "Visible to clients" : "Hidden");
+        } else {
+          setResumeFile(null);
+        }
+
+        setLiveCompleteness(res.completeness || null);
+      } else if (res.error) {
+        showToast(res.error);
+        setServicesOffered([]);
+        setSkillsList([]);
+        setWorkExperiences([]);
+        setEducationList([]);
+        setCertificationsList([]);
+        setPortfolioProjects([]);
+        setResumeFile(null);
+        setLiveCompleteness(null);
+      }
+    } catch (err) {
+      console.warn("Could not load freelancer profile:", err);
+      setServicesOffered([]);
+      setSkillsList([]);
+      setWorkExperiences([]);
+      setEducationList([]);
+      setCertificationsList([]);
+      setPortfolioProjects([]);
+      setResumeFile(null);
+      setLiveCompleteness(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Reset state when authenticated account changes
+  useEffect(() => {
+    setFullName(freelancer.name || "");
+    setProfessionalTitle(freelancer.title || "");
+    setAvatarUrl(freelancer.avatar || "");
+    setBannerUrl("");
+    setResumeFile(null);
+    setHeadline("");
+    setLocation("");
+    setTimeZone("");
+    setAboutMe("");
+    setHourlyRate(0);
+    setMinFixedRate(0);
+    setPrimaryDomain("");
+    setYearsExperience(0);
+    setWeeklyHours(0);
+    setServicesOffered([]);
+    setSkillsList([]);
+    setPortfolioProjects([]);
+    setWorkExperiences([]);
+    setEducationList([]);
+    setCertificationsList([]);
+    setLiveCompleteness(null);
+
+    loadData();
+  }, [freelancer?.id]);
+
+  // Modal Submit Handlers
+  const handleAddProjectSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjTitle.trim() || !newProjDescription.trim()) {
+      showToast("Title and Description are required");
+      return;
+    }
+    try {
+      const res = await createPortfolioProject({
+        title: newProjTitle.trim(),
+        role: newProjRole.trim() || "Lead Developer",
+        description: newProjDescription.trim(),
+        tools: newProjTags.split(",").map((t) => t.trim()).filter(Boolean),
+        projectUrl: formatHttps(newProjDemoUrl),
+        repoUrl: formatHttps(newProjGithubUrl),
+        startMonth: newProjStartMonth.trim() || undefined,
+        endMonth: newProjEndMonth.trim() || undefined,
+      });
+      if (res.success) {
+        setShowAddProjectModal(false);
+        setNewProjTitle("");
+        setNewProjRole("Lead Developer");
+        setNewProjDescription("");
+        setNewProjGithubUrl("");
+        setNewProjDemoUrl("");
+        setNewProjTags("");
+        setNewProjStartMonth("");
+        setNewProjEndMonth("");
+        await loadData();
+        showToast("Portfolio project added successfully!");
+      } else {
+        showToast(res.error || "Failed to add portfolio project");
+      }
+    } catch {
+      showToast("Error adding portfolio project");
+    }
+  };
+
+  const handleAddEducationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEduDegree.trim() || !newEduInstitution.trim()) {
+      showToast("Degree and Institution are required");
+      return;
+    }
+    const startYearNum = parseInt(newEduStartYear, 10);
+    if (isNaN(startYearNum) || startYearNum < 1950) {
+      showToast("Please enter a valid start year (1950 or later)");
+      return;
+    }
+    const gradYearNum = newEduGraduationYear.trim() ? parseInt(newEduGraduationYear, 10) : undefined;
+    try {
+      const res = await createEducation({
+        institution: newEduInstitution.trim(),
+        degree: newEduDegree.trim(),
+        fieldOfStudy: newEduFieldOfStudy.trim() || undefined,
+        startYear: startYearNum,
+        graduationYear: gradYearNum,
+      });
+      if (res.success) {
+        setShowAddEducationModal(false);
+        setNewEduDegree("");
+        setNewEduInstitution("");
+        setNewEduFieldOfStudy("");
+        setNewEduStartYear(new Date().getFullYear().toString());
+        setNewEduGraduationYear("");
+        await loadData();
+        showToast("Education credential added successfully!");
+      } else {
+        showToast(res.error || "Failed to add education");
+      }
+    } catch {
+      showToast("Error adding education");
+    }
+  };
+
+  const handleAddCertificationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCertTitle.trim() || !newCertIssuer.trim() || !newCertIssuedMonth.trim()) {
+      showToast("Certification Name, Issuer, and Issued Month (YYYY-MM) are required");
+      return;
+    }
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(newCertIssuedMonth.trim())) {
+      showToast("Issued month must be in YYYY-MM format (e.g. 2026-01)");
+      return;
+    }
+    if (newCertExpiresMonth.trim() && !/^\d{4}-(0[1-9]|1[0-2])$/.test(newCertExpiresMonth.trim())) {
+      showToast("Expiration month must be in YYYY-MM format (e.g. 2028-01)");
+      return;
+    }
+    try {
+      const res = await createCertification({
+        name: newCertTitle.trim(),
+        issuer: newCertIssuer.trim(),
+        issuedMonth: newCertIssuedMonth.trim(),
+        expiresMonth: newCertExpiresMonth.trim() || undefined,
+        credentialId: newCertCredentialId.trim() || undefined,
+        credentialUrl: formatHttps(newCertCredentialUrl),
+      });
+      if (res.success) {
+        setShowAddCertificationModal(false);
+        setNewCertTitle("");
+        setNewCertIssuer("");
+        setNewCertIssuedMonth("");
+        setNewCertExpiresMonth("");
+        setNewCertCredentialId("");
+        setNewCertCredentialUrl("");
+        await loadData();
+        showToast("Certification added successfully!");
+      } else {
+        showToast(res.error || "Failed to add certification");
+      }
+    } catch {
+      showToast("Error adding certification");
+    }
+  };
+
+  const handleAddExperienceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newExpRole.trim() || !newExpCompany.trim() || !newExpStartMonth.trim()) {
+      showToast("Role, Company, and Start Month (YYYY-MM) are required");
+      return;
+    }
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(newExpStartMonth.trim())) {
+      showToast("Start month must be in YYYY-MM format (e.g. 2024-01)");
+      return;
+    }
+    if (!newExpIsCurrent && newExpEndMonth.trim() && !/^\d{4}-(0[1-9]|1[0-2])$/.test(newExpEndMonth.trim())) {
+      showToast("End month must be in YYYY-MM format (e.g. 2025-12)");
+      return;
+    }
+    try {
+      const bullets = newExpBullets
+        .split("\n")
+        .map((b) => b.trim())
+        .filter(Boolean);
+      const res = await createExperience({
+        company: newExpCompany.trim(),
+        role: newExpRole.trim(),
+        location: newExpLocation.trim() || undefined,
+        startMonth: newExpStartMonth.trim(),
+        endMonth: newExpIsCurrent ? undefined : (newExpEndMonth.trim() || undefined),
+        isCurrent: newExpIsCurrent,
+        description: bullets.length > 0 ? bullets.join(". ") : undefined,
+      });
+      if (res.success) {
+        setShowAddExperienceModal(false);
+        setNewExpRole("");
+        setNewExpCompany("");
+        setNewExpLocation("Remote");
+        setNewExpStartMonth("");
+        setNewExpEndMonth("");
+        setNewExpIsCurrent(false);
+        setNewExpBullets("");
+        await loadData();
+        showToast("Work experience added successfully!");
+      } else {
+        showToast(res.error || "Failed to add experience");
+      }
+    } catch {
+      showToast("Error adding experience");
+    }
+  };
+
+  // Profile Save Handlers
   const handleSaveChanges = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -604,66 +595,130 @@ export default function FreelancerProfileView({
         locationText: location,
         bio: aboutMe,
       });
-      if (basicRes.completeness) setLiveCompleteness(basicRes.completeness);
 
       const profRes = await updateProfessionalProfile({
-        specialization: primaryDomain,
+        specialization: primaryDomain || undefined,
         servicesOffered: servicesOffered.filter((s) => s.active).map((s) => s.title),
-        experienceLevel: yearsExperience >= 6 ? "EXPERT" : yearsExperience >= 3 ? "MID" : "ENTRY",
+        experienceLevel: yearsExperience >= 6 ? "EXPERT" : yearsExperience >= 4 ? "SENIOR" : yearsExperience >= 2 ? "MID" : "BEGINNER",
       });
-      if (profRes.completeness) setLiveCompleteness(profRes.completeness);
 
       const availRes = await updateAvailability({
         weeklyCapacityHours: weeklyHours,
-        availabilityStatus: availabilityStatus === "Available" ? "AVAILABLE" : availabilityStatus === "Limited" ? "PARTIALLY_AVAILABLE" : "UNAVAILABLE",
+        availabilityStatus:
+          availabilityStatus === "Available"
+            ? "AVAILABLE"
+            : availabilityStatus === "Limited"
+            ? "LIMITED"
+            : "UNAVAILABLE",
         rateHourlyMinor: Math.round(hourlyRate * 100),
       });
-      if (availRes.completeness) setLiveCompleteness(availRes.completeness);
 
-      showToast("Profile changes saved successfully! Live preview updated.");
+      if (basicRes.success && profRes.success && availRes.success) {
+        await loadData();
+        showToast("Profile changes saved successfully! Live preview updated.");
+      } else {
+        const errorMsg = basicRes.error || profRes.error || availRes.error || "Could not save profile changes";
+        showToast(errorMsg);
+      }
     } catch {
-      showToast("Profile changes saved successfully! Live preview updated.");
+      showToast("Error saving profile changes");
+    }
+  };
+
+  const handleSaveProfessional = async () => {
+    try {
+      const profRes = await updateProfessionalProfile({
+        specialization: primaryDomain || undefined,
+        servicesOffered: servicesOffered.filter((s) => s.active).map((s) => s.title),
+        experienceLevel: yearsExperience >= 6 ? "EXPERT" : yearsExperience >= 4 ? "SENIOR" : yearsExperience >= 2 ? "MID" : "BEGINNER",
+      });
+      const availRes = await updateAvailability({
+        rateHourlyMinor: Math.round(hourlyRate * 100),
+      });
+      if (profRes.success && availRes.success) {
+        await loadData();
+        showToast("Professional details and pricing updated.");
+      } else {
+        showToast(profRes.error || availRes.error || "Failed to save professional details");
+      }
+    } catch {
+      showToast("Error saving professional details");
+    }
+  };
+
+  const handleSaveAvailability = async () => {
+    try {
+      const res = await updateAvailability({
+        weeklyCapacityHours: weeklyHours,
+        availabilityStatus:
+          availabilityStatus === "Available"
+            ? "AVAILABLE"
+            : availabilityStatus === "Limited"
+            ? "LIMITED"
+            : "UNAVAILABLE",
+      });
+      if (res.success) {
+        await loadData();
+        showToast("Availability schedule updated.");
+      } else {
+        showToast(res.error || "Failed to update availability");
+      }
+    } catch {
+      showToast("Error updating availability");
     }
   };
 
   const handleAddSkill = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSkillInput.trim()) return;
+    const skillName = newSkillInput.trim();
+    if (skillsList.some((s) => s.name.toLowerCase() === skillName.toLowerCase())) {
+      showToast("Skill is already listed in your profile.");
+      return;
+    }
     const updated = [
       ...skillsList,
-      { name: newSkillInput.trim(), level: "Intermediate", verified: false },
+      { name: skillName, level: "Intermediate", verified: false },
     ];
-    setSkillsList(updated);
-    setNewSkillInput("");
     try {
       const mapped = updated.map((s) => ({
         skillName: s.name,
-        proficiency: s.level.toUpperCase().includes("EXPERT") ? "EXPERT" : s.level.toUpperCase().includes("ADVANCED") ? "ADVANCED" : "INTERMEDIATE",
+        proficiency: s.level.toUpperCase().includes("EXPERT")
+          ? "EXPERT"
+          : s.level.toUpperCase().includes("ADVANCED")
+          ? "ADVANCED"
+          : "INTERMEDIATE",
       }));
       const res = await updateSkills(mapped);
-      if (res.completeness) setLiveCompleteness(res.completeness);
-    } catch (err) {
-      console.warn("Skill sync warning:", err);
+      if (res.success) {
+        setNewSkillInput("");
+        await loadData();
+        showToast("Skill added to profile!");
+      } else {
+        showToast(res.error || "Failed to add skill");
+      }
+    } catch {
+      showToast("Error adding skill");
     }
-    showToast("Skill added to profile!");
   };
 
   const handleDeleteSkill = async (name: string) => {
     const updated = skillsList.filter((s) => s.name !== name);
-    setSkillsList(updated);
     try {
-      if (updated.length > 0) {
-        const mapped = updated.map((s) => ({
-          skillName: s.name,
-          proficiency: s.level.toUpperCase().includes("EXPERT") ? "EXPERT" : "INTERMEDIATE",
-        }));
-        const res = await updateSkills(mapped);
-        if (res.completeness) setLiveCompleteness(res.completeness);
+      const mapped = updated.map((s) => ({
+        skillName: s.name,
+        proficiency: s.level.toUpperCase().includes("EXPERT") ? "EXPERT" : "INTERMEDIATE",
+      }));
+      const res = await updateSkills(mapped);
+      if (res.success) {
+        await loadData();
+        showToast(`Removed ${name} from skills.`);
+      } else {
+        showToast(res.error || "Failed to remove skill");
       }
-    } catch (err) {
-      console.warn("Skill sync warning:", err);
+    } catch {
+      showToast("Error removing skill");
     }
-    showToast(`Removed ${name} from skills.`);
   };
 
   // Photo & Banner Handlers
@@ -674,15 +729,13 @@ export default function FreelancerProfileView({
         const res = await uploadProfileFile(file, "PROFILE_PHOTO");
         if (res.success && res.file) {
           await updateBasicProfile({ photoFileId: res.file.id });
-          setAvatarUrl(`/api/files/${res.file.id}`);
+          await loadData();
           showToast(`Profile photo updated to "${file.name}"!`);
         } else {
           showToast(res.error || "Photo upload failed");
         }
       } catch {
-        const url = URL.createObjectURL(file);
-        setAvatarUrl(url);
-        showToast(`Profile photo updated to "${file.name}"!`);
+        showToast("Error uploading photo");
       }
     }
   };
@@ -694,23 +747,29 @@ export default function FreelancerProfileView({
         const res = await uploadProfileFile(file, "PROFILE_COVER");
         if (res.success && res.file) {
           await updateBasicProfile({ coverFileId: res.file.id });
-          setBannerUrl(`/api/files/${res.file.id}`);
+          await loadData();
           showToast(`Profile banner updated to "${file.name}"!`);
         } else {
           showToast(res.error || "Banner upload failed");
         }
       } catch {
-        const url = URL.createObjectURL(file);
-        setBannerUrl(url);
-        showToast(`Profile banner updated to "${file.name}"!`);
+        showToast("Error uploading banner");
       }
     }
   };
 
   const handleRemovePhoto = async () => {
-    setAvatarUrl("https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&q=80");
-    await updateBasicProfile({ photoFileId: null }).catch(() => {});
-    showToast("Profile photo reset to default.");
+    try {
+      const res = await updateBasicProfile({ photoFileId: null });
+      if (res.success) {
+        await loadData();
+        showToast("Profile photo removed.");
+      } else {
+        showToast(res.error || "Failed to remove photo");
+      }
+    } catch {
+      showToast("Error removing photo");
+    }
   };
 
   // Resume Handlers
@@ -720,15 +779,7 @@ export default function FreelancerProfileView({
       try {
         const res = await uploadResumeFile(file);
         if (res.success) {
-          const sizeStr =
-            file.size > 1024 * 1024
-              ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-              : `${Math.round(file.size / 1024)} KB`;
-          setResumeFile({
-            name: file.name,
-            size: sizeStr,
-            uploadedAt: "Just now",
-          });
+          await loadData();
           showToast(`Resume "${file.name}" uploaded successfully!`);
         } else {
           showToast(res.error || "Resume upload failed");
@@ -744,8 +795,22 @@ export default function FreelancerProfileView({
     showToast("Resume removed from profile.");
   };
 
-  // Service Offerings Handlers
-  const handleAddService = (e?: React.FormEvent) => {
+  // Service Offerings Handlers with Backend Sync
+  const syncServices = async (updated: ServiceOfferingItem[]) => {
+    try {
+      const res = await updateProfessionalProfile({
+        specialization: primaryDomain || undefined,
+        servicesOffered: updated.filter((s) => s.active).map((s) => s.title),
+      });
+      if (res.success) {
+        if (res.completeness) setLiveCompleteness(res.completeness);
+      }
+    } catch (err) {
+      console.warn("Service sync warning:", err);
+    }
+  };
+
+  const handleAddService = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newServiceInput.trim()) return;
     const newSrv: ServiceOfferingItem = {
@@ -753,62 +818,94 @@ export default function FreelancerProfileView({
       title: newServiceInput.trim(),
       active: true,
     };
-    setServicesOffered((prev) => [...prev, newSrv]);
+    const updated = [...servicesOffered, newSrv];
+    setServicesOffered(updated);
     setNewServiceInput("");
+    await syncServices(updated);
     showToast(`Service "${newSrv.title}" added!`);
   };
 
-  const handleToggleService = (id: string) => {
-    setServicesOffered((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, active: !s.active } : s))
+  const handleToggleService = async (id: string) => {
+    const updated = servicesOffered.map((s) =>
+      s.id === id ? { ...s, active: !s.active } : s
     );
+    setServicesOffered(updated);
+    await syncServices(updated);
   };
 
-  const handleDeleteService = (id: string) => {
-    setServicesOffered((prev) => prev.filter((s) => s.id !== id));
+  const handleDeleteService = async (id: string) => {
+    const updated = servicesOffered.filter((s) => s.id !== id);
+    setServicesOffered(updated);
+    await syncServices(updated);
     showToast("Service offering removed.");
   };
 
-  const handleSaveEditService = (id: string) => {
+  const handleSaveEditService = async (id: string) => {
     if (!editingServiceText.trim()) return;
-    setServicesOffered((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, title: editingServiceText.trim() } : s))
+    const updated = servicesOffered.map((s) =>
+      s.id === id ? { ...s, title: editingServiceText.trim() } : s
     );
+    setServicesOffered(updated);
     setEditingServiceId(null);
+    await syncServices(updated);
     showToast("Service offering updated.");
   };
 
   // Deletion Handlers for other sections
   const handleDeleteProject = async (id: string) => {
-    setPortfolioProjects((prev) => prev.filter((p) => p.id !== id));
-    if (!id.startsWith("port_")) {
-      await deletePortfolioProject(id).catch(() => {});
+    try {
+      const ok = await deletePortfolioProject(id);
+      if (ok) {
+        await loadData();
+        showToast("Portfolio project removed.");
+      } else {
+        showToast("Failed to delete portfolio project");
+      }
+    } catch {
+      showToast("Error deleting portfolio project");
     }
-    showToast("Portfolio project removed.");
   };
 
   const handleDeleteExperience = async (id: string) => {
-    setWorkExperiences((prev) => prev.filter((e) => e.id !== id));
-    if (!id.startsWith("exp_")) {
-      await deleteExperience(id).catch(() => {});
+    try {
+      const ok = await deleteExperience(id);
+      if (ok) {
+        await loadData();
+        showToast("Work experience removed.");
+      } else {
+        showToast("Failed to delete work experience");
+      }
+    } catch {
+      showToast("Error deleting work experience");
     }
-    showToast("Work experience removed.");
   };
 
   const handleDeleteEducation = async (id: string) => {
-    setEducationList((prev) => prev.filter((e) => e.id !== id));
-    if (!id.startsWith("edu_")) {
-      await deleteEducation(id).catch(() => {});
+    try {
+      const ok = await deleteEducation(id);
+      if (ok) {
+        await loadData();
+        showToast("Education record removed.");
+      } else {
+        showToast("Failed to delete education record");
+      }
+    } catch {
+      showToast("Error deleting education record");
     }
-    showToast("Education record removed.");
   };
 
   const handleDeleteCertification = async (id: string) => {
-    setCertificationsList((prev) => prev.filter((c) => c.id !== id));
-    if (!id.startsWith("cert_")) {
-      await deleteCertification(id).catch(() => {});
+    try {
+      const ok = await deleteCertification(id);
+      if (ok) {
+        await loadData();
+        showToast("Certification record removed.");
+      } else {
+        showToast("Failed to delete certification");
+      }
+    } catch {
+      showToast("Error deleting certification");
     }
-    showToast("Certification record removed.");
   };
 
   const handleEnterPublicPreview = async () => {
@@ -885,35 +982,43 @@ export default function FreelancerProfileView({
           <div className="p-5 sm:p-7 pt-0 relative">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-14 sm:-mt-16">
               <div className="flex items-end gap-4">
-                <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-4 border-white shadow-lg bg-slate-100 ring-2 ring-slate-200 shrink-0">
-                  <Image
-                    src={avatarUrl}
-                    alt={fullName}
-                    width={112}
-                    height={112}
-                    className="w-full h-full object-cover"
-                  />
+                <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-4 border-white shadow-lg bg-slate-100 ring-2 ring-slate-200 shrink-0 flex items-center justify-center">
+                  {avatarUrl ? (
+                    <Image
+                      src={avatarUrl}
+                      alt={fullName || "Freelancer"}
+                      width={112}
+                      height={112}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-12 h-12 text-slate-400" />
+                  )}
                 </div>
 
                 <div className="pb-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                      {fullName}
+                      {fullName || "Freelancer"}
                     </h1>
-                    <span className="w-5 h-5 rounded-full bg-[#4f46e5] text-white flex items-center justify-center text-xs font-bold">
-                      ✓
-                    </span>
+                    {freelancer.verified && (
+                      <span className="w-5 h-5 rounded-full bg-[#4f46e5] text-white flex items-center justify-center text-xs font-bold" title="Verified Professional">
+                        ✓
+                      </span>
+                    )}
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       {availabilityStatus === "Available" ? "Available for hire" : availabilityStatus}
                     </span>
                   </div>
                   <p className="text-sm font-semibold text-slate-700 mt-0.5">
-                    {professionalTitle}
+                    {professionalTitle || "Freelancer Profile"}
                   </p>
-                  <p className="text-xs text-slate-500 mt-1 max-w-xl">
-                    {headline}
-                  </p>
+                  {headline && (
+                    <p className="text-xs text-slate-500 mt-1 max-w-xl">
+                      {headline}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -921,7 +1026,9 @@ export default function FreelancerProfileView({
               <div className="flex items-center gap-3 sm:self-center shrink-0">
                 <div className="text-right">
                   <div className="text-lg font-extrabold text-[#4f46e5] font-mono">${hourlyRate}.00/hr</div>
-                  <div className="text-[11px] text-slate-400 font-medium">Min milestone ${minFixedRate}</div>
+                  {minFixedRate > 0 && (
+                    <div className="text-[11px] text-slate-400 font-medium">Min milestone ${minFixedRate}</div>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -946,20 +1053,22 @@ export default function FreelancerProfileView({
             <div className="flex flex-wrap items-center gap-4 sm:gap-6 pt-5 mt-5 border-t border-slate-100 text-xs text-slate-600">
               <span className="flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                <span>{location}</span>
+                <span>{location || "Location not specified"}</span>
               </span>
               <span className="flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-slate-400" />
-                <span>{timeZone}</span>
+                <span>{timeZone || "Timezone not specified"}</span>
               </span>
               <span className="flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
                 <span>{weeklyHours} hrs/week capacity</span>
               </span>
-              <span className="flex items-center gap-1.5 font-medium text-slate-700">
-                <span>English:</span>
-                <span className="text-indigo-600 font-bold">{englishLevel}</span>
-              </span>
+              {englishLevel && (
+                <span className="flex items-center gap-1.5 font-medium text-slate-700">
+                  <span>English:</span>
+                  <span className="text-indigo-600 font-bold">{englishLevel}</span>
+                </span>
+              )}
               {githubUrl && (
                 <a href={githubUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[#4f46e5] hover:underline font-mono">
                   <span>GitHub</span>
@@ -976,32 +1085,24 @@ export default function FreelancerProfileView({
           </div>
         </div>
 
-        {/* 4 Performance Metric Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-1">
-            <div className="flex items-center gap-1 text-amber-500 font-bold text-sm">
-              <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-              <span className="text-slate-900 font-extrabold text-base">4.9 / 5.0</span>
+        {/* Dynamic Performance Strip */}
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>Platform Profile</span>
+              </div>
+              <span>•</span>
+              <span className="font-mono">{portfolioProjects.length} Portfolio Projects</span>
+              <span>•</span>
+              <span className="font-mono">{skillsList.length} Technical Skills</span>
+              <span>•</span>
+              <span className="font-mono">{certificationsList.length} Certifications</span>
             </div>
-            <div className="text-xs text-slate-500">12 Verified Client Reviews</div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-1">
-            <div className="text-base font-extrabold text-slate-900 font-mono">18 / 18</div>
-            <div className="text-xs text-slate-500">Milestones Released (100%)</div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-1">
-            <div className="text-base font-extrabold text-indigo-600 font-mono">$120,000+</div>
-            <div className="text-xs text-slate-500">Total Escrow Transacted</div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-1">
-            <div className="flex items-center gap-1 text-emerald-600 font-extrabold text-base">
-              <ShieldCheck className="w-4 h-4" />
-              <span>0.0% Disputes</span>
+            <div className="text-slate-400 text-[11px]">
+              {publicPreviewData?.stats?.reviewsCount ? `${publicPreviewData.stats.reviewsCount} Client Reviews` : "No public client reviews recorded yet"}
             </div>
-            <div className="text-xs text-slate-500">Dual SHA-256 Consensus</div>
           </div>
         </div>
 
@@ -1016,12 +1117,14 @@ export default function FreelancerProfileView({
                 <span>About The Professional</span>
               </h3>
               <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                {aboutMe}
+                {aboutMe || "No professional summary provided yet."}
               </p>
-              <div className="pt-3 border-t border-slate-100 flex flex-wrap gap-4 text-xs text-slate-500">
-                <div><span className="font-bold text-slate-700">Domain Expertise:</span> {primaryDomain}</div>
-                <div><span className="font-bold text-slate-700">Experience:</span> {yearsExperience}+ Years</div>
-              </div>
+              {(primaryDomain || yearsExperience > 0) && (
+                <div className="pt-3 border-t border-slate-100 flex flex-wrap gap-4 text-xs text-slate-500">
+                  {primaryDomain && <div><span className="font-bold text-slate-700">Domain Expertise:</span> {primaryDomain}</div>}
+                  {yearsExperience > 0 && <div><span className="font-bold text-slate-700">Experience:</span> {yearsExperience}+ Years</div>}
+                </div>
+              )}
             </div>
 
             {/* Verified Service Offerings */}
@@ -1029,20 +1132,24 @@ export default function FreelancerProfileView({
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
                   <Briefcase className="w-4 h-4 text-[#4f46e5]" />
-                  <span>Verified Service Offerings</span>
+                  <span>Service Offerings</span>
                 </h3>
                 <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
                   {servicesOffered.filter((s) => s.active).length} Active
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {servicesOffered.filter((s) => s.active).map((srv) => (
-                  <div key={srv.id} className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/70 flex items-start gap-2 text-xs">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span className="font-semibold text-slate-800">{srv.title}</span>
-                  </div>
-                ))}
-              </div>
+              {servicesOffered.filter((s) => s.active).length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {servicesOffered.filter((s) => s.active).map((srv) => (
+                    <div key={srv.id} className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/70 flex items-start gap-2 text-xs">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <span className="font-semibold text-slate-800">{srv.title}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 py-2">No active service offerings configured yet.</p>
+              )}
             </div>
 
             {/* Featured Portfolio Projects */}
@@ -1050,47 +1157,52 @@ export default function FreelancerProfileView({
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
                   <FolderKanban className="w-4 h-4 text-[#4f46e5]" />
-                  <span>Featured Portfolio Projects ({portfolioProjects.length})</span>
+                  <span>Portfolio Projects ({portfolioProjects.length})</span>
                 </h3>
-                <span className="text-[11px] text-slate-400">Verifiable Code & Loom Walkthroughs</span>
+                <span className="text-[11px] text-slate-400">Verifiable Code & Demos</span>
               </div>
-              <div className="space-y-4">
-                {portfolioProjects.map((proj) => (
-                  <div key={proj.id} className="p-4 sm:p-5 rounded-xl border border-slate-200/80 bg-slate-50/60 space-y-3 hover:border-indigo-300 transition">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 uppercase tracking-wider">
-                          {proj.role} • {proj.timeline}
-                        </span>
-                        <h4 className="text-sm sm:text-base font-bold text-slate-900 mt-1">{proj.title}</h4>
+              {portfolioProjects.length > 0 ? (
+                <div className="space-y-4">
+                  {portfolioProjects.map((proj) => (
+                    <div key={proj.id} className="p-4 sm:p-5 rounded-xl border border-slate-200/80 bg-slate-50/60 space-y-3 hover:border-indigo-300 transition">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          {proj.role && (
+                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 uppercase tracking-wider">
+                              {proj.role} {proj.timeline ? `• ${proj.timeline}` : ""}
+                            </span>
+                          )}
+                          <h4 className="text-sm sm:text-base font-bold text-slate-900 mt-1">{proj.title}</h4>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {proj.prUrl && (
+                            <a href={proj.prUrl} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition">
+                              <FileCode className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Repository</span>
+                            </a>
+                          )}
+                          {proj.demoUrl && (
+                            <a href={proj.demoUrl} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-xs font-semibold text-indigo-700 flex items-center gap-1.5 transition">
+                              <Video className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Live Demo</span>
+                            </a>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {proj.prUrl && (
-                          <a href={proj.prUrl} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition">
-                            <FileCode className="w-3.5 h-3.5 text-slate-500" />
-                            <span>GitHub</span>
-                          </a>
-                        )}
-                        {proj.demoUrl && (
-                          <a href={proj.demoUrl} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-xs font-semibold text-indigo-700 flex items-center gap-1.5 transition">
-                            <Video className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Demo</span>
-                          </a>
-                        )}
-                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">{proj.description}</p>
+                      {proj.tags && proj.tags.length > 0 && (
+                        <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-1.5 text-xs">
+                          {proj.tags.map((t) => (
+                            <span key={t} className="px-2 py-0.5 rounded bg-white text-slate-600 text-[10px] font-medium border border-slate-200">{t}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xs text-slate-600 leading-relaxed">{proj.description}</p>
-                    <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                      <div className="flex flex-wrap gap-1.5">
-                        {proj.tags.map((t) => (
-                          <span key={t} className="px-2 py-0.5 rounded bg-white text-slate-600 text-[10px] font-medium border border-slate-200">{t}</span>
-                        ))}
-                      </div>
-                      <span className="font-mono text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 self-start sm:self-auto">{proj.metrics}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 py-3">No portfolio projects published yet.</p>
+              )}
             </div>
 
             {/* Work Experience */}
@@ -1099,26 +1211,32 @@ export default function FreelancerProfileView({
                 <Building2 className="w-4 h-4 text-[#4f46e5]" />
                 <span>Work Experience & Contracts ({workExperiences.length})</span>
               </h3>
-              <div className="space-y-5 relative before:absolute before:left-3.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
-                {workExperiences.map((exp) => (
-                  <div key={exp.id} className="relative pl-9 space-y-1.5 text-xs">
-                    <div className="absolute left-1.5 top-1 w-4 h-4 rounded-full bg-white border-4 border-[#4f46e5]" />
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                      <h4 className="font-bold text-sm text-slate-900">{exp.role} • <span className="text-indigo-600">{exp.company}</span></h4>
-                      <span className="font-mono text-slate-400 text-[11px]">{exp.duration}</span>
+              {workExperiences.length > 0 ? (
+                <div className="space-y-5 relative before:absolute before:left-3.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                  {workExperiences.map((exp) => (
+                    <div key={exp.id} className="relative pl-9 space-y-1.5 text-xs">
+                      <div className="absolute left-1.5 top-1 w-4 h-4 rounded-full bg-white border-4 border-[#4f46e5]" />
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                        <h4 className="font-bold text-sm text-slate-900">{exp.role} • <span className="text-indigo-600">{exp.company}</span></h4>
+                        <span className="font-mono text-slate-400 text-[11px]">{exp.duration}</span>
+                      </div>
+                      {exp.location && <div className="text-slate-500">{exp.location}</div>}
+                      {exp.bullets && exp.bullets.length > 0 && (
+                        <ul className="space-y-1 pt-1 text-slate-600">
+                          {exp.bullets.map((b, i) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <span className="text-indigo-600 font-bold">•</span>
+                              <span>{b}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                    <div className="text-slate-500">{exp.location}</div>
-                    <ul className="space-y-1 pt-1 text-slate-600">
-                      {exp.bullets.map((b, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="text-indigo-600 font-bold">•</span>
-                          <span>{b}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 py-3">No work experiences listed yet.</p>
+              )}
             </div>
 
             {/* Education & Certifications Row */}
@@ -1126,53 +1244,64 @@ export default function FreelancerProfileView({
               <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs space-y-3">
                 <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
                   <GraduationCap className="w-4 h-4 text-[#4f46e5]" />
-                  <span>Education</span>
+                  <span>Education ({educationList.length})</span>
                 </h3>
-                {educationList.map((edu) => (
-                  <div key={edu.id} className="text-xs space-y-1">
-                    <div className="font-bold text-slate-900">{edu.degree}</div>
-                    <div className="text-slate-600">{edu.institution} • <span className="font-mono text-slate-400">{edu.year}</span></div>
-                    <div className="text-emerald-700 font-semibold">{edu.gpa}</div>
-                    <p className="text-slate-500 text-[11px]">{edu.details}</p>
+                {educationList.length > 0 ? (
+                  <div className="space-y-3">
+                    {educationList.map((edu) => (
+                      <div key={edu.id} className="text-xs space-y-1">
+                        <div className="font-bold text-slate-900">{edu.degree}</div>
+                        <div className="text-slate-600">{edu.institution} {edu.year ? `• ${edu.year}` : ""}</div>
+                        {edu.details && <p className="text-slate-500 text-[11px]">{edu.details}</p>}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <p className="text-xs text-slate-400 py-2">No education credentials listed.</p>
+                )}
               </div>
 
               <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs space-y-3">
                 <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
                   <Award className="w-4 h-4 text-[#4f46e5]" />
-                  <span>Verified Certifications</span>
+                  <span>Certifications ({certificationsList.length})</span>
                 </h3>
-                <div className="space-y-2.5">
-                  {certificationsList.map((cert) => (
-                    <div key={cert.id} className="p-2.5 rounded-xl border border-slate-200/80 bg-slate-50/70 text-xs space-y-1">
-                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                        <span>{cert.title}</span>
-                        <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center">✓</span>
+                {certificationsList.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {certificationsList.map((cert) => (
+                      <div key={cert.id} className="p-2.5 rounded-xl border border-slate-200/80 bg-slate-50/70 text-xs space-y-1">
+                        <div className="font-bold text-slate-900">
+                          {cert.title}
+                        </div>
+                        <div className="text-[11px] text-slate-500">{cert.issuer} {cert.issueDate ? `• ${cert.issueDate}` : ""}</div>
+                        {cert.credentialId && <div className="font-mono text-[10px] text-slate-400">ID: {cert.credentialId}</div>}
                       </div>
-                      <div className="text-[11px] text-slate-500">{cert.issuer} • {cert.issueDate}</div>
-                      <div className="font-mono text-[10px] text-slate-400">ID: {cert.credentialId}</div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 py-2">No certifications recorded.</p>
+                )}
               </div>
             </div>
 
-            {/* Verified Skills Matrix */}
+            {/* Technical Skills Matrix */}
             <div className="rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs space-y-3">
               <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
                 <Globe className="w-4 h-4 text-[#4f46e5]" />
-                <span>Verified Skills & Technologies ({skillsList.length})</span>
+                <span>Technical Skills ({skillsList.length})</span>
               </h3>
-              <div className="flex flex-wrap gap-2">
-                {skillsList.map((skill) => (
-                  <span key={skill.name} className="px-3 py-1.5 rounded-xl bg-indigo-50/70 text-[#4f46e5] font-bold text-xs border border-indigo-100 flex items-center gap-1.5">
-                    {skill.verified && <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 text-white text-[9px] flex items-center justify-center font-bold">✓</span>}
-                    <span>{skill.name}</span>
-                    <span className="text-[10px] text-slate-400 font-normal">({skill.level})</span>
-                  </span>
-                ))}
-              </div>
+              {skillsList.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {skillsList.map((skill) => (
+                    <span key={skill.name} className="px-3 py-1.5 rounded-xl bg-indigo-50/70 text-[#4f46e5] font-bold text-xs border border-indigo-100 flex items-center gap-1.5">
+                      <span>{skill.name}</span>
+                      <span className="text-[10px] text-slate-400 font-normal">({skill.level})</span>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 py-2">No technical skills listed.</p>
+              )}
             </div>
           </div>
 
@@ -1547,9 +1676,21 @@ export default function FreelancerProfileView({
 
               {/* Card 3: Account Links */}
               <section className="rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs space-y-4">
-                <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                  Account Links
-                </h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                    Account Links
+                  </h2>
+                  <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    Phase 3 Roadmap / Unpersisted
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 text-amber-900 text-xs flex items-start gap-2">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <span>
+                    Notice: External social profile links (LinkedIn, GitHub, Website) are UI preview fields not stored in the current Phase 2 FreelancerProfile schema. They are scheduled for Phase 3.
+                  </span>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1">
@@ -1737,10 +1878,10 @@ export default function FreelancerProfileView({
                 </div>
                 <button
                   type="button"
-                  onClick={() => showToast("Professional details updated.")}
+                  onClick={handleSaveProfessional}
                   className="px-4 py-2 rounded-xl bg-[#4f46e5] text-white text-xs font-bold shadow-xs hover:bg-[#4338ca] transition cursor-pointer"
                 >
-                  Save Rates
+                  Save Rates & Details
                 </button>
               </div>
 
@@ -1777,7 +1918,9 @@ export default function FreelancerProfileView({
                       className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
-                  <p className="text-[11px] text-slate-400">Minimum budget required for fixed-scope milestone escrow contracts.</p>
+                  <p className="text-[11px] text-slate-400">
+                    UI Preview only (Phase 3 Roadmap). Minimum budget required for fixed-scope escrow milestones.
+                  </p>
                 </div>
               </div>
 
@@ -1789,6 +1932,7 @@ export default function FreelancerProfileView({
                     type="text"
                     value={primaryDomain}
                     onChange={(e) => setPrimaryDomain(e.target.value)}
+                    placeholder="e.g. Fintech, Web3, Distributed Systems"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs sm:text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -1801,6 +1945,7 @@ export default function FreelancerProfileView({
                       onChange={(e) => setYearsExperience(Number(e.target.value))}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs sm:text-sm text-slate-900 appearance-none focus:bg-white focus:outline-none focus:border-indigo-500 cursor-pointer"
                     >
+                      <option value={0}>Entry / Beginner</option>
                       <option value={2}>2+ Years (Junior / Mid)</option>
                       <option value={4}>4+ Years (Mid / Senior)</option>
                       <option value={6}>6+ Years (Senior Lead)</option>
@@ -1833,7 +1978,7 @@ export default function FreelancerProfileView({
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="text-xs font-bold text-slate-700">
-                      Verified Service Offerings ({servicesOffered.length})
+                      Service Offerings ({servicesOffered.length})
                     </label>
                     <p className="text-[11px] text-slate-400">
                       Add, edit or pause specialized service offerings matched by AI
@@ -1867,98 +2012,105 @@ export default function FreelancerProfileView({
                 </div>
 
                 {/* Service Offerings List */}
-                <div className="space-y-2">
-                  {servicesOffered.map((service) => (
-                    <div
-                      key={service.id}
-                      className="flex items-center justify-between p-3 rounded-xl border border-slate-200/80 bg-slate-50/60 text-xs hover:border-[#4f46e5]/30 transition group"
-                    >
-                      {editingServiceId === service.id ? (
-                        <div className="flex items-center gap-2 flex-1 mr-3">
-                          <input
-                            type="text"
-                            value={editingServiceText}
-                            onChange={(e) => setEditingServiceText(e.target.value)}
-                            className="flex-1 px-3 py-1 rounded-lg border border-indigo-300 bg-white text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleSaveEditService(service.id);
-                              if (e.key === "Escape") setEditingServiceId(null);
-                            }}
-                          />
+                {servicesOffered.length > 0 ? (
+                  <div className="space-y-2">
+                    {servicesOffered.map((service) => (
+                      <div
+                        key={service.id}
+                        className="flex items-center justify-between p-3 rounded-xl border border-slate-200/80 bg-slate-50/60 text-xs hover:border-[#4f46e5]/30 transition group"
+                      >
+                        {editingServiceId === service.id ? (
+                          <div className="flex items-center gap-2 flex-1 mr-3">
+                            <input
+                              type="text"
+                              value={editingServiceText}
+                              onChange={(e) => setEditingServiceText(e.target.value)}
+                              className="flex-1 px-3 py-1 rounded-lg border border-indigo-300 bg-white text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSaveEditService(service.id);
+                                if (e.key === "Escape") setEditingServiceId(null);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEditService(service.id)}
+                              className="p-1.5 rounded-lg bg-[#4f46e5] text-white hover:bg-[#4338ca] transition cursor-pointer"
+                              title="Save"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingServiceId(null)}
+                              className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition cursor-pointer"
+                              title="Cancel"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2.5 font-semibold text-slate-800">
+                            <CheckCircle2
+                              className={`w-4 h-4 shrink-0 ${
+                                service.active ? "text-emerald-600" : "text-slate-300"
+                              }`}
+                            />
+                            <span
+                              className={
+                                service.active
+                                  ? "text-slate-900"
+                                  : "text-slate-400 line-through"
+                              }
+                            >
+                              {service.title}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
-                            onClick={() => handleSaveEditService(service.id)}
-                            className="p-1.5 rounded-lg bg-[#4f46e5] text-white hover:bg-[#4338ca] transition cursor-pointer"
-                            title="Save"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingServiceId(null)}
-                            className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition cursor-pointer"
-                            title="Cancel"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2.5 font-semibold text-slate-800">
-                          <CheckCircle2
-                            className={`w-4 h-4 shrink-0 ${
-                              service.active ? "text-emerald-600" : "text-slate-300"
-                            }`}
-                          />
-                          <span
-                            className={
+                            onClick={() => handleToggleService(service.id)}
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded border transition cursor-pointer ${
                               service.active
-                                ? "text-slate-900"
-                                : "text-slate-400 line-through"
-                            }
+                                ? "text-indigo-700 bg-indigo-50 border-indigo-100 hover:bg-indigo-100"
+                                : "text-slate-400 bg-slate-100 border-slate-200 hover:bg-slate-200"
+                            }`}
                           >
-                            {service.title}
-                          </span>
+                            {service.active ? "Active Offering" : "Paused"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingServiceId(service.id);
+                              setEditingServiceText(service.title);
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+                            title="Edit offering"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteService(service.id)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            title="Delete offering"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                      )}
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleService(service.id)}
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded border transition cursor-pointer ${
-                            service.active
-                              ? "text-indigo-700 bg-indigo-50 border-indigo-100 hover:bg-indigo-100"
-                              : "text-slate-400 bg-slate-100 border-slate-200 hover:bg-slate-200"
-                          }`}
-                        >
-                          {service.active ? "Active Offering" : "Paused"}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingServiceId(service.id);
-                            setEditingServiceText(service.title);
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
-                          title="Edit offering"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteService(service.id)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                          title="Delete offering"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 text-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 space-y-1">
+                    <p className="text-xs text-slate-500">No service offerings configured yet.</p>
+                    <p className="text-[11px] text-slate-400">Add service offerings above to define what you build for clients.</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2001,40 +2153,42 @@ export default function FreelancerProfileView({
               </form>
 
               {/* Skills Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                {skillsList.map((skill) => (
-                  <div
-                    key={skill.name}
-                    className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/80 hover:bg-white hover:border-indigo-300 transition-all flex items-center justify-between gap-3 text-xs group"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-bold text-[#4f46e5] shrink-0 shadow-2xs">
-                        #
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-bold text-slate-900 truncate flex items-center gap-1.5">
-                          <span>{skill.name}</span>
-                          {skill.verified && (
-                            <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center">
-                              ✓
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-slate-400 font-medium">{skill.level}</div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteSkill(skill.name)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                      title="Remove skill"
+              {skillsList.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                  {skillsList.map((skill) => (
+                    <div
+                      key={skill.name}
+                      className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/80 hover:bg-white hover:border-indigo-300 transition-all flex items-center justify-between gap-3 text-xs group"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-bold text-[#4f46e5] shrink-0 shadow-2xs">
+                          #
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900 truncate">
+                            {skill.name}
+                          </div>
+                          <div className="text-[11px] text-slate-400 font-medium">{skill.level}</div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSkill(skill.name)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                        title="Remove skill"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 space-y-1">
+                  <p className="text-xs text-slate-500">No technical skills added yet.</p>
+                  <p className="text-[11px] text-slate-400">Add languages, libraries and technologies using the input above.</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -2049,7 +2203,7 @@ export default function FreelancerProfileView({
                     Portfolio Projects ({portfolioProjects.length})
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Showcase verifiable work deliverables with pull requests and live Loom demonstrations.
+                    Showcase verifiable work deliverables with pull requests and live demonstrations.
                   </p>
                 </div>
                 <button
@@ -2062,79 +2216,99 @@ export default function FreelancerProfileView({
                 </button>
               </div>
 
-              <div className="space-y-4">
-                {portfolioProjects.map((proj) => (
-                  <div
-                    key={proj.id}
-                    className="p-5 rounded-2xl border border-slate-200/90 bg-white hover:border-[#4f46e5]/40 hover:shadow-xs transition-all space-y-3.5 group"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="space-y-0.5">
-                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded uppercase tracking-wider">
-                          {proj.role} · {proj.timeline}
-                        </span>
-                        <h3 className="text-base font-bold text-slate-900 group-hover:text-[#4f46e5] transition-colors mt-1">
-                          {proj.title}
-                        </h3>
+              {portfolioProjects.length > 0 ? (
+                <div className="space-y-4">
+                  {portfolioProjects.map((proj) => (
+                    <div
+                      key={proj.id}
+                      className="p-5 rounded-2xl border border-slate-200/90 bg-white hover:border-[#4f46e5]/40 hover:shadow-xs transition-all space-y-3.5 group"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="space-y-0.5">
+                          {proj.role && (
+                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded uppercase tracking-wider">
+                              {proj.role} {proj.timeline ? `· ${proj.timeline}` : ""}
+                            </span>
+                          )}
+                          <h3 className="text-base font-bold text-slate-900 group-hover:text-[#4f46e5] transition-colors mt-1">
+                            {proj.title}
+                          </h3>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                          {proj.prUrl && (
+                            <a
+                              href={proj.prUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-white text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition"
+                            >
+                              <FileCode className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Repository</span>
+                            </a>
+                          )}
+                          {proj.demoUrl && (
+                            <a
+                              href={proj.demoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-xs font-semibold text-indigo-700 flex items-center gap-1 transition"
+                            >
+                              <Video className="w-3.5 h-3.5" />
+                              <span>Demo</span>
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProject(proj.id)}
+                            className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                            title="Delete project"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                        {proj.prUrl && (
-                          <a
-                            href={proj.prUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-white text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition"
-                          >
-                            <FileCode className="w-3.5 h-3.5 text-slate-500" />
-                            <span>GitHub</span>
-                          </a>
-                        )}
-                        {proj.demoUrl && (
-                          <a
-                            href={proj.demoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-xs font-semibold text-indigo-700 flex items-center gap-1 transition"
-                          >
-                            <Video className="w-3.5 h-3.5" />
-                            <span>Demo</span>
-                          </a>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteProject(proj.id)}
-                          className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                          title="Delete project"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        {proj.description}
+                      </p>
+
+                      {proj.tags && proj.tags.length > 0 && (
+                        <div className="pt-3 border-t border-slate-100 flex flex-wrap gap-1.5 text-xs">
+                          {proj.tags.map((t) => (
+                            <span
+                              key={t}
+                              className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-600 text-[10px] font-medium border border-slate-200"
+                            >
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      {proj.description}
-                    </p>
-
-                    <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                      <div className="flex flex-wrap gap-1.5">
-                        {proj.tags.map((t) => (
-                          <span
-                            key={t}
-                            className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-600 text-[10px] font-medium border border-slate-200"
-                          >
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-
-                      <span className="text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                        {proj.metrics}
-                      </span>
-                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-indigo-50 text-[#4f46e5] flex items-center justify-center mx-auto">
+                    <FolderKanban className="w-6 h-6" />
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800">No Portfolio Projects Yet</h4>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                      Showcase your deliverables, repositories, and live video demonstrations.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddProjectModal(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4f46e5] text-white text-xs font-bold hover:bg-[#4338ca] transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add First Project</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -2146,10 +2320,10 @@ export default function FreelancerProfileView({
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
                   <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                    Work Experience
+                    Work Experience ({workExperiences.length})
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Verified employment contracts and track record.
+                    Employment contracts and professional track record.
                   </p>
                 </div>
                 <button
@@ -2162,38 +2336,62 @@ export default function FreelancerProfileView({
                 </button>
               </div>
 
-              <div className="space-y-6 relative before:absolute before:left-3.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
-                {workExperiences.map((exp) => (
-                  <div key={exp.id} className="relative pl-9 space-y-2">
-                    <div className="absolute left-1.5 top-1 w-4 h-4 rounded-full bg-white border-4 border-[#4f46e5]" />
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                      <h3 className="font-bold text-sm sm:text-base text-slate-900">
-                        {exp.role} · <span className="text-indigo-600">{exp.company}</span>
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-mono text-slate-400">{exp.duration}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteExperience(exp.id)}
-                          className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                          title="Delete work experience"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+              {workExperiences.length > 0 ? (
+                <div className="space-y-6 relative before:absolute before:left-3.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
+                  {workExperiences.map((exp) => (
+                    <div key={exp.id} className="relative pl-9 space-y-2">
+                      <div className="absolute left-1.5 top-1 w-4 h-4 rounded-full bg-white border-4 border-[#4f46e5]" />
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                        <h3 className="font-bold text-sm sm:text-base text-slate-900">
+                          {exp.role} · <span className="text-indigo-600">{exp.company}</span>
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-mono text-slate-400">{exp.duration}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteExperience(exp.id)}
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            title="Delete work experience"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
+                      {exp.location && <div className="text-xs text-slate-500">{exp.location}</div>}
+                      {exp.bullets && exp.bullets.length > 0 && (
+                        <ul className="space-y-1.5 pt-1 text-xs text-slate-600">
+                          {exp.bullets.map((b, i) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <span className="text-indigo-600 font-bold">•</span>
+                              <span>{b}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                    <div className="text-xs text-slate-500">{exp.location}</div>
-                    <ul className="space-y-1.5 pt-1 text-xs text-slate-600">
-                      {exp.bullets.map((b, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="text-indigo-600 font-bold">•</span>
-                          <span>{b}</span>
-                        </li>
-                      ))}
-                    </ul>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-indigo-50 text-[#4f46e5] flex items-center justify-center mx-auto">
+                    <Building2 className="w-6 h-6" />
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800">No Work Experience Listed</h4>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                      Document your employment background and past client deliverables.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddExperienceModal(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4f46e5] text-white text-xs font-bold hover:bg-[#4338ca] transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Experience</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -2205,10 +2403,10 @@ export default function FreelancerProfileView({
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
                   <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                    Education & Degrees
+                    Education & Degrees ({educationList.length})
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Verified university academic background.
+                    Academic degrees and university coursework.
                   </p>
                 </div>
                 <button
@@ -2221,34 +2419,55 @@ export default function FreelancerProfileView({
                 </button>
               </div>
 
-              <div className="space-y-4">
-                {educationList.map((edu) => (
-                  <div
-                    key={edu.id}
-                    className="p-4 sm:p-5 rounded-xl border border-slate-200/80 bg-slate-50/70 space-y-2 text-xs"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-bold text-sm text-slate-900">{edu.degree}</h3>
-                        <p className="text-slate-600 font-medium mt-0.5">{edu.institution}</p>
+              {educationList.length > 0 ? (
+                <div className="space-y-4">
+                  {educationList.map((edu) => (
+                    <div
+                      key={edu.id}
+                      className="p-4 sm:p-5 rounded-xl border border-slate-200/80 bg-slate-50/70 space-y-2 text-xs"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-bold text-sm text-slate-900">{edu.degree}</h3>
+                          <p className="text-slate-600 font-medium mt-0.5">{edu.institution}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-slate-500 text-[11px]">{edu.year}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteEducation(edu.id)}
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            title="Delete education record"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-slate-500 text-[11px]">{edu.year}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteEducation(edu.id)}
-                          className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                          title="Delete education record"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {edu.details && <p className="text-slate-500">{edu.details}</p>}
                     </div>
-                    <div className="font-semibold text-emerald-700">{edu.gpa}</div>
-                    <p className="text-slate-500">{edu.details}</p>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-indigo-50 text-[#4f46e5] flex items-center justify-center mx-auto">
+                    <GraduationCap className="w-6 h-6" />
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800">No Education Credentials</h4>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                      Add degrees, university programs, and academic qualifications.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddEducationModal(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4f46e5] text-white text-xs font-bold hover:bg-[#4338ca] transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Education</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -2263,7 +2482,7 @@ export default function FreelancerProfileView({
                     Certifications & Licenses ({certificationsList.length})
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Credentials validated with cryptographic issuer signatures.
+                    Technical certifications and specialized vendor credentials.
                   </p>
                 </div>
                 <button
@@ -2276,43 +2495,64 @@ export default function FreelancerProfileView({
                 </button>
               </div>
 
-              <div className="space-y-3">
-                {certificationsList.map((cert) => (
-                  <div
-                    key={cert.id}
-                    className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-[#4f46e5] flex items-center justify-center shrink-0">
-                        <Award className="w-5 h-5" />
+              {certificationsList.length > 0 ? (
+                <div className="space-y-3">
+                  {certificationsList.map((cert) => (
+                    <div
+                      key={cert.id}
+                      className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-[#4f46e5] flex items-center justify-center shrink-0">
+                          <Award className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900">
+                            {cert.title}
+                          </h3>
+                          <p className="text-slate-500 mt-0.5">{cert.issuer} · {cert.issueDate}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
-                          <span>{cert.title}</span>
-                          <span className="w-4 h-4 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center">
-                            ✓
-                          </span>
-                        </h3>
-                        <p className="text-slate-500 mt-0.5">{cert.issuer} · {cert.issueDate}</p>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                      <div className="font-mono text-[11px] text-slate-400 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
-                        ID: {cert.credentialId}
+                      <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                        {cert.credentialId && (
+                          <div className="font-mono text-[11px] text-slate-400 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                            ID: {cert.credentialId}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCertification(cert.id)}
+                          className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                          title="Delete certification"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCertification(cert.id)}
-                        className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                        title="Delete certification"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-indigo-50 text-[#4f46e5] flex items-center justify-center mx-auto">
+                    <Award className="w-6 h-6" />
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800">No Certifications Recorded</h4>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                      Add cloud, database, or technical credentials to demonstrate competence.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCertificationModal(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4f46e5] text-white text-xs font-bold hover:bg-[#4338ca] transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Certification</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -2332,7 +2572,7 @@ export default function FreelancerProfileView({
                 </div>
                 <button
                   type="button"
-                  onClick={() => showToast("Availability schedule updated.")}
+                  onClick={handleSaveAvailability}
                   className="px-4 py-2 rounded-xl bg-[#4f46e5] text-white text-xs font-bold hover:bg-[#4338ca] transition cursor-pointer"
                 >
                   Save Schedule
@@ -2585,27 +2825,33 @@ export default function FreelancerProfileView({
             <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/60 space-y-4 text-xs">
               {/* Avatar + Name + Title */}
               <div className="flex items-center gap-3">
-                <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-xs shrink-0 ring-1 ring-slate-200">
-                  <Image
-                    src={avatarUrl}
-                    alt={fullName}
-                    width={48}
-                    height={48}
-                    className="w-full h-full object-cover"
-                  />
+                <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-xs shrink-0 ring-1 ring-slate-200 flex items-center justify-center bg-slate-100">
+                  {avatarUrl ? (
+                    <Image
+                      src={avatarUrl}
+                      alt={fullName || "Freelancer"}
+                      width={48}
+                      height={48}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-6 h-6 text-slate-400" />
+                  )}
                 </div>
 
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <h4 className="font-bold text-sm text-slate-900 truncate">
-                      {fullName}
+                      {fullName || "Freelancer"}
                     </h4>
-                    <span className="w-4 h-4 rounded-full bg-[#4f46e5] text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-                      ✓
-                    </span>
+                    {freelancer.verified && (
+                      <span className="w-4 h-4 rounded-full bg-[#4f46e5] text-white flex items-center justify-center text-[10px] font-bold shrink-0" title="Verified">
+                        ✓
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                    {headline}
+                    {headline || professionalTitle || "Freelancer Profile"}
                   </p>
                 </div>
               </div>
@@ -2614,58 +2860,63 @@ export default function FreelancerProfileView({
               <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Available for work</span>
+                  <span>{availabilityStatus === "Available" ? "Available for hire" : availabilityStatus}</span>
                 </span>
                 <span className="text-slate-500 flex items-center gap-1">
                   <MapPin className="w-3 h-3 text-slate-400" />
-                  <span>{location.split(",")[0] || "Bhubaneswar"}</span>
+                  <span>{location ? location.split(",")[0] : "Location not set"}</span>
                 </span>
-                <span className="text-slate-400 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  <span>Local time 6:15 PM</span>
-                </span>
+                {timeZone && (
+                  <span className="text-slate-400 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    <span>{timeZone.split(" ")[0]}</span>
+                  </span>
+                )}
               </div>
 
               {/* Stats Bar */}
               <div className="grid grid-cols-3 gap-2 py-2.5 border-y border-slate-200/60 text-center">
                 <div>
-                  <div className="font-extrabold text-sm text-slate-900 flex items-center justify-center gap-0.5">
-                    <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                    <span>4.9</span>
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">12 reviews</div>
+                  <div className="font-extrabold text-sm text-slate-900 font-mono">{portfolioProjects.length}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Projects</div>
                 </div>
                 <div>
-                  <div className="font-extrabold text-sm text-slate-900 font-mono">18</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Projects completed</div>
+                  <div className="font-extrabold text-sm text-slate-900 font-mono">{skillsList.length}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Skills</div>
                 </div>
                 <div>
-                  <div className="font-extrabold text-sm text-slate-900 font-mono">250+</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Hours worked</div>
+                  <div className="font-extrabold text-sm text-slate-900 font-mono">{certificationsList.length}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Certs</div>
                 </div>
               </div>
 
               {/* Bio Preview Snippet */}
               <p className="text-[11px] text-slate-600 line-clamp-3 leading-relaxed">
-                {aboutMe}
+                {aboutMe || "No summary provided yet."}
               </p>
 
               {/* Skills Tags */}
               <div className="space-y-1.5 pt-1">
                 <span className="text-[11px] font-bold text-slate-700 block">Skills</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {skillsList.slice(0, 10).map((s) => (
-                    <span
-                      key={s.name}
-                      className="px-2 py-0.5 rounded-md bg-white border border-slate-200/80 text-[10px] font-medium text-slate-700 shadow-2xs"
-                    >
-                      {s.name}
-                    </span>
-                  ))}
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold text-indigo-600 bg-indigo-50">
-                    +3 more
-                  </span>
-                </div>
+                {skillsList.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {skillsList.slice(0, 8).map((s) => (
+                      <span
+                        key={s.name}
+                        className="px-2 py-0.5 rounded-md bg-white border border-slate-200/80 text-[10px] font-medium text-slate-700 shadow-2xs"
+                      >
+                        {s.name}
+                      </span>
+                    ))}
+                    {skillsList.length > 8 && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold text-indigo-600 bg-indigo-50">
+                        +{skillsList.length - 8} more
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-400">No skills added yet</p>
+                )}
               </div>
 
               {/* View Full Profile Button */}
@@ -2687,7 +2938,7 @@ export default function FreelancerProfileView({
                 Profile Completion
               </h3>
               <span className="text-sm font-extrabold text-[#4f46e5] font-mono">
-                {liveCompleteness ? `${liveCompleteness.percent}%` : "85%"}
+                {liveCompleteness ? `${liveCompleteness.percent}%` : "0%"}
               </span>
             </div>
 
@@ -2695,19 +2946,19 @@ export default function FreelancerProfileView({
             <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
               <div
                 className="h-full rounded-full bg-[#4f46e5] transition-all duration-500"
-                style={{ width: `${liveCompleteness ? liveCompleteness.percent : 85}%` }}
+                style={{ width: `${liveCompleteness ? liveCompleteness.percent : 0}%` }}
               />
             </div>
 
             {/* Checklist */}
             <div className="space-y-2 text-xs pt-1">
               {[
-                { tabId: "basic", label: "Basic information", isDone: liveCompleteness ? ((liveCompleteness.breakdown?.basic?.score ?? 0) >= 20) : true },
-                { tabId: "skills", label: `Skills (${skillsList.length}/10)`, isDone: liveCompleteness ? ((liveCompleteness.breakdown?.skills?.score ?? 0) >= 15) : true },
+                { tabId: "basic", label: "Basic information", isDone: liveCompleteness ? ((liveCompleteness.breakdown?.basic?.score ?? 0) >= 20) : false },
+                { tabId: "skills", label: `Skills (${skillsList.length}/10)`, isDone: liveCompleteness ? ((liveCompleteness.breakdown?.skills?.score ?? 0) >= 15) : false },
                 { tabId: "portfolio", label: `Portfolio projects (${portfolioProjects.length})`, isDone: portfolioProjects.length > 0 },
                 { tabId: "experience", label: `Work experience (${workExperiences.length})`, isDone: workExperiences.length > 0 },
                 { tabId: "certifications", label: `Certifications (${certificationsList.length})`, isDone: certificationsList.length > 0 },
-                { tabId: "availability", label: "Availability & preferences", isDone: liveCompleteness ? ((liveCompleteness.breakdown?.availability?.score ?? 0) >= 15) : true },
+                { tabId: "availability", label: "Availability & preferences", isDone: liveCompleteness ? ((liveCompleteness.breakdown?.availability?.score ?? 0) >= 15) : false },
               ].map((item) => (
                 <div
                   key={item.label}
@@ -2739,8 +2990,8 @@ export default function FreelancerProfileView({
                     <button
                       type="button"
                       onClick={() => {
-                        setActiveSubTab("certifications");
-                        showToast("Jumped to Certifications section.");
+                        setActiveSubTab(item.tabId as ProfileSubTabId);
+                        showToast(`Jumped to ${item.label} section.`);
                       }}
                       className="text-[11px] font-bold text-[#4f46e5] hover:underline cursor-pointer"
                     >
@@ -2758,7 +3009,7 @@ export default function FreelancerProfileView({
                 <div className="space-y-1 text-xs">
                   <div className="font-bold text-amber-950">Make your profile stand out</div>
                   <p className="text-[11px] text-amber-900/80 leading-relaxed">
-                    Add more portfolio projects and certifications to increase your chances of getting hired.
+                    Add verified portfolio projects, skills and certifications to improve matching.
                   </p>
                   <button
                     type="button"
@@ -2806,31 +3057,44 @@ export default function FreelancerProfileView({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Real-Time Analytics Dashboard & WebSocket Pipeline"
+                  placeholder="e.g. Distributed Payment Settlement Gateway"
                   value={newProjTitle}
                   onChange={(e) => setNewProjTitle(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
                 />
               </div>
 
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Your Role</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Lead Developer / Contributor"
+                  value={newProjRole}
+                  onChange={(e) => setNewProjRole(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
+                />
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Your Role</label>
+                  <label className="font-bold text-slate-700">Start Month (YYYY-MM)</label>
                   <input
                     type="text"
-                    placeholder="e.g. Full-Stack Lead Architect"
-                    value={newProjRole}
-                    onChange={(e) => setNewProjRole(e.target.value)}
+                    placeholder="e.g. 2026-01"
+                    pattern="\d{4}-(0[1-9]|1[0-2])"
+                    value={newProjStartMonth}
+                    onChange={(e) => setNewProjStartMonth(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Timeline</label>
+                  <label className="font-bold text-slate-700">End Month (YYYY-MM)</label>
                   <input
                     type="text"
-                    placeholder="e.g. Sep 2026 – Oct 2026"
-                    value={newProjTimeline}
-                    onChange={(e) => setNewProjTimeline(e.target.value)}
+                    placeholder="e.g. 2026-06"
+                    pattern="\d{4}-(0[1-9]|1[0-2])"
+                    value={newProjEndMonth}
+                    onChange={(e) => setNewProjEndMonth(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
                   />
                 </div>
@@ -2850,7 +3114,7 @@ export default function FreelancerProfileView({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">GitHub Repository / PR Link</label>
+                  <label className="font-bold text-slate-700">Repository URL (https://)</label>
                   <input
                     type="url"
                     placeholder="https://github.com/org/repo"
@@ -2860,10 +3124,10 @@ export default function FreelancerProfileView({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Demo / Walkthrough Video URL</label>
+                  <label className="font-bold text-slate-700">Live Demo URL (https://)</label>
                   <input
                     type="url"
-                    placeholder="https://loom.com/share/..."
+                    placeholder="https://project.example.com"
                     value={newProjDemoUrl}
                     onChange={(e) => setNewProjDemoUrl(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
@@ -2878,17 +3142,6 @@ export default function FreelancerProfileView({
                   placeholder="React 19, TypeScript, Next.js, Node.js"
                   value={newProjTags}
                   onChange={(e) => setNewProjTags(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700">Key Metric / Benchmark Pill</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 10k users/day · Sub-50ms latency"
-                  value={newProjMetrics}
-                  onChange={(e) => setNewProjMetrics(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
                 />
               </div>
@@ -2941,7 +3194,7 @@ export default function FreelancerProfileView({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Master of Science in Distributed Systems"
+                  placeholder="e.g. Bachelor of Technology in Computer Science"
                   value={newEduDegree}
                   onChange={(e) => setNewEduDegree(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
@@ -2960,38 +3213,43 @@ export default function FreelancerProfileView({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Years Attended</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 2022 – 2024"
-                    value={newEduYear}
-                    onChange={(e) => setNewEduYear(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Grade / Honors</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 3.9 / 4.0 (Magna Cum Laude)"
-                    value={newEduGpa}
-                    onChange={(e) => setNewEduGpa(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Field of Study</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Software Engineering & Systems"
+                  value={newEduFieldOfStudy}
+                  onChange={(e) => setNewEduFieldOfStudy(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
+                />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700">Specialization & Coursework Details</label>
-                <textarea
-                  rows={3}
-                  placeholder="Focus areas such as Cryptography, Consensus Algorithms, Cloud Infrastructure, etc."
-                  value={newEduDetails}
-                  onChange={(e) => setNewEduDetails(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500 resize-none"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Start Year * (YYYY)</label>
+                  <input
+                    type="number"
+                    min={1950}
+                    max={new Date().getFullYear() + 8}
+                    required
+                    placeholder="e.g. 2020"
+                    value={newEduStartYear}
+                    onChange={(e) => setNewEduStartYear(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Graduation Year (YYYY, optional)</label>
+                  <input
+                    type="number"
+                    min={1950}
+                    max={new Date().getFullYear() + 8}
+                    placeholder="e.g. 2024"
+                    value={newEduGraduationYear}
+                    onChange={(e) => setNewEduGraduationYear(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
@@ -3024,7 +3282,7 @@ export default function FreelancerProfileView({
               <div>
                 <h3 className="text-lg font-bold text-slate-900">Add Professional Certification</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Verify specialized technical licenses and credentials.
+                  Record specialized technical licenses and credentials.
                 </p>
               </div>
               <button
@@ -3042,7 +3300,7 @@ export default function FreelancerProfileView({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Google Cloud Professional Cloud Architect"
+                  placeholder="e.g. AWS Certified Solutions Architect"
                   value={newCertTitle}
                   onChange={(e) => setNewCertTitle(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
@@ -3054,7 +3312,7 @@ export default function FreelancerProfileView({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Google Cloud / Coursera"
+                  placeholder="e.g. Amazon Web Services"
                   value={newCertIssuer}
                   onChange={(e) => setNewCertIssuer(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
@@ -3063,30 +3321,51 @@ export default function FreelancerProfileView({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Issue Date & Expiration</label>
+                  <label className="font-bold text-slate-700">Issued Month * (YYYY-MM)</label>
                   <input
                     type="text"
-                    placeholder="e.g. Oct 2026 · Expires Oct 2029"
-                    value={newCertIssueDate}
-                    onChange={(e) => setNewCertIssueDate(e.target.value)}
+                    required
+                    placeholder="e.g. 2026-01"
+                    pattern="\d{4}-(0[1-9]|1[0-2])"
+                    value={newCertIssuedMonth}
+                    onChange={(e) => setNewCertIssuedMonth(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Credential ID / Hash</label>
+                  <label className="font-bold text-slate-700">Expires Month (YYYY-MM, optional)</label>
                   <input
                     type="text"
-                    placeholder="e.g. GCP-PCA-77891"
-                    value={newCertCredentialId}
-                    onChange={(e) => setNewCertCredentialId(e.target.value)}
+                    placeholder="e.g. 2029-01"
+                    pattern="\d{4}-(0[1-9]|1[0-2])"
+                    value={newCertExpiresMonth}
+                    onChange={(e) => setNewCertExpiresMonth(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
                   />
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Nexum automatically checks cryptographic issuer signatures upon save.</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Credential ID (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. AWS-PSA-12345"
+                    value={newCertCredentialId}
+                    onChange={(e) => setNewCertCredentialId(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Credential URL (https://, optional)</label>
+                  <input
+                    type="url"
+                    placeholder="https://credly.com/..."
+                    value={newCertCredentialUrl}
+                    onChange={(e) => setNewCertCredentialUrl(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
@@ -3137,7 +3416,7 @@ export default function FreelancerProfileView({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Lead Distributed Systems Engineer"
+                  placeholder="e.g. Senior Full Stack Engineer"
                   value={newExpRole}
                   onChange={(e) => setNewExpRole(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
@@ -3149,41 +3428,72 @@ export default function FreelancerProfileView({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. CloudScale Technologies"
+                  placeholder="e.g. Acme Tech Solutions"
                   value={newExpCompany}
                   onChange={(e) => setNewExpCompany(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
                 />
               </div>
 
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Location</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Remote / San Francisco, CA"
+                  value={newExpLocation}
+                  onChange={(e) => setNewExpLocation(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
+                />
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Location</label>
+                  <label className="font-bold text-slate-700">Start Month * (YYYY-MM)</label>
                   <input
                     type="text"
-                    placeholder="e.g. Remote / New York, NY"
-                    value={newExpLocation}
-                    onChange={(e) => setNewExpLocation(e.target.value)}
+                    required
+                    placeholder="e.g. 2024-01"
+                    pattern="\d{4}-(0[1-9]|1[0-2])"
+                    value={newExpStartMonth}
+                    onChange={(e) => setNewExpStartMonth(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Duration</label>
+                  <label className="font-bold text-slate-700">End Month (YYYY-MM)</label>
                   <input
                     type="text"
-                    placeholder="e.g. Jan 2024 – Present"
-                    value={newExpDuration}
-                    onChange={(e) => setNewExpDuration(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500"
+                    disabled={newExpIsCurrent}
+                    placeholder="e.g. 2025-12"
+                    pattern="\d{4}-(0[1-9]|1[0-2])"
+                    value={newExpIsCurrent ? "" : newExpEndMonth}
+                    onChange={(e) => setNewExpEndMonth(e.target.value)}
+                    className={`w-full px-3.5 py-2 rounded-xl border border-slate-200 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500 ${newExpIsCurrent ? "bg-slate-100 cursor-not-allowed text-slate-400" : "bg-slate-50/70"}`}
                   />
                 </div>
               </div>
 
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="newExpIsCurrentCheck"
+                  checked={newExpIsCurrent}
+                  onChange={(e) => {
+                    setNewExpIsCurrent(e.target.checked);
+                    if (e.target.checked) setNewExpEndMonth("");
+                  }}
+                  className="w-4 h-4 text-[#4f46e5] rounded border-slate-300"
+                />
+                <label htmlFor="newExpIsCurrentCheck" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                  I currently work in this role
+                </label>
+              </div>
+
               <div className="space-y-1">
-                <label className="font-bold text-slate-700">Key Achievements (One bullet per line)</label>
+                <label className="font-bold text-slate-700">Key Achievements / Description</label>
                 <textarea
                   rows={4}
-                  placeholder="Built microservices architecture supporting 50k daily active users...&#10;Integrated bilateral cryptographic consensus ledger for automated dispute resolution...&#10;Reduced latency by 45% through Redis caching..."
+                  placeholder="Built scalable backend services...&#10;Led frontend architecture refactor...&#10;Optimized queries and reduced latency by 40%..."
                   value={newExpBullets}
                   onChange={(e) => setNewExpBullets(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-900 focus:outline-none focus:bg-white focus:border-indigo-500 resize-none font-sans"

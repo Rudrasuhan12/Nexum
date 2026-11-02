@@ -30,8 +30,34 @@ const updateTaskSchema = z.object({
 
 export async function getProjectTasks(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { projectId } = req.params;
+    const projectId = req.params.projectId || (req.query.projectId as string);
     const freelancerId = req.user!.id;
+
+    if (!projectId) {
+      // Find all projects where freelancer has an active agreement
+      const agreements = await prisma.agreement.findMany({
+        where: { freelancerId, status: "ACTIVE" },
+        select: { projectId: true },
+      });
+      const projectIds = agreements.map((a) => a.projectId);
+
+      const tasks = await prisma.workspaceTask.findMany({
+        where: {
+          OR: [
+            { projectId: { in: projectIds }, visibility: TaskVisibility.SHARED },
+            { createdBy: freelancerId },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const pendingCount = tasks.filter(
+        (t) => t.status === WorkspaceTaskStatus.TODO || t.status === WorkspaceTaskStatus.IN_PROGRESS
+      ).length;
+
+      res.status(200).json({ success: true, tasks, pendingCount });
+      return;
+    }
 
     const access = await verifyProjectAccess(projectId, freelancerId, prisma);
     if (!access.allowed) {
@@ -46,7 +72,11 @@ export async function getProjectTasks(req: Request, res: Response, next: NextFun
       orderBy: { createdAt: "desc" },
     });
 
-    res.status(200).json({ success: true, tasks });
+    const pendingCount = tasks.filter(
+      (t) => t.status === WorkspaceTaskStatus.TODO || t.status === WorkspaceTaskStatus.IN_PROGRESS
+    ).length;
+
+    res.status(200).json({ success: true, tasks, pendingCount });
   } catch (err) {
     next(err);
   }
@@ -54,7 +84,10 @@ export async function getProjectTasks(req: Request, res: Response, next: NextFun
 
 export async function createProjectTask(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { projectId } = req.params;
+    const projectId = req.params.projectId || req.body.projectId;
+    if (!projectId) {
+      throw new ValidationError("projectId is required");
+    }
     const freelancerId = req.user!.id;
 
     const access = await verifyProjectAccess(projectId, freelancerId, prisma);
@@ -95,6 +128,9 @@ export async function createProjectTask(req: Request, res: Response, next: NextF
     next(err);
   }
 }
+
+router.get("/", getProjectTasks);
+router.post("/", createProjectTask);
 
 router.patch("/:id", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {

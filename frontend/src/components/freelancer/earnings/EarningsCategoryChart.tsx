@@ -98,36 +98,44 @@ export default function EarningsCategoryChart({
 
         {/* Legend List */}
         <div className="flex-1 w-full space-y-2">
-          {categories.map((cat) => {
-            const isHovered = hoveredCategory === cat.name;
-            return (
-              <div
-                key={cat.name}
-                onMouseEnter={() => setHoveredCategory(cat.name)}
-                onMouseLeave={() => setHoveredCategory(null)}
-                className={`flex items-center justify-between text-xs py-1 px-2 rounded-lg transition-all cursor-pointer ${
-                  isHovered ? "bg-slate-50 font-bold" : "text-slate-600"
-                }`}
-              >
-                <div className="flex items-center gap-2 truncate">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: cat.color }}
-                  />
-                  <span className="truncate">{cat.name}</span>
+          {categories.length === 0 ? (
+            <div className="text-xs text-slate-400 py-4 text-center sm:text-left">
+              No category data yet. Active project milestones will populate your category distribution.
+            </div>
+          ) : (
+            categories.map((cat) => {
+              const isHovered = hoveredCategory === cat.name;
+              return (
+                <div
+                  key={cat.name}
+                  onMouseEnter={() => setHoveredCategory(cat.name)}
+                  onMouseLeave={() => setHoveredCategory(null)}
+                  className={`flex items-center justify-between text-xs py-1 px-2 rounded-lg transition-all cursor-pointer ${
+                    isHovered ? "bg-slate-50 font-bold" : "text-slate-600"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: cat.color }}
+                    />
+                    <span className="truncate">{cat.name}</span>
+                  </div>
+                  <span className="font-semibold text-slate-900 ml-2">
+                    {cat.percentage}%
+                  </span>
                 </div>
-                <span className="font-semibold text-slate-900 ml-2">
-                  {cat.percentage}%
-                </span>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
 
       <div className="pt-2 text-right">
         <span className="text-[11px] text-slate-400 font-medium">
-          Based on 8 finalized agreement versions
+          {categories.length > 0
+            ? `Based on ${categories.length} active project categories`
+            : "No category data available"}
         </span>
       </div>
     </div>

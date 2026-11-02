@@ -207,7 +207,7 @@ const portfolioUpdateSchema = portfolioBaseSchema.partial().refine(
 );
 
 const availabilitySchema = z.object({
-  availabilityStatus: z.enum(["AVAILABLE", "UNAVAILABLE"]).optional(),
+  availabilityStatus: z.enum(["AVAILABLE", "LIMITED", "UNAVAILABLE"]).optional(),
   weeklyCapacityHours: z.number().int().min(0).max(80).nullable().optional(),
   preferredEngagement: z.enum(["HOURLY", "FIXED_PRICE", "BOTH"]).nullable().optional(),
   rateHourlyMinor: z

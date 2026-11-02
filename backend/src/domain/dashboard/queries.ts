@@ -42,6 +42,15 @@ export interface RecommendedProjectItem {
   category: string;
 }
 
+export interface RecentProposalSummaryItem {
+  id: string;
+  title: string;
+  clientName: string;
+  status: string;
+  amountDisplay: string;
+  timeAgo: string;
+}
+
 export interface DashboardSummaryResponse {
   activeProjects: { count: number; items: ActiveProjectItem[] };
   allProposals: { count: number; byStatus: Record<string, number> };
@@ -59,6 +68,7 @@ export interface DashboardSummaryResponse {
   };
   needsYourReply: { count: number; items: NeedsReplyItem[] };
   recommendedProjects: RecommendedProjectItem[];
+  recentProposals?: RecentProposalSummaryItem[];
   profileCompleteness: {
     score: number;
     nextAction: string;
@@ -70,6 +80,13 @@ export interface DashboardSummaryResponse {
     entityType: string;
     entityId: string;
     timestamp: string;
+  }>;
+  monthlyEarnings?: Array<{
+    month: string;
+    shortMonth: string;
+    completed: number;
+    pending: number;
+    label: string;
   }>;
 }
 
@@ -513,7 +530,107 @@ export async function getRecentActivity(
 }
 
 /**
- * 11. Aggregate Summary Function
+ * 11. Recent Proposals Query
+ * Returns the latest proposals submitted by the freelancer with project title, client, status, and budget.
+ */
+export async function getRecentProposals(
+  freelancerId: string,
+  limit = 3
+): Promise<RecentProposalSummaryItem[]> {
+  const proposals = await prisma.proposal.findMany({
+    where: { freelancerId },
+    include: {
+      project: {
+        include: {
+          client: { select: { id: true, name: true } },
+        },
+      },
+      versions: {
+        orderBy: { versionNumber: "desc" },
+        take: 1,
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+  });
+
+  return proposals.map((p: any) => {
+    const ver = p.versions[0];
+    const amountMinor = ver?.totalAmountMinor ?? p.project.budgetCents ?? 0;
+    return {
+      id: p.id,
+      title: p.project.title,
+      clientName: p.project.client?.name || "Client",
+      status: p.status,
+      amountDisplay: `$${(amountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 0 })} USD`,
+      timeAgo: "Recently",
+    };
+  });
+}
+
+/**
+ * 12. Monthly Earnings Query
+ * Aggregates real ledger releases and pending milestone values across the trailing 6 months.
+ */
+export async function getMonthlyEarnings(freelancerId: string): Promise<Array<{
+  month: string;
+  shortMonth: string;
+  completed: number;
+  pending: number;
+  label: string;
+}>> {
+  const entries = await prisma.ledgerEntry.findMany({
+    where: { userId: freelancerId, kind: LedgerEntryKind.RELEASED },
+  });
+
+  const milestones = await prisma.milestone.findMany({
+    where: {
+      agreement: { freelancerId },
+      removedAt: null,
+      workStatus: { in: [MilestoneWorkStatus.IN_PROGRESS, MilestoneWorkStatus.AWAITING_CLIENT_REVIEW] },
+    },
+  });
+
+  const totalReleased = entries.reduce((sum, e) => sum + e.amountMinor, 0) / 100;
+  const totalPending = milestones.reduce((sum, m) => sum + m.amountMinor, 0) / 100;
+
+  const now = new Date();
+  const result = [];
+
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const mName = d.toLocaleDateString("en-US", { month: "short" });
+    const year = d.getFullYear();
+    const monthStart = new Date(year, d.getMonth(), 1);
+    const monthEnd = new Date(year, d.getMonth() + 1, 0, 23, 59, 59);
+
+    const monthReleased = entries
+      .filter((e) => e.createdAt >= monthStart && e.createdAt <= monthEnd)
+      .reduce((sum, e) => sum + e.amountMinor, 0) / 100;
+
+    const monthPending = (i === 0) ? totalPending : 0;
+
+    result.push({
+      month: mName,
+      shortMonth: `${mName} ${year}`,
+      completed: monthReleased,
+      pending: monthPending,
+      label: `$${(monthReleased + monthPending).toLocaleString("en-US", { minimumFractionDigits: 0 })}`,
+    });
+  }
+
+  // If historical entries fall outside window, place verified balance in current month
+  const totalCharted = result.reduce((acc, r) => acc + r.completed, 0);
+  if (totalCharted === 0 && totalReleased > 0) {
+    result[result.length - 1].completed = totalReleased;
+    result[result.length - 1].label = `$${(totalReleased + totalPending).toLocaleString("en-US", { minimumFractionDigits: 0 })}`;
+  }
+
+  return result;
+}
+
+/**
+ * 13. Aggregate Summary Function
  * Runs all query functions concurrently for a single unified response.
  */
 export async function getDashboardSummary(freelancerId: string): Promise<DashboardSummaryResponse> {
@@ -528,6 +645,8 @@ export async function getDashboardSummary(freelancerId: string): Promise<Dashboa
     recommendedProjects,
     profileCompleteness,
     recentActivity,
+    recentProposals,
+    monthlyEarnings,
   ] = await Promise.all([
     getActiveProjects(freelancerId),
     getAllProposals(freelancerId),
@@ -539,6 +658,8 @@ export async function getDashboardSummary(freelancerId: string): Promise<Dashboa
     getRecommendedProjects(freelancerId, 3),
     getProfileCompleteness(freelancerId),
     getRecentActivity(freelancerId, 10),
+    getRecentProposals(freelancerId, 3),
+    getMonthlyEarnings(freelancerId),
   ]);
 
   return {
@@ -550,7 +671,9 @@ export async function getDashboardSummary(freelancerId: string): Promise<Dashboa
     earningsSnapshot,
     needsYourReply,
     recommendedProjects,
+    recentProposals,
     profileCompleteness,
     recentActivity,
+    monthlyEarnings,
   };
 }

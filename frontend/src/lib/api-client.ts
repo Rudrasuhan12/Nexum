@@ -378,6 +378,7 @@ export interface FreelancerProfileData {
     issuer: string;
     issuedMonth: string;
     expiryMonth?: string | null;
+    expiresMonth?: string | null;
     credentialId?: string | null;
     credentialUrl?: string | null;
   }>;
@@ -388,6 +389,9 @@ export interface FreelancerProfileData {
     role?: string | null;
     tools?: string[];
     projectUrl?: string | null;
+    repoUrl?: string | null;
+    startMonth?: string | null;
+    endMonth?: string | null;
     coverFileId?: string | null;
     displayOrder: number;
   }>;
@@ -631,16 +635,22 @@ export async function createCertification(data: {
   name: string;
   issuer: string;
   issuedMonth: string;
+  expiresMonth?: string;
   expiryMonth?: string;
   credentialId?: string;
   credentialUrl?: string;
 }): Promise<{ success: boolean; certification?: any; error?: string }> {
   try {
+    const payload = {
+      ...data,
+      expiresMonth: data.expiresMonth || data.expiryMonth,
+    };
+    delete (payload as any).expiryMonth;
     const res = await fetch(`${BACKEND_URL}/api/freelancer/profile/certifications`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
     const json = await res.json();
     if (!res.ok) return { success: false, error: json.error?.message || `HTTP ${res.status}` };
@@ -694,6 +704,9 @@ export async function createPortfolioProject(data: {
   role?: string;
   tools?: string[];
   projectUrl?: string;
+  repoUrl?: string;
+  startMonth?: string;
+  endMonth?: string;
   coverFileId?: string;
 }): Promise<{ success: boolean; portfolio?: any; error?: string }> {
   try {
@@ -719,6 +732,9 @@ export async function updatePortfolioProject(
     role: string;
     tools: string[];
     projectUrl: string;
+    repoUrl: string;
+    startMonth: string;
+    endMonth: string;
     coverFileId: string;
   }>
 ): Promise<{ success: boolean; portfolio?: any; error?: string }> {
@@ -2519,6 +2535,40 @@ export async function fetchProjectFiles(
   }
 }
 
+export async function fetchProjectActivity(
+  projectId: string
+): Promise<{
+  success: boolean;
+  activity?: Array<{
+    id: string;
+    action: string;
+    objectType: string;
+    objectId: string;
+    actor: string;
+    actorRole: string;
+    timestamp: string;
+    metadata?: any;
+  }>;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${projectId}/activity`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, activity: json.activity };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch project activity",
+    };
+  }
+}
+
 export async function uploadProjectFile(
   projectId: string,
   payload: {
@@ -2554,14 +2604,18 @@ export async function uploadProjectFile(
 }
 
 export async function fetchProjectTasks(
-  projectId: string
+  projectId?: string
 ): Promise<{
   success: boolean;
   tasks?: any[];
+  pendingCount?: number;
   error?: string;
 }> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/freelancer/projects/${projectId}/tasks`, {
+    const url = projectId
+      ? `${BACKEND_URL}/api/freelancer/projects/${projectId}/tasks`
+      : `${BACKEND_URL}/api/freelancer/tasks`;
+    const res = await fetch(url, {
       method: "GET",
       credentials: "include",
     });
@@ -2569,7 +2623,7 @@ export async function fetchProjectTasks(
     if (!res.ok) {
       return { success: false, error: json.error?.message || `HTTP ${res.status}` };
     }
-    return { success: true, tasks: json.tasks };
+    return { success: true, tasks: json.tasks, pendingCount: json.pendingCount };
   } catch (err: unknown) {
     return {
       success: false,
@@ -3297,6 +3351,14 @@ export interface DashboardSummaryData {
     reason: string;
     category: string;
   }>;
+  recentProposals?: Array<{
+    id: string;
+    title: string;
+    clientName: string;
+    status: string;
+    amountDisplay: string;
+    timeAgo: string;
+  }>;
   profileCompleteness: {
     score: number;
     nextAction: string;
@@ -3309,6 +3371,43 @@ export interface DashboardSummaryData {
     entityId: string;
     timestamp: string;
   }>;
+  monthlyEarnings?: Array<{
+    month: string;
+    shortMonth: string;
+    completed: number;
+    pending: number;
+    label: string;
+  }>;
+}
+
+export async function fetchMonthlyEarnings(): Promise<{
+  success: boolean;
+  monthly?: Array<{
+    month: string;
+    shortMonth: string;
+    completed: number;
+    pending: number;
+    label: string;
+  }>;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/earnings/monthly`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true, monthly: json.monthly };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch monthly earnings",
+    };
+  }
 }
 
 export async function fetchFreelancerDashboard(): Promise<{

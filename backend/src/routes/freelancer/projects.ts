@@ -11,6 +11,7 @@ import { Role, ProjectState, ExperienceLevel, Prisma } from "@prisma/client";
 import { ValidationError, NotFoundError, ConflictError } from "../../lib/errors.js";
 import { appendAuditEvent } from "../../lib/audit.js";
 import { deriveProjectStatus } from "../../domain/milestones/projectStatus.js";
+import { verifyProjectAccess } from "../../domain/mediation/access.js";
 
 const router = Router();
 
@@ -621,6 +622,12 @@ router.get("/active", async (req: Request, res: Response, next: NextFunction): P
         },
         milestones: {
           where: { removedAt: null },
+          include: {
+            submissions: {
+              orderBy: { submittedAt: "desc" },
+              take: 1,
+            },
+          },
           orderBy: { sequence: "asc" },
         },
       },
@@ -706,13 +713,13 @@ router.get("/active", async (req: Request, res: Response, next: NextFunction): P
             amountCents: m.amountMinor,
             amountDisplay: `$${(m.amountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 0 })} USD`,
             currency: m.currency || "USD",
-            dueDate: m.dueDate ? new Date(m.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Dec 15, 2026",
-            submittedAt: m.workStatus === "AWAITING_CLIENT_REVIEW" || m.workStatus === "ACCEPTED" ? "Oct 22, 2026" : undefined,
-            approvedAt: m.acceptedAt ? new Date(m.acceptedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : (m.workStatus === "ACCEPTED" ? "Oct 24, 2026" : undefined),
+            dueDate: m.dueDate ? new Date(m.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "No deadline",
+            submittedAt: m.submissions && m.submissions.length > 0 ? new Date(m.submissions[0].submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : undefined,
+            approvedAt: m.acceptedAt ? new Date(m.acceptedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : undefined,
             workStatus: m.workStatus,
             paymentStatus: payStatus,
             fundingRule: m.fundingRule || "PRE_FUNDED_BEFORE_WORK",
-            submissions: [],
+            submissions: m.submissions || [],
           };
         }),
         totalAmountMinor:
@@ -744,6 +751,76 @@ router.get("/:projectId/meetings", getProjectMeetings);
 router.post("/:projectId/meetings", proposeProjectMeeting);
 router.get("/:projectId/decisions", getProjectDecisions);
 router.post("/:projectId/decisions", createProjectDecision);
+router.get("/:projectId/activity", getProjectActivity);
+
+export async function getProjectActivity(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { projectId } = req.params;
+    const freelancerId = req.user!.id;
+
+    const access = await verifyProjectAccess(projectId, freelancerId, prisma);
+    if (!access.allowed) {
+      throw new NotFoundError("Project not found");
+    }
+
+    const [milestones, agreements, tasks] = await Promise.all([
+      prisma.milestone.findMany({ where: { projectId }, select: { id: true } }),
+      prisma.agreement.findMany({ where: { projectId }, select: { id: true } }),
+      prisma.workspaceTask.findMany({ where: { projectId }, select: { id: true } }),
+    ]);
+
+    const relatedObjectIds = [
+      projectId,
+      ...milestones.map((m) => m.id),
+      ...agreements.map((a) => a.id),
+      ...tasks.map((t) => t.id),
+    ];
+
+    const events = await prisma.auditEvent.findMany({
+      where: {
+        OR: [
+          { objectId: { in: relatedObjectIds } },
+          { metadata: { path: ["projectId"], equals: projectId } },
+        ],
+      },
+      orderBy: { timestamp: "desc" },
+      take: 50,
+    });
+
+    const actorIds = [...new Set(events.map((e) => e.actorId).filter(Boolean))] as string[];
+    const users = await prisma.user.findMany({
+      where: { id: { in: actorIds } },
+      select: { id: true, name: true, role: true },
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    const activity = events.map((ev) => {
+      const actorUser = ev.actorId ? userMap.get(ev.actorId) : null;
+      const isSelf = ev.actorId === freelancerId;
+      let actorName = actorUser ? actorUser.name : "System";
+      if (isSelf) {
+        actorName = `${actorName} (You)`;
+      } else if (ev.actorId === "PAYPAL_WEBHOOK") {
+        actorName = "Nexum Automated Settlement";
+      }
+
+      return {
+        id: ev.id,
+        action: ev.action,
+        objectType: ev.objectType,
+        objectId: ev.objectId,
+        actor: actorName,
+        actorRole: actorUser?.role || "SYSTEM",
+        timestamp: ev.timestamp.toISOString(),
+        metadata: ev.metadata,
+      };
+    });
+
+    res.status(200).json({ success: true, activity });
+  } catch (err) {
+    next(err);
+  }
+}
 
 router.get("/:id", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {

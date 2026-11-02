@@ -144,9 +144,9 @@ export default function ProposalFilterToolbar({
               }`}
             >
               <option value="ALL">Budget: All</option>
-              <option value="UNDER_50K">&lt; ₹50,000</option>
-              <option value="50K_100K">₹50k – ₹100k</option>
-              <option value="ABOVE_100K">&gt; ₹100,000</option>
+              <option value="UNDER_50K">&lt; $5,000 USD</option>
+              <option value="50K_100K">$5,000 – $10,000 USD</option>
+              <option value="ABOVE_100K">&gt; $10,000 USD</option>
             </select>
             <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
