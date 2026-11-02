@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import {
   Wallet,
@@ -27,6 +27,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { DemoUser } from "@/lib/auth-types";
+import { fetchFreelancerDashboard, DashboardSummaryData } from "@/lib/api-client";
 
 interface FreelancerOverviewViewProps {
   freelancer: DemoUser;
@@ -42,19 +43,57 @@ export default function FreelancerOverviewView({
 }: FreelancerOverviewViewProps) {
   const [selectedTimeRange, setSelectedTimeRange] = useState("Last 6 months");
   const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
-  const [bookmarkedProjects, setBookmarkedProjects] = useState<string[]>(["rec_1"]);
+  const [bookmarkedProjects, setBookmarkedProjects] = useState<string[]>([]);
   const [workStatus, setWorkStatus] = useState<"Available for work" | "In active project" | "Busy / Away">("Available for work");
-  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+  const [dashboardData, setDashboardData] = useState<DashboardSummaryData | null>(null);
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
 
-  // Earnings chart data (May – Oct) matching the visual curve in the screenshot
-  const monthlyEarnings = [
-    { month: "May", completed: 14000, pending: 3000, label: "₹17,000" },
-    { month: "Jun", completed: 17000, pending: 4000, label: "₹21,000" },
-    { month: "Jul", completed: 21000, pending: 5000, label: "₹26,000" },
-    { month: "Aug", completed: 31000, pending: 6000, label: "₹37,000" },
-    { month: "Sep", completed: 35000, pending: 9000, label: "₹44,000" },
-    { month: "Oct", completed: 33000, pending: 10000, label: "₹43,000" },
-  ];
+  useEffect(() => {
+    let mounted = true;
+    async function loadDashboard() {
+      try {
+        const res = await fetchFreelancerDashboard();
+        if (mounted && res.success && res.dashboard) {
+          setDashboardData(res.dashboard);
+        }
+      } catch (err) {
+        console.warn("Using fallback dashboard data", err);
+      } finally {
+        if (mounted) setIsLoadingDashboard(false);
+      }
+    }
+    loadDashboard();
+    return () => { mounted = false; };
+  }, []);
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close status dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setIsStatusDropdownOpen(false);
+      }
+    }
+    if (isStatusDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isStatusDropdownOpen]);
+
+  // Earnings chart data (Trailing 6 months derived dynamically from backend)
+  const monthlyEarnings = dashboardData?.monthlyEarnings && dashboardData.monthlyEarnings.length > 0
+    ? dashboardData.monthlyEarnings
+    : [
+        { month: "May", completed: 0, pending: 0, label: "$0" },
+        { month: "Jun", completed: 0, pending: 0, label: "$0" },
+        { month: "Jul", completed: 0, pending: 0, label: "$0" },
+        { month: "Aug", completed: 0, pending: 0, label: "$0" },
+        { month: "Sep", completed: 0, pending: 0, label: "$0" },
+        { month: "Oct", completed: 0, pending: 0, label: "$0" },
+      ];
 
   const toggleBookmark = (id: string) => {
     setBookmarkedProjects((prev) =>
@@ -62,17 +101,19 @@ export default function FreelancerOverviewView({
     );
   };
 
-  const displayName = freelancer.name ? freelancer.name.split(" ")[0] : "Sambit";
+  const displayName = freelancer.name ? freelancer.name.split(" ")[0] : "Freelancer";
 
   return (
     <div className="space-y-6">
       {/* ==============================================================
           1. HERO WELCOME BANNER (MATCHING CLIENT SIDE DESIGN THEME)
          ============================================================== */}
-      <section className="relative w-full rounded-[24px] sm:rounded-[28px] overflow-hidden bg-gradient-to-r from-[#4338ca] via-[#4f46e5] to-[#6366f1] text-white p-5 sm:p-7 shadow-[0_12px_32px_rgba(79,70,229,0.22)] border border-white/15 select-none">
-        {/* Background ambient lighting and subtle decorative grid */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-white/20 via-transparent to-black/10 pointer-events-none" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:28px_28px] [mask-image:radial-gradient(ellipse_70%_70%_at_50%_50%,#000_60%,transparent_100%)] pointer-events-none" />
+      <section className="relative w-full rounded-[24px] sm:rounded-[28px] bg-gradient-to-r from-[#4338ca] via-[#4f46e5] to-[#6366f1] text-white p-5 sm:p-7 shadow-[0_12px_32px_rgba(79,70,229,0.22)] border border-white/15 select-none">
+        {/* Background ambient lighting and subtle decorative grid - clipped cleanly inside without cutting off dropdowns */}
+        <div className="absolute inset-0 rounded-[24px] sm:rounded-[28px] overflow-hidden pointer-events-none">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-white/20 via-transparent to-black/10" />
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:28px_28px] [mask-image:radial-gradient(ellipse_70%_70%_at_50%_50%,#000_60%,transparent_100%)]" />
+        </div>
 
         <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
           {/* Left: Avatar & Greeting */}
@@ -96,7 +137,7 @@ export default function FreelancerOverviewView({
               </p>
 
               {/* Status Pill with interactive Dropdown */}
-              <div className="relative inline-block pt-0.5">
+              <div className="relative inline-block pt-0.5" ref={statusDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
@@ -133,14 +174,14 @@ export default function FreelancerOverviewView({
           <div className="w-full lg:w-auto min-w-[240px] max-w-[290px] rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 p-3.5 space-y-2.5 shadow-inner">
             <div className="flex items-center justify-between text-xs font-bold text-white">
               <span className="text-white/80 font-medium">Profile Completeness</span>
-              <span className="font-mono text-white text-[13px]">85%</span>
+              <span className="font-mono text-white text-[13px]">{dashboardData ? `${dashboardData.profileCompleteness.score}%` : "—"}</span>
             </div>
 
             {/* Progress Bar with vibrant emerald fill */}
             <div className="w-full h-2 rounded-full bg-black/25 overflow-hidden p-0.5 border border-white/10">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-300 transition-all duration-500 shadow-sm"
-                style={{ width: "85%" }}
+                style={{ width: `${dashboardData ? dashboardData.profileCompleteness.score : 0}%` }}
               />
             </div>
 
@@ -150,7 +191,7 @@ export default function FreelancerOverviewView({
                 onClick={() => onNavigateTab("profile")}
                 className="inline-flex items-center gap-1 font-semibold text-white/95 hover:text-white hover:underline cursor-pointer group"
               >
-                <span>Add portfolio project</span>
+                <span>{dashboardData?.profileCompleteness.nextAction || "Add portfolio project"}</span>
                 <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
               </button>
               <span className="text-[10px] font-mono text-emerald-300 font-semibold bg-emerald-950/40 px-1.5 py-0.5 rounded">
@@ -227,14 +268,20 @@ export default function FreelancerOverviewView({
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
-                  ₹1,20,000
+                  {dashboardData
+                    ? `$${(((dashboardData.earningsSnapshot.availableMinor || 0) + (dashboardData.earningsSnapshot.withdrawnMinor || 0)) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${dashboardData.earningsSnapshot.currency}`
+                    : "$0.00 USD"}
                 </span>
                 <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
                   <TrendingUp className="w-2.5 h-2.5" />
-                  <span>12%</span>
+                  <span>Verified</span>
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1 font-medium">Last 3 months</p>
+              <p className="text-[11px] text-slate-400 mt-1 font-medium">
+                {dashboardData
+                  ? `$${((dashboardData.earningsSnapshot.availableMinor || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Available for Payout`
+                  : "$0.00 Available"}
+              </p>
             </div>
           </div>
 
@@ -253,10 +300,10 @@ export default function FreelancerOverviewView({
             </div>
             <div>
               <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
-                3
+                {dashboardData ? dashboardData.activeProjects.count : 0}
               </div>
               <p className="text-[11px] text-slate-400 mt-1 font-medium">
-                2 on track · 1 pending review
+                {dashboardData ? `${dashboardData.activeProjects.count} active · ${dashboardData.awaitingClientReview.count} in review` : "0 active · 0 in review"}
               </p>
             </div>
           </div>
@@ -276,22 +323,22 @@ export default function FreelancerOverviewView({
             </div>
             <div>
               <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
-                4
+                {dashboardData ? dashboardData.allProposals.count : 0}
               </div>
               <p className="text-[11px] text-slate-400 mt-1 font-medium">
-                2 new responses
+                {dashboardData ? `${dashboardData.allProposals.count} proposals total` : "0 proposals total"}
               </p>
             </div>
           </div>
 
-          {/* Card 4: Unread Messages */}
+          {/* Card 4: Action Required */}
           <div
             onClick={() => onNavigateTab("workspace")}
             className="p-5 rounded-2xl border border-slate-200/80 bg-white hover:border-[#4f46e5]/40 hover:shadow-xs transition-all duration-200 cursor-pointer group flex flex-col justify-between"
           >
             <div className="flex items-center justify-between gap-2 mb-3">
               <span className="text-xs font-semibold text-slate-500 group-hover:text-slate-800 transition-colors">
-                Unread Messages
+                Action Required
               </span>
               <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <MessageSquare className="w-4 h-4" />
@@ -299,10 +346,10 @@ export default function FreelancerOverviewView({
             </div>
             <div>
               <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
-                5
+                {dashboardData ? (dashboardData.needsYourReply.count + dashboardData.milestonesDueSoon.count) : 0}
               </div>
               <p className="text-[11px] text-slate-400 mt-1 font-medium">
-                3 from clients
+                {dashboardData ? `${dashboardData.needsYourReply.count} replies · ${dashboardData.milestonesDueSoon.count} due soon` : "0 due soon"}
               </p>
             </div>
           </div>
@@ -350,7 +397,7 @@ export default function FreelancerOverviewView({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50/80 border border-slate-100">
               <div>
                 <div className="text-2xl sm:text-3xl font-extrabold font-mono text-slate-900">
-                  ₹1,20,000
+                  {dashboardData ? `$${(((dashboardData.earningsSnapshot.availableMinor || 0) + (dashboardData.earningsSnapshot.withdrawnMinor || 0)) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${dashboardData.earningsSnapshot.currency}` : "$0.00 USD"}
                 </div>
                 <div className="text-xs text-slate-500 font-medium">Total Earnings</div>
               </div>
@@ -358,13 +405,17 @@ export default function FreelancerOverviewView({
               <div className="flex flex-wrap items-center gap-6 text-xs">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-md bg-[#4f46e5] shrink-0" />
-                  <span className="text-slate-600">Completed Payments</span>
-                  <strong className="font-mono text-slate-900">₹1,00,000</strong>
+                  <span className="text-slate-600">Available / Released</span>
+                  <strong className="font-mono text-slate-900">
+                    {dashboardData ? `$${((dashboardData.earningsSnapshot.availableMinor || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "$0.00"}
+                  </strong>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-md bg-[#c7d2fe] shrink-0" />
-                  <span className="text-slate-600">Pending Payments</span>
-                  <strong className="font-mono text-slate-900">₹20,000</strong>
+                  <span className="text-slate-600">Funded in Escrow</span>
+                  <strong className="font-mono text-slate-900">
+                    {dashboardData ? `$${(((dashboardData.earningsSnapshot.fundedMinor || 0) + (dashboardData.earningsSnapshot.inReviewMinor || 0)) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "$0.00"}
+                  </strong>
                 </div>
               </div>
 
@@ -381,62 +432,78 @@ export default function FreelancerOverviewView({
             {/* Stacked Bar Chart with Axis Labels */}
             <div className="pt-2">
               <div className="relative h-56 flex items-end justify-between gap-3 sm:gap-6 pl-10 pr-2 pb-6 border-b border-slate-100">
-                {/* Horizontal Guide Lines */}
-                <div className="absolute left-0 right-0 top-0 border-b border-dashed border-slate-100 text-[10px] font-mono text-slate-400">
-                  <span className="absolute -top-2 left-0">₹60K</span>
-                </div>
-                <div className="absolute left-0 right-0 top-1/3 border-b border-dashed border-slate-100 text-[10px] font-mono text-slate-400">
-                  <span className="absolute -top-2 left-0">₹40K</span>
-                </div>
-                <div className="absolute left-0 right-0 top-2/3 border-b border-dashed border-slate-100 text-[10px] font-mono text-slate-400">
-                  <span className="absolute -top-2 left-0">₹20K</span>
-                </div>
-                <div className="absolute left-0 bottom-6 text-[10px] font-mono text-slate-400">
-                  <span>₹0</span>
-                </div>
+                {/* Dynamic Horizontal Guide Lines */}
+                {(() => {
+                  const maxDataVal = Math.max(0, ...monthlyEarnings.map((m) => m.completed + m.pending));
+                  const chartMaxVal = Math.max(1000, Math.ceil(maxDataVal / 500) * 500);
+                  const formatTick = (val: number) => {
+                    if (val >= 1000) return `$${(val / 1000).toFixed(val % 1000 === 0 ? 0 : 1)}K`;
+                    return `$${val}`;
+                  };
+                  return (
+                    <>
+                      <div className="absolute left-0 right-0 top-0 border-b border-dashed border-slate-100 text-[10px] font-mono text-slate-400">
+                        <span className="absolute -top-2 left-0">{formatTick(chartMaxVal)}</span>
+                      </div>
+                      <div className="absolute left-0 right-0 top-1/3 border-b border-dashed border-slate-100 text-[10px] font-mono text-slate-400">
+                        <span className="absolute -top-2 left-0">{formatTick(Math.round(chartMaxVal * (2 / 3)))}</span>
+                      </div>
+                      <div className="absolute left-0 right-0 top-2/3 border-b border-dashed border-slate-100 text-[10px] font-mono text-slate-400">
+                        <span className="absolute -top-2 left-0">{formatTick(Math.round(chartMaxVal * (1 / 3)))}</span>
+                      </div>
+                      <div className="absolute left-0 bottom-6 text-[10px] font-mono text-slate-400">
+                        <span>$0</span>
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {/* 6 Monthly Stacked Bars */}
-                {monthlyEarnings.map((item, idx) => {
-                  const maxAmount = 60000;
-                  const completedHeight = (item.completed / maxAmount) * 100;
-                  const pendingHeight = (item.pending / maxAmount) * 100;
-                  const isHovered = hoveredBarIndex === idx;
+                {(() => {
+                  const maxDataVal = Math.max(0, ...monthlyEarnings.map((m) => m.completed + m.pending));
+                  const chartMaxVal = Math.max(1000, Math.ceil(maxDataVal / 500) * 500);
 
-                  return (
-                    <div
-                      key={item.month}
-                      onMouseEnter={() => setHoveredBarIndex(idx)}
-                      onMouseLeave={() => setHoveredBarIndex(null)}
-                      className="flex-1 flex flex-col items-center h-full justify-end relative group cursor-pointer z-10"
-                    >
-                      {/* Tooltip on hover */}
-                      {isHovered && (
-                        <div className="absolute -top-12 z-20 px-2.5 py-1 rounded-lg bg-slate-900 text-white text-[11px] font-mono font-bold shadow-xl whitespace-nowrap animate-in fade-in slide-in-from-bottom-1">
-                          {item.month}: {item.label}
+                  return monthlyEarnings.map((item, idx) => {
+                    const completedHeight = Math.min(100, (item.completed / chartMaxVal) * 100);
+                    const pendingHeight = Math.min(100 - completedHeight, (item.pending / chartMaxVal) * 100);
+                    const isHovered = hoveredBarIndex === idx;
+
+                    return (
+                      <div
+                        key={item.month}
+                        onMouseEnter={() => setHoveredBarIndex(idx)}
+                        onMouseLeave={() => setHoveredBarIndex(null)}
+                        className="flex-1 flex flex-col items-center h-full justify-end relative group cursor-pointer z-10"
+                      >
+                        {/* Tooltip on hover */}
+                        {isHovered && (
+                          <div className="absolute -top-12 z-20 px-2.5 py-1 rounded-lg bg-slate-900 text-white text-[11px] font-mono font-bold shadow-xl whitespace-nowrap animate-in fade-in slide-in-from-bottom-1">
+                            {item.month}: {item.label}
+                          </div>
+                        )}
+
+                        {/* Stacked Bar Container */}
+                        <div className="w-8 sm:w-12 flex flex-col justify-end transition-transform group-hover:scale-y-[1.02] origin-bottom">
+                          {/* Pending (Top portion, lavender) */}
+                          <div
+                            style={{ height: `${pendingHeight * 1.6}px` }}
+                            className="w-full bg-[#c7d2fe] rounded-t-lg transition-colors group-hover:bg-[#a5b4fc]"
+                          />
+                          {/* Completed (Bottom portion, deep indigo) */}
+                          <div
+                            style={{ height: `${completedHeight * 1.6}px` }}
+                            className="w-full bg-[#4f46e5] rounded-b-none transition-colors group-hover:bg-[#4338ca]"
+                          />
                         </div>
-                      )}
 
-                      {/* Stacked Bar Container */}
-                      <div className="w-8 sm:w-12 flex flex-col justify-end transition-transform group-hover:scale-y-[1.02] origin-bottom">
-                        {/* Pending (Top portion, lavender) */}
-                        <div
-                          style={{ height: `${pendingHeight * 1.6}px` }}
-                          className="w-full bg-[#c7d2fe] rounded-t-lg transition-colors group-hover:bg-[#a5b4fc]"
-                        />
-                        {/* Completed (Bottom portion, deep indigo) */}
-                        <div
-                          style={{ height: `${completedHeight * 1.6}px` }}
-                          className="w-full bg-[#4f46e5] rounded-b-none transition-colors group-hover:bg-[#4338ca]"
-                        />
+                        {/* Month Label */}
+                        <span className="absolute -bottom-5 text-xs font-semibold text-slate-500 group-hover:text-slate-900">
+                          {item.month}
+                        </span>
                       </div>
-
-                      {/* Month Label */}
-                      <span className="absolute -bottom-5 text-xs font-semibold text-slate-500 group-hover:text-slate-900">
-                        {item.month}
-                      </span>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             </div>
           </section>
@@ -451,7 +518,7 @@ export default function FreelancerOverviewView({
                   <span className="w-1.5 h-1.5 rounded-full bg-[#4f46e5]" />
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#eef2ff] text-[#4f46e5] border border-indigo-100">
-                  3 in progress
+                  {dashboardData ? `${dashboardData.activeProjects.count} in progress` : "0 in progress"}
                 </span>
               </div>
               <button
@@ -466,185 +533,75 @@ export default function FreelancerOverviewView({
 
             {/* Inner Cards Container */}
             <div className="space-y-3">
-              {/* Project 1: E-commerce Website */}
-              <div
-                onClick={() => onNavigateTab("workspace")}
-                className="p-4 sm:p-4.5 rounded-xl border border-slate-200/80 bg-slate-50/90 hover:bg-white hover:border-[#4f46e5]/40 hover:shadow-xs transition-all duration-200 cursor-pointer group space-y-3"
-              >
-                <div className="flex items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/90 text-[#4f46e5] shadow-2xs flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:border-indigo-200 transition-all">
-                      <ShoppingCart className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#4f46e5] transition-colors truncate">
-                          E-commerce Website
-                        </h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-                          In Progress
-                        </span>
+              {dashboardData && dashboardData.activeProjects.items.length > 0 ? (
+                dashboardData.activeProjects.items.map((proj: any, idx: number) => {
+                  const completionPct = proj.milestonesTotal > 0 ? Math.round((proj.milestonesAccepted / proj.milestonesTotal) * 100) : 0;
+                  return (
+                    <div
+                      key={`${proj.id}_${idx}`}
+                      onClick={() => onNavigateTab("projects")}
+                      className="p-4 sm:p-4.5 rounded-xl border border-slate-200/80 bg-slate-50/90 hover:bg-white hover:border-[#4f46e5]/40 hover:shadow-xs transition-all duration-200 cursor-pointer group space-y-3"
+                    >
+                      <div className="flex items-start sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/90 text-[#4f46e5] shadow-2xs flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:border-indigo-200 transition-all">
+                            {idx === 0 ? <ShoppingCart className="w-5 h-5" /> : idx === 1 ? <Smartphone className="w-5 h-5 text-purple-600" /> : <Code2 className="w-5 h-5 text-sky-600" />}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#4f46e5] transition-colors truncate">
+                                {proj.title}
+                              </h3>
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                                {proj.status === "ACTIVE" ? "In Progress" : proj.status}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5 truncate">
+                              Client: <strong className="text-slate-700 font-semibold">{proj.client?.name || "Client"}</strong> · Verified Escrow Contract
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="hidden sm:inline-flex px-3 py-1.5 rounded-xl border border-slate-200 bg-white group-hover:bg-[#4f46e5] group-hover:border-[#4f46e5] group-hover:text-white text-xs font-bold text-slate-700 shadow-2xs transition">
+                            Open Workspace →
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#4f46e5] group-hover:translate-x-0.5 transition-all" />
+                        </div>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">
-                        Client: <strong className="text-slate-700 font-semibold">TechKart</strong> · UI/UX Design & Frontend Development
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="hidden sm:inline-flex px-3 py-1.5 rounded-xl border border-slate-200 bg-white group-hover:bg-[#4f46e5] group-hover:border-[#4f46e5] group-hover:text-white text-xs font-bold text-slate-700 shadow-2xs transition">
-                      Open Workspace →
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#4f46e5] group-hover:translate-x-0.5 transition-all" />
-                  </div>
-                </div>
+                      {/* Progress & Milestone Meta Bar */}
+                      <div className="pt-2.5 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                        <div className="flex items-center gap-2 min-w-0 text-slate-600">
+                          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
+                            Milestones:
+                          </span>
+                          <span className="font-bold text-slate-800 truncate">
+                            {proj.milestonesAccepted || 0} of {proj.milestonesTotal || 0} Accepted
+                          </span>
+                        </div>
 
-                {/* Progress & Milestone Meta Bar */}
-                <div className="pt-2.5 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
-                  <div className="flex items-center gap-2 min-w-0 text-slate-600">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
-                      Next Milestone:
-                    </span>
-                    <span className="font-bold text-slate-800 truncate">
-                      Admin Dashboard UI
-                    </span>
-                    <span className="text-slate-300 shrink-0">·</span>
-                    <span className="text-slate-500 font-medium shrink-0">
-                      Due Oct 28, 2026
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3 w-full sm:w-52 shrink-0">
-                    <span className="text-[11px] text-slate-500 font-medium">Completion</span>
-                    <div className="flex-1 h-2 rounded-full bg-slate-200/80 overflow-hidden">
-                      <div className="h-full rounded-full bg-[#4f46e5] transition-all duration-300" style={{ width: "60%" }} />
-                    </div>
-                    <span className="font-mono font-bold text-slate-900 text-xs shrink-0 w-8 text-right">
-                      60%
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Project 2: Mobile Fitness App */}
-              <div
-                onClick={() => onNavigateTab("projects")}
-                className="p-4 sm:p-4.5 rounded-xl border border-slate-200/80 bg-slate-50/90 hover:bg-white hover:border-purple-300 hover:shadow-xs transition-all duration-200 cursor-pointer group space-y-3"
-              >
-                <div className="flex items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/90 text-purple-600 shadow-2xs flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:border-purple-200 transition-all">
-                      <Smartphone className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-sm font-bold text-slate-900 group-hover:text-purple-600 transition-colors truncate">
-                          Mobile Fitness App
-                        </h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/80">
-                          In Review
-                        </span>
+                        <div className="flex items-center gap-3 w-full sm:w-52 shrink-0">
+                          <span className="text-[11px] text-slate-500 font-medium">Completion</span>
+                          <div className="flex-1 h-2 rounded-full bg-slate-200/80 overflow-hidden">
+                            <div className="h-full rounded-full bg-[#4f46e5] transition-all duration-300" style={{ width: `${completionPct}%` }} />
+                          </div>
+                          <span className="font-mono font-bold text-slate-900 text-xs shrink-0 w-8 text-right">
+                            {completionPct}%
+                          </span>
+                        </div>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">
-                        Client: <strong className="text-slate-700 font-semibold">FitLife</strong> · API Integration & Backend Deliverables
-                      </p>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="hidden sm:inline-flex px-3 py-1.5 rounded-xl border border-slate-200 bg-white group-hover:bg-purple-600 group-hover:border-purple-600 group-hover:text-white text-xs font-bold text-slate-700 shadow-2xs transition">
-                      View Deliverables →
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
-                  </div>
+                  );
+                })
+              ) : (
+                <div className="p-8 text-center rounded-2xl bg-white border border-slate-200/90 text-slate-500">
+                  <p className="text-sm font-semibold">No active projects currently.</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Check Find Projects to discover client proposals and begin delivering milestones.
+                  </p>
                 </div>
-
-                {/* Progress & Milestone Meta Bar */}
-                <div className="pt-2.5 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
-                  <div className="flex items-center gap-2 min-w-0 text-slate-600">
-                    <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wider shrink-0">
-                      Review Status:
-                    </span>
-                    <span className="font-bold text-slate-800 truncate">
-                      Core Workflows & Biometric Sync
-                    </span>
-                    <span className="text-slate-300 shrink-0">·</span>
-                    <span className="text-amber-600 font-semibold shrink-0">
-                      Submitted Oct 20 (Under Review)
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3 w-full sm:w-52 shrink-0">
-                    <span className="text-[11px] text-slate-500 font-medium">Completion</span>
-                    <div className="flex-1 h-2 rounded-full bg-slate-200/80 overflow-hidden">
-                      <div className="h-full rounded-full bg-purple-600 transition-all duration-300" style={{ width: "100%" }} />
-                    </div>
-                    <span className="font-mono font-bold text-purple-700 text-xs shrink-0 w-8 text-right">
-                      100%
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Project 3: AI Support Platform */}
-              <div
-                onClick={() => onNavigateTab("workspace")}
-                className="p-4 sm:p-4.5 rounded-xl border border-slate-200/80 bg-slate-50/90 hover:bg-white hover:border-sky-300 hover:shadow-xs transition-all duration-200 cursor-pointer group space-y-3"
-              >
-                <div className="flex items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/90 text-sky-600 shadow-2xs flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:border-sky-200 transition-all">
-                      <Code2 className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-sm font-bold text-slate-900 group-hover:text-sky-600 transition-colors truncate">
-                          AI Support Platform
-                        </h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-                          In Progress
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">
-                        Client: <strong className="text-slate-700 font-semibold">NexaAI</strong> · Full Stack Development & LLM Agent
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="hidden sm:inline-flex px-3 py-1.5 rounded-xl border border-slate-200 bg-white group-hover:bg-sky-600 group-hover:border-sky-600 group-hover:text-white text-xs font-bold text-slate-700 shadow-2xs transition">
-                      Open Workspace →
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-sky-600 group-hover:translate-x-0.5 transition-all" />
-                  </div>
-                </div>
-
-                {/* Progress & Milestone Meta Bar */}
-                <div className="pt-2.5 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
-                  <div className="flex items-center gap-2 min-w-0 text-slate-600">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
-                      Next Milestone:
-                    </span>
-                    <span className="font-bold text-slate-800 truncate">
-                      Core Features & Streaming Agent
-                    </span>
-                    <span className="text-slate-300 shrink-0">·</span>
-                    <span className="text-slate-500 font-medium shrink-0">
-                      Due Nov 5, 2026
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3 w-full sm:w-52 shrink-0">
-                    <span className="text-[11px] text-slate-500 font-medium">Completion</span>
-                    <div className="flex-1 h-2 rounded-full bg-slate-200/80 overflow-hidden">
-                      <div className="h-full rounded-full bg-sky-600 transition-all duration-300" style={{ width: "40%" }} />
-                    </div>
-                    <span className="font-mono font-bold text-slate-900 text-xs shrink-0 w-8 text-right">
-                      40%
-                    </span>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </section>
 
@@ -666,71 +623,39 @@ export default function FreelancerOverviewView({
               </div>
 
               <div className="space-y-3.5 text-xs">
-                {/* Proposal 1 */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-bold text-slate-900 truncate">
-                      School Management System
-                    </div>
-                    <div className="text-[11px] text-slate-400 truncate">
-                      EduCare Foundation · 2 days ago
-                    </div>
-                  </div>
+                {dashboardData?.recentProposals && dashboardData.recentProposals.length > 0 ? (
+                  dashboardData.recentProposals.map((prop: any) => (
+                    <div key={prop.id} className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 truncate">
+                          {prop.title}
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                          {prop.clientName} · {prop.timeAgo}
+                        </div>
+                      </div>
 
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
-                      Viewed
-                    </span>
-                    <span className="font-mono font-bold text-slate-800 text-xs">
-                      ₹30,000
-                    </span>
-                    <MoreHorizontal className="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600" />
-                  </div>
-                </div>
-
-                {/* Proposal 2 */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-bold text-slate-900 truncate">
-                      Data Analytics Dashboard
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          prop.status === "ACCEPTED"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200/80"
+                            : prop.status === "COUNTEROFFER_RECEIVED"
+                            ? "bg-amber-50 text-amber-700 border-amber-200/80"
+                            : "bg-blue-50 text-blue-700 border-blue-200/80"
+                        }`}>
+                          {prop.status.replace(/_/g, " ")}
+                        </span>
+                        <span className="font-mono font-bold text-slate-800 text-xs">
+                          {prop.amountDisplay}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-400 truncate">
-                      DataSense · 4 days ago
-                    </div>
+                  ))
+                ) : (
+                  <div className="py-4 text-center text-slate-400">
+                    No proposals submitted yet.
                   </div>
-
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-                      Shortlisted
-                    </span>
-                    <span className="font-mono font-bold text-slate-800 text-xs">
-                      ₹50,000
-                    </span>
-                    <MoreHorizontal className="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600" />
-                  </div>
-                </div>
-
-                {/* Proposal 3 */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-bold text-slate-900 truncate">
-                      Landing Page Development
-                    </div>
-                    <div className="text-[11px] text-slate-400 truncate">
-                      GrowthHub · 5 days ago
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                      No Response
-                    </span>
-                    <span className="font-mono font-bold text-slate-800 text-xs">
-                      ₹20,000
-                    </span>
-                    <MoreHorizontal className="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600" />
-                  </div>
-                </div>
+                )}
               </div>
             </section>
 
@@ -750,70 +675,27 @@ export default function FreelancerOverviewView({
               </div>
 
               <div className="space-y-3 text-xs">
-                {/* Activity 1 */}
-                <div className="flex items-start gap-2.5">
-                  <div className="w-6 h-6 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-slate-900 truncate">
-                      Client reviewed your milestone
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      Mobile Fitness App · 2 hours ago
-                    </div>
-                  </div>
-                </div>
-
-                {/* Activity 2 */}
-                <div className="flex items-start gap-2.5">
-                  <div className="w-6 h-6 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 mt-0.5">
-                    <MessageSquare className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-slate-900 truncate">
-                      New message from Priya Das
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      SaaS Dashboard Project · 4 hours ago
-                    </div>
-                  </div>
-                </div>
-
-                {/* Activity 3 */}
-                <div className="flex items-start gap-2.5">
-                  <div className="w-6 h-6 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
-                    <Check className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-slate-900 truncate">
-                      Your proposal was shortlisted
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      Data Analytics Dashboard · 1 day ago
-                    </div>
-                  </div>
-                </div>
-
-                {/* Activity 4 */}
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="flex items-start gap-2.5 min-w-0">
-                    <div className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
-                      <Wallet className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-semibold text-slate-900 truncate">
-                        Milestone payment received
+                {dashboardData?.recentActivity && dashboardData.recentActivity.length > 0 ? (
+                  dashboardData.recentActivity.slice(0, 4).map((act: any) => (
+                    <div key={act.id} className="flex items-start gap-2.5">
+                      <div className="w-6 h-6 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
                       </div>
-                      <div className="text-[11px] text-slate-400">
-                        Portfolio Website · 2 days ago
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-slate-900 truncate">
+                          {act.action.replace(/_/g, " ")}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {act.entityType} · {new Date(act.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </div>
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="py-4 text-center text-slate-400">
+                    No recent activity logged yet.
                   </div>
-                  <span className="font-mono font-bold text-emerald-600 text-xs shrink-0">
-                    +₹15,000
-                  </span>
-                </div>
+                )}
               </div>
             </section>
           </div>
@@ -829,35 +711,48 @@ export default function FreelancerOverviewView({
               <h3 className="text-sm font-bold text-slate-900 tracking-tight">
                 Profile Strength
               </h3>
-              <span className="text-sm font-bold text-indigo-600">85%</span>
+              <span className="text-sm font-bold text-[#4f46e5]">
+                {dashboardData ? `${dashboardData.profileCompleteness.score}%` : "—"}
+              </span>
             </div>
 
             {/* Progress Bar */}
             <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 rounded-full w-[85%]" />
+              <div
+                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                style={{ width: `${dashboardData ? dashboardData.profileCompleteness.score : 0}%` }}
+              />
             </div>
 
             {/* Checklist */}
             <div className="space-y-2 text-xs">
               <div className="flex items-center gap-2 text-slate-700">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Add profile photo</span>
+                {freelancer.verified ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <Circle className="w-4 h-4 text-slate-300 shrink-0" />
+                )}
+                <span>Verified Freelancer Account</span>
               </div>
               <div className="flex items-center gap-2 text-slate-700">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Write a compelling bio</span>
+                <span>PayPal Escrow Wallet Connected</span>
               </div>
               <div className="flex items-center gap-2 text-slate-700">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Add skills (8/10)</span>
-              </div>
-              <div className="flex items-center gap-2 text-slate-400">
-                <Circle className="w-4 h-4 text-slate-300 shrink-0" />
-                <span>Add portfolio project (2/3)</span>
+                {dashboardData?.profileCompleteness.missingItems?.includes("skills") ? (
+                  <Circle className="w-4 h-4 text-slate-300 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                )}
+                <span>Technical Skills & Stacks</span>
               </div>
               <div className="flex items-center gap-2 text-slate-700">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Set hourly/fixed rate</span>
+                {dashboardData?.profileCompleteness.missingItems?.includes("portfolio") ? (
+                  <Circle className="w-4 h-4 text-slate-300 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                )}
+                <span>Portfolio Projects</span>
               </div>
             </div>
 
@@ -888,141 +783,39 @@ export default function FreelancerOverviewView({
               </button>
             </div>
 
-            <div className="space-y-4">
-              {/* Recommended Project 1 */}
-              <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2 hover:border-indigo-300 transition text-xs">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
-                      <FileText className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-slate-900">SaaS Dashboard Redesign</span>
-                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                          Featured
-                        </span>
-                        <span className="text-[10px] text-slate-400">· 5d ago</span>
+            <div className="space-y-3">
+              {dashboardData?.recommendedProjects && dashboardData.recommendedProjects.length > 0 ? (
+                dashboardData.recommendedProjects.map((rec: any, idx: number) => (
+                  <div key={rec.id || idx} className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2 hover:border-indigo-300 transition text-xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 text-[#4f46e5] flex items-center justify-center shrink-0 mt-0.5">
+                          <FileText className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-slate-900">{rec.title}</span>
+                          <p className="text-[10px] text-slate-400">{rec.clientName} · {rec.category}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => toggleBookmark("rec_1")}
-                    className="text-slate-400 hover:text-indigo-600 shrink-0 cursor-pointer"
-                  >
-                    {bookmarkedProjects.includes("rec_1") ? (
-                      <BookmarkCheck className="w-4 h-4 text-indigo-600 fill-indigo-600" />
-                    ) : (
-                      <Bookmark className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Modernize the dashboard UI for a B2B SaaS platform.
-                </p>
-
-                <div className="flex flex-wrap items-center gap-1 text-[10px]">
-                  <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">UI/UX</span>
-                  <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">Figma</span>
-                  <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">Web</span>
-                </div>
-
-                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 font-mono text-[11px]">
-                  <span className="font-bold text-slate-900">₹40,000 – ₹80,000</span>
-                  <span className="text-[10px] text-slate-500 font-sans">Intermediate</span>
-                </div>
-              </div>
-
-              {/* Recommended Project 2 */}
-              <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2 hover:border-indigo-300 transition text-xs">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-purple-50 border border-purple-100 text-purple-600 flex items-center justify-center shrink-0 mt-0.5">
-                      <Bot className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-slate-900">AI Chatbot Integration</span>
-                        <span className="text-[10px] text-slate-400">· 2d ago</span>
-                      </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">{rec.reason}</p>
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 font-mono text-[11px]">
+                      <span className="font-bold text-slate-900">{rec.budget}</span>
+                      <button
+                        type="button"
+                        onClick={() => onNavigateTab("find_projects")}
+                        className="text-[10px] font-bold text-[#4f46e5] hover:underline"
+                      >
+                        Apply Now →
+                      </button>
                     </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => toggleBookmark("rec_2")}
-                    className="text-slate-400 hover:text-indigo-600 shrink-0 cursor-pointer"
-                  >
-                    {bookmarkedProjects.includes("rec_2") ? (
-                      <BookmarkCheck className="w-4 h-4 text-indigo-600 fill-indigo-600" />
-                    ) : (
-                      <Bookmark className="w-4 h-4" />
-                    )}
-                  </button>
+                ))
+              ) : (
+                <div className="py-4 text-center text-slate-400 text-xs">
+                  No project recommendations available right now.
                 </div>
-
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Integrate LLM-based chatbot into existing web app.
-                </p>
-
-                <div className="flex flex-wrap items-center gap-1 text-[10px]">
-                  <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">AI/ML</span>
-                  <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">Python</span>
-                  <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">API</span>
-                </div>
-
-                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 font-mono text-[11px]">
-                  <span className="font-bold text-slate-900">₹25,000 – ₹50,000</span>
-                  <span className="text-[10px] text-slate-500 font-sans">Intermediate</span>
-                </div>
-              </div>
-
-              {/* Recommended Project 3 */}
-              <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2 hover:border-indigo-300 transition text-xs">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-violet-50 border border-violet-100 text-violet-600 flex items-center justify-center shrink-0 mt-0.5">
-                      <Smartphone className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-slate-900">React Native Mobile App</span>
-                        <span className="text-[10px] text-slate-400">· 3d ago</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => toggleBookmark("rec_3")}
-                    className="text-slate-400 hover:text-indigo-600 shrink-0 cursor-pointer"
-                  >
-                    {bookmarkedProjects.includes("rec_3") ? (
-                      <BookmarkCheck className="w-4 h-4 text-indigo-600 fill-indigo-600" />
-                    ) : (
-                      <Bookmark className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Build a cross-platform mobile app for e-commerce.
-                </p>
-
-                <div className="flex flex-wrap items-center gap-1 text-[10px]">
-                  <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">React Native</span>
-                  <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">Firebase</span>
-                  <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-600">Mobile</span>
-                </div>
-
-                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 font-mono text-[11px]">
-                  <span className="font-bold text-slate-900">₹60,000 – ₹1,00,000</span>
-                  <span className="text-[10px] text-slate-500 font-sans">Advanced</span>
-                </div>
-              </div>
+              )}
             </div>
           </section>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { CheckCircle2, ChevronRight, HelpCircle, ArrowRight, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Circle, ChevronRight, HelpCircle, ArrowRight, ShieldCheck } from "lucide-react";
 import { VerificationItem } from "@/lib/freelancer-earnings-types";
 
 interface IdentityVerificationCardProps {
@@ -15,6 +15,8 @@ export default function IdentityVerificationCard({
   onHelpClick,
   onItemClick,
 }: IdentityVerificationCardProps) {
+  const verifiedCount = items.filter((i) => i.isVerified).length;
+
   return (
     <div className="space-y-4">
       {/* Verification Card */}
@@ -27,7 +29,7 @@ export default function IdentityVerificationCard({
             </h3>
           </div>
           <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/70 shrink-0">
-            3/3 Complete
+            {verifiedCount}/{items.length} Complete
           </span>
         </div>
 
@@ -39,7 +41,11 @@ export default function IdentityVerificationCard({
               className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/70 hover:bg-slate-100/80 transition border border-slate-100 cursor-pointer group"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 stroke-[2.5] shrink-0" />
+                {item.isVerified ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 stroke-[2.5] shrink-0" />
+                ) : (
+                  <Circle className="w-4 h-4 text-slate-300 shrink-0" />
+                )}
                 <span className="text-xs font-bold text-slate-800 truncate">
                   {item.title}
                 </span>

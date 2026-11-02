@@ -151,7 +151,7 @@ export default function ProposalOfferTab({
           {/* Price */}
           <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 flex items-start gap-3">
             <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4f46e5] font-extrabold text-xs shrink-0">
-              ₹
+              $
             </div>
             <div className="min-w-0">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">

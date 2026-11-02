@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   ArrowRight,
@@ -8,8 +8,16 @@ import {
   CheckCircle2,
   FileCheck,
   AlertCircle,
+  Briefcase,
+  ChevronDown,
 } from "lucide-react";
 import { FreelancerProposalItem } from "@/lib/freelancer-proposals-types";
+import {
+  searchFreelancerProjects,
+  createDraftProposal,
+  updateDraftProposal,
+  submitProposal,
+} from "@/lib/api-client";
 
 interface ProposalBuilderModalProps {
   onClose: () => void;
@@ -21,28 +29,73 @@ export default function ProposalBuilderModal({
   onSubmitNewProposal,
 }: ProposalBuilderModalProps) {
   const [step, setStep] = useState<number>(1);
-  const [projectTitle, setProjectTitle] = useState(
-    "Next.js AI Document Analysis & Extraction Platform"
-  );
-  const [clientCompany, setClientCompany] = useState("LexiTech Corp.");
-  const [budgetRange, setBudgetRange] = useState("₹50,000 – ₹80,000");
-  const [coverLetter, setCoverLetter] = useState(
-    "Hello LexiTech team,\nI have extensive experience building production document OCR pipelines with Next.js, LangChain, and PostgreSQL."
-  );
-  const [approach, setApproach] = useState("Modular Next.js 16 + FastAPI OCR microservice");
-  const [proposedPrice, setProposedPrice] = useState("₹65,000");
-  const [duration, setDuration] = useState("4–5 weeks");
-  const [skills, setSkills] = useState("Next.js, Python, OCR, LangChain, PostgreSQL");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
+  const [availableProjects, setAvailableProjects] = useState<any[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+
+  // Form state initialized to neutral empty values
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [projectTitle, setProjectTitle] = useState<string>("");
+  const [clientCompany, setClientCompany] = useState<string>("");
+  const [budgetRange, setBudgetRange] = useState<string>("");
+  const [coverLetter, setCoverLetter] = useState<string>("");
+  const [approach, setApproach] = useState<string>("");
+  const [proposedPrice, setProposedPrice] = useState<string>("");
+  const [duration, setDuration] = useState<string>("4 weeks");
+  const [skills, setSkills] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string>("");
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadOpportunities() {
+      try {
+        const res = await searchFreelancerProjects({ limit: 50 });
+        if (mounted && res.success && res.projects && res.projects.length > 0) {
+          setAvailableProjects(res.projects);
+          // Set initial default from real database project if available
+          const first = res.projects[0];
+          setSelectedProjectId(first.id);
+          setProjectTitle(first.title);
+          setClientCompany(first.client?.name ? `${first.client.name}'s Organization` : "Client Organization");
+          const budget = first.budgetCents ? `$${(first.budgetCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} USD` : "Negotiable";
+          setBudgetRange(budget);
+          setSkills(Array.isArray(first.skills) ? first.skills.join(", ") : "");
+        }
+      } catch (err) {
+        console.warn("Could not fetch available opportunities", err);
+      } finally {
+        if (mounted) setIsLoadingProjects(false);
+      }
+    }
+    loadOpportunities();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleSelectProject = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    const p = availableProjects.find((item) => item.id === projectId);
+    if (p) {
+      setProjectTitle(p.title);
+      setClientCompany(p.client?.name ? `${p.client.name}'s Organization` : "Client Organization");
+      const budget = p.budgetCents ? `$${(p.budgetCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} USD` : "Negotiable";
+      setBudgetRange(budget);
+      setSkills(Array.isArray(p.skills) ? p.skills.join(", ") : "");
+    }
+  };
 
   const handleNext = () => {
-    if (step === 1 && (!projectTitle.trim() || !clientCompany.trim())) {
-      setErrorMsg("Please provide both project title and client company.");
+    if (step === 1 && (!selectedProjectId.trim() || !projectTitle.trim())) {
+      setErrorMsg("Please select a project opportunity.");
       return;
     }
     if (step === 2 && !coverLetter.trim()) {
       setErrorMsg("Please write a brief cover letter.");
+      return;
+    }
+    if (step === 3 && !proposedPrice.trim()) {
+      setErrorMsg("Please enter your proposed price.");
       return;
     }
     setErrorMsg("");
@@ -54,79 +107,144 @@ export default function ProposalBuilderModal({
     setStep((s) => s - 1);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setErrorMsg("");
 
-    const newProposal: FreelancerProposalItem = {
-      id: `prop-new-${Date.now()}`,
-      projectId: `proj-${Date.now()}`,
-      projectTitle,
-      categoryIcon: "HEALTH",
-      status: "SUBMITTED",
-      statusLabel: "Submitted",
-      statusBadgeColor: "bg-blue-50 text-blue-700 border-blue-200/80",
-      submittedDate: new Date().toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
-      submittedTime: new Date().toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      client: {
-        id: `cli-${Date.now()}`,
-        name: `${clientCompany} Hiring Manager`,
-        companyName: clientCompany,
-        verified: true,
-        industry: "Enterprise Software",
-        companySize: "10–50 employees",
-        location: "Bengaluru, India",
-        postedDate: "Recent",
-        totalHires: 5,
-        avatarLetter: clientCompany.charAt(0).toUpperCase(),
-        avatarBg: "bg-indigo-600 text-white",
-      },
-      clientBrief: {
-        description: `Project opportunity posted by ${clientCompany}.`,
-        category: "AI & Full-Stack",
-        budgetRange,
-        duration,
-        deadline: "Flexible",
-        requiredSkills: skills.split(",").map((s) => s.trim()),
-        technicalRequirements: ["Full-stack architecture", "Security audit"],
-        acceptanceCriteria: ["Passing test suites", "Client staging signoff"],
-      },
-      offer: {
-        summary: `Proposal submitted for ${projectTitle} with guaranteed deliverables.`,
-        approach,
-        priceDisplay: `${proposedPrice} (fixed)`,
-        priceType: "FIXED",
-        duration,
-        expectedStartDate: "Immediate",
-        coverLetter,
-        attachments: [],
-        milestones: [],
-      },
-      messagesCount: 0,
-      activityTrail: [
-        {
-          id: `act-${Date.now()}`,
-          title: "Proposal Submitted",
-          description: `Submitted formal quote of ${proposedPrice}.`,
-          actor: "Sambit Mohanty (Freelancer)",
-          timestamp: "Just now",
-          type: "SUBMITTED",
+    try {
+      const cleanPrice = parseFloat(proposedPrice.replace(/[^0-9.]/g, "")) || 0;
+      if (cleanPrice <= 0) {
+        setErrorMsg("Please enter a valid price amount greater than 0.");
+        setIsSubmitting(false);
+        return;
+      }
+      const priceMinor = Math.round(cleanPrice * 100);
+      const weeksNum = parseInt(duration.replace(/[^0-9]/g, ""), 10) || 4;
+
+      // 1. Create draft proposal on the database
+      const draftRes = await createDraftProposal(selectedProjectId);
+      if (!draftRes.success || !draftRes.proposal) {
+        setErrorMsg(draftRes.error || "Failed to create draft proposal on the server.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const proposalId = draftRes.proposal.id;
+
+      // 2. Persist proposal details
+      const updateRes = await updateDraftProposal(proposalId, {
+        totalAmountMinor: priceMinor,
+        paymentModel: "FIXED_PRICE",
+        coverLetter: coverLetter.trim(),
+        scopeText: approach.trim() || coverLetter.trim(),
+        estimatedDurationWeeks: weeksNum,
+        milestones: [
+          {
+            title: "Project Scope & Verification Delivery",
+            amountMinor: priceMinor,
+            durationWeeks: weeksNum,
+            criteria: ["Full delivery of agreed scope", "Verification and acceptance"],
+          },
+        ],
+      });
+
+      if (!updateRes.success) {
+        setErrorMsg(updateRes.error || "Failed to update proposal details on the server.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // 3. Formally submit proposal
+      const submitRes = await submitProposal(proposalId);
+      if (!submitRes.success) {
+        setErrorMsg(submitRes.error || "Failed to submit proposal to client.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Format response into FreelancerProposalItem for list state
+      const createdItem: FreelancerProposalItem = {
+        id: proposalId,
+        projectId: selectedProjectId,
+        projectTitle,
+        categoryIcon: "GENERIC",
+        status: "SUBMITTED",
+        statusLabel: "Submitted",
+        statusBadgeColor: "bg-blue-50 text-blue-700 border-blue-200/80",
+        submittedDate: new Date().toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }),
+        submittedTime: new Date().toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        client: {
+          id: `cli-${Date.now()}`,
+          name: clientCompany,
+          companyName: clientCompany,
+          verified: true,
+          industry: "Technology",
+          companySize: "10–50 employees",
+          location: "Remote",
+          postedDate: "Recent",
+          totalHires: 1,
+          avatarLetter: clientCompany.charAt(0).toUpperCase() || "C",
+          avatarBg: "bg-indigo-600 text-white",
         },
-      ],
-      techTags: skills.split(",").map((s) => s.trim()).slice(0, 4),
-    };
+        clientBrief: {
+          description: `Opportunity: ${projectTitle}`,
+          category: "General",
+          budgetRange,
+          duration,
+          deadline: "Flexible",
+          requiredSkills: skills.split(",").map((s) => s.trim()).filter(Boolean),
+          technicalRequirements: ["Standard production deliverables"],
+          acceptanceCriteria: ["Passing verification suite"],
+        },
+        offer: {
+          summary: approach.trim() || coverLetter.trim(),
+          approach: approach.trim() || "Milestone-based delivery",
+          priceDisplay: `$${cleanPrice.toLocaleString("en-US", { minimumFractionDigits: 2 })} (fixed)`,
+          priceType: "FIXED",
+          duration,
+          expectedStartDate: "Immediate",
+          coverLetter,
+          attachments: [],
+          milestones: [
+            {
+              id: "m-1",
+              orderIndex: 1,
+              title: "Project Scope & Verification Delivery",
+              amount: `$${cleanPrice.toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
+              duration,
+              acceptanceCriteria: ["Full delivery of agreed scope", "Verification and acceptance"],
+            },
+          ],
+        },
+        messagesCount: 0,
+        activityTrail: [
+          {
+            id: `act-${Date.now()}`,
+            title: "Proposal Formally Submitted",
+            description: `Submitted fixed offer of $${cleanPrice.toLocaleString("en-US", { minimumFractionDigits: 2 })}.`,
+            actor: "Freelancer",
+            timestamp: "Just now",
+            type: "SUBMITTED",
+          },
+        ],
+        techTags: skills.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 4),
+      };
 
-    setTimeout(() => {
+      onSubmitNewProposal(createdItem);
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || "An unexpected error occurred.");
+    } finally {
       setIsSubmitting(false);
-      onSubmitNewProposal(newProposal);
-    }, 600);
+    }
   };
 
   return (
@@ -171,12 +289,53 @@ export default function ProposalBuilderModal({
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Select Project Opportunity
+                </label>
+                {isLoadingProjects ? (
+                  <div className="py-3 px-3 rounded-xl border border-slate-200 text-xs text-slate-400">
+                    Loading open project opportunities...
+                  </div>
+                ) : availableProjects.length > 0 ? (
+                  <div className="relative">
+                    <select
+                      value={selectedProjectId}
+                      onChange={(e) => handleSelectProject(e.target.value)}
+                      className="w-full appearance-none px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5] pr-8"
+                    >
+                      {availableProjects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.title} {p.client?.name ? `(${p.client.name})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Enter Project ID or Title"
+                      value={selectedProjectId}
+                      onChange={(e) => {
+                        setSelectedProjectId(e.target.value);
+                        setProjectTitle(e.target.value);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"
+                      required
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
                   Project Title
                 </label>
                 <input
                   type="text"
                   value={projectTitle}
                   onChange={(e) => setProjectTitle(e.target.value)}
+                  placeholder="e.g. Next.js Enterprise Portal"
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"
                   required
                 />
@@ -190,6 +349,7 @@ export default function ProposalBuilderModal({
                   type="text"
                   value={clientCompany}
                   onChange={(e) => setClientCompany(e.target.value)}
+                  placeholder="e.g. Client Organization"
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"
                   required
                 />
@@ -204,17 +364,19 @@ export default function ProposalBuilderModal({
                     type="text"
                     value={budgetRange}
                     onChange={(e) => setBudgetRange(e.target.value)}
+                    placeholder="e.g. $5,000 USD"
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Skills (comma separated)
+                    Required Skills
                   </label>
                   <input
                     type="text"
                     value={skills}
                     onChange={(e) => setSkills(e.target.value)}
+                    placeholder="e.g. Next.js, TypeScript"
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"
                   />
                 </div>
@@ -233,6 +395,7 @@ export default function ProposalBuilderModal({
                   type="text"
                   value={approach}
                   onChange={(e) => setApproach(e.target.value)}
+                  placeholder="e.g. Next.js app router with Postgres schema and verification suites"
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"
                 />
               </div>
@@ -245,6 +408,7 @@ export default function ProposalBuilderModal({
                   rows={4}
                   value={coverLetter}
                   onChange={(e) => setCoverLetter(e.target.value)}
+                  placeholder="Introduce yourself, outline your experience with similar systems, and describe your delivery roadmap..."
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"
                   required
                 />
@@ -258,14 +422,23 @@ export default function ProposalBuilderModal({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Your Proposed Price
+                    Proposed Price (USD)
                   </label>
-                  <input
-                    type="text"
-                    value={proposedPrice}
-                    onChange={(e) => setProposedPrice(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      step="50"
+                      min="50"
+                      value={proposedPrice}
+                      onChange={(e) => setProposedPrice(e.target.value)}
+                      placeholder="e.g. 5000"
+                      className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -276,6 +449,7 @@ export default function ProposalBuilderModal({
                     type="text"
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
+                    placeholder="e.g. 4 weeks"
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"
                   />
                 </div>
@@ -302,7 +476,7 @@ export default function ProposalBuilderModal({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Proposed Price:</span>
-                  <span className="font-bold text-[#4f46e5]">{proposedPrice}</span>
+                  <span className="font-bold text-[#4f46e5]">${proposedPrice} USD</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Duration:</span>
@@ -354,7 +528,7 @@ export default function ProposalBuilderModal({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="py-2 px-4 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-xs font-bold text-white transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                className="py-2 px-4 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-xs font-bold text-white transition shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>{isSubmitting ? "Submitting..." : "Confirm & Send Proposal"}</span>

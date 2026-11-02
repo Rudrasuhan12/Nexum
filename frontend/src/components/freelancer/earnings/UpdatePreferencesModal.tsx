@@ -26,7 +26,7 @@ export default function UpdatePreferencesModal({
     setTimeout(() => {
       onSave({
         minimumPayoutAmount: Number(minAmount),
-        formattedMinimumPayout: `₹${Number(minAmount).toLocaleString("en-IN")}`,
+        formattedMinimumPayout: `$${Number(minAmount).toLocaleString("en-US", { minimumFractionDigits: 2 })} USD`,
         autoPayoutEnabled: autoPayout,
         payoutFrequency: frequency,
       });
@@ -60,16 +60,16 @@ export default function UpdatePreferencesModal({
           {/* Minimum Payout Amount */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700">
-              Minimum Payout Threshold (INR)
+              Minimum Payout Threshold (USD)
             </label>
             <div className="relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                ₹
+                $
               </span>
               <input
                 type="number"
-                min={1000}
-                step={500}
+                min={10}
+                step={5}
                 value={minAmount}
                 onChange={(e) => setMinAmount(Number(e.target.value))}
                 className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"

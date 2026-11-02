@@ -44,6 +44,9 @@ next-env.d.ts
 docs/
 
 # user uploaded storage (local dev)
-public/uploads/
 uploads/
+backend/uploads/
+public/uploads/
 *.tmp*
+.backup_phase1/
+.phase2_safe_stash/

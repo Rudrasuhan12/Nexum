@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Plus,
   Search,
@@ -12,13 +12,20 @@ import {
   PanelRightOpen,
   MessageSquare,
   FileText,
+  Send,
+  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { PrivateAIChatEntry, BasedOnChip } from "@/lib/workspace-types";
-import {
-  INITIAL_FREELANCER_AI_CHAT_HISTORY,
-  FREELANCER_BASED_ON_CHIPS,
-} from "@/lib/freelancer-workspace-data";
 import ReviewVersionModal from "@/components/client/workspace/ReviewVersionModal";
+import {
+  fetchPrivateAiChats,
+  createPrivateAiChat,
+  fetchPrivateAiMessages,
+  postPrivateAiMessage,
+  fetchConversations,
+  sendMessage,
+} from "@/lib/api-client";
 
 interface FreelancerWorkspaceNexumAIModeProps {
   onOpenInChats: (projectId: string, draftMessage?: string) => void;
@@ -34,6 +41,12 @@ interface LiveMessage {
   model?: string;
 }
 
+interface ProjectScopeOption {
+  id: string;
+  label: string;
+  projectId?: string;
+}
+
 export default function FreelancerWorkspaceNexumAIMode({
   onOpenInChats,
   initialScope = "All my client contracts",
@@ -42,25 +55,31 @@ export default function FreelancerWorkspaceNexumAIMode({
   void isStandalone;
 
   // Chat History State
-  const [chatHistory, setChatHistory] = useState<PrivateAIChatEntry[]>(INITIAL_FREELANCER_AI_CHAT_HISTORY);
-  const [selectedChatId, setSelectedChatId] = useState<string>("fchat_scope_cr2");
+  const [chatHistory, setChatHistory] = useState<PrivateAIChatEntry[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isLoadingChats, setIsLoadingChats] = useState(true);
 
   // Active Scope State
+  const [scopes, setScopes] = useState<ProjectScopeOption[]>([
+    { id: "all", label: "All my contracts" },
+  ]);
   const [activeScope, setActiveScope] = useState<string>(initialScope);
 
   // Live messages for current conversation session
   const [liveMessages, setLiveMessages] = useState<LiveMessage[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
   // Based-on record detail modal
   const [selectedChip, setSelectedChip] = useState<BasedOnChip | null>(null);
 
-  // Draft editing state
-  const [draftMessage, setDraftMessage] = useState(
-    "Hi Alex, I reviewed the dynamic category pills request. While it falls outside Milestone 2 baseline scope, I am happy to incorporate it under CR-2 for +$500 and +4 days delivery extension. Let's seal Agreement v5."
-  );
-  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  // Draft promotion modal state
+  const [isPromoteModalOpen, setIsPromoteModalOpen] = useState(false);
+  const [draftToPromote, setDraftToPromote] = useState<string>("");
+  const [targetConversationId, setTargetConversationId] = useState<string>("");
+  const [isPromoting, setIsPromoting] = useState(false);
+  const [availableConversations, setAvailableConversations] = useState<any[]>([]);
 
   // AI Composer
   const [inputValue, setInputValue] = useState("");
@@ -79,33 +98,192 @@ export default function FreelancerWorkspaceNexumAIMode({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // 1. Load active project scopes & conversation threads
+  useEffect(() => {
+    let isMounted = true;
+    async function loadScopes() {
+      try {
+        const res = await fetchConversations();
+        if (res.success && res.conversations && res.conversations.length > 0) {
+          if (!isMounted) return;
+          const mappedScopes: ProjectScopeOption[] = [
+            { id: "all", label: `All my contracts (${res.conversations.length})` },
+            ...res.conversations.map((c: any) => ({
+              id: c.projectId || c.id,
+              label: c.title?.split("–")[0]?.trim() || c.title || "Project",
+              projectId: c.projectId,
+            })),
+          ];
+          setScopes(mappedScopes);
+          setAvailableConversations(res.conversations);
+          if (res.conversations.length > 0) {
+            setTargetConversationId(res.conversations[0].id);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load project scopes:", err);
+      }
+    }
+    loadScopes();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 2. Load private AI chat threads
+  const loadChats = useCallback(async () => {
+    setIsLoadingChats(true);
+    try {
+      const res = await fetchPrivateAiChats();
+      if (res.success && res.chats) {
+        const mapped: PrivateAIChatEntry[] = res.chats.map((c: any) => {
+          const isToday =
+            new Date(c.updatedAt).toDateString() === new Date().toDateString();
+          return {
+            id: c.id,
+            title: c.title || "Private consultation",
+            projectTag: c.projectId ? "Scoped Project" : "General",
+            dateGroup: isToday ? "TODAY" : "YESTERDAY",
+            messagesCount: 1,
+            updatedAt: new Date(c.updatedAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          };
+        });
+        setChatHistory(mapped);
+        if (mapped.length > 0) {
+          setSelectedChatId((prev) =>
+            mapped.some((item) => item.id === prev) ? prev : mapped[0].id
+          );
+        }
+      } else {
+        setChatHistory([]);
+      }
+    } catch (err) {
+      console.warn("Failed to load private AI chats:", err);
+      setChatHistory([]);
+    } finally {
+      setIsLoadingChats(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadChats();
+  }, [loadChats]);
+
+  // 3. Load messages for selected chat
+  useEffect(() => {
+    if (!selectedChatId) {
+      setLiveMessages([]);
+      return;
+    }
+    let isMounted = true;
+    setIsLoadingMessages(true);
+
+    async function loadMessages() {
+      try {
+        const res = await fetchPrivateAiMessages(selectedChatId);
+        if (res.success && res.messages) {
+          if (!isMounted) return;
+          setLiveMessages(
+            res.messages.map((m: any) => ({
+              id: m.id,
+              role: m.role.toLowerCase() as "user" | "assistant",
+              content: m.content,
+              createdAt: new Date(m.createdAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              model: m.role === "ASSISTANT" ? "Nexum AI (Gemini 2.5 Flash)" : undefined,
+            }))
+          );
+        } else {
+          if (!isMounted) return;
+          setLiveMessages([]);
+        }
+      } catch (err) {
+        console.warn("Failed to load messages for chat", selectedChatId, err);
+        if (isMounted) setLiveMessages([]);
+      } finally {
+        if (isMounted) setIsLoadingMessages(false);
+      }
+    }
+
+    loadMessages();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedChatId]);
+
   const handleSelectChat = (id: string) => {
     setSelectedChatId(id);
-    if (!id || id.startsWith("fchat_")) {
-      setLiveMessages([]);
-    }
   };
 
-  const handleNewChat = () => {
-    const newId = `fchat_new_${Date.now()}`;
-    const newEntry: PrivateAIChatEntry = {
-      id: newId,
-      title: "New private consultation",
-      projectTag: activeScope.includes("TechKart") ? "TechKart" : "General",
-      dateGroup: "TODAY",
-      messagesCount: 0,
-      updatedAt: "Just now",
-    };
-    setChatHistory([newEntry, ...chatHistory]);
-    setSelectedChatId(newId);
-    setLiveMessages([]);
-    showToast("Started new private AI consultation session.");
+  const handleNewChat = async () => {
+    try {
+      const selectedScopeObj = scopes.find((s) => s.label === activeScope);
+      const res = await createPrivateAiChat({
+        title: "New private consultation",
+        projectId: selectedScopeObj?.projectId,
+      });
+      if (res.success && res.chat) {
+        const newEntry: PrivateAIChatEntry = {
+          id: res.chat.id,
+          title: res.chat.title,
+          projectTag: res.chat.projectId ? "Scoped Project" : "General",
+          dateGroup: "TODAY",
+          messagesCount: 0,
+          updatedAt: "Just now",
+        };
+        setChatHistory((prev) => [newEntry, ...prev]);
+        setSelectedChatId(res.chat.id);
+        setLiveMessages([]);
+        showToast("Started new private AI consultation session.");
+      } else {
+        showToast("Could not create new AI chat.");
+      }
+    } catch {
+      showToast("Failed to initialize private AI consultation.");
+    }
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const query = inputValue.trim();
     if (!query || isGenerating) return;
+
+    let currentChatId = selectedChatId;
+    if (!currentChatId) {
+      try {
+        const selectedScopeObj = scopes.find((s) => s.label === activeScope);
+        const newChatRes = await createPrivateAiChat({
+          title: query.slice(0, 32),
+          projectId: selectedScopeObj?.projectId,
+        });
+        if (newChatRes.success && newChatRes.chat) {
+          currentChatId = newChatRes.chat.id;
+          setSelectedChatId(currentChatId);
+          setChatHistory((prev) => [
+            {
+              id: newChatRes.chat.id,
+              title: newChatRes.chat.title,
+              projectTag: newChatRes.chat.projectId ? "Scoped Project" : "General",
+              dateGroup: "TODAY",
+              messagesCount: 1,
+              updatedAt: "Just now",
+            },
+            ...prev,
+          ]);
+        } else {
+          showToast("Failed to start session");
+          return;
+        }
+      } catch {
+        showToast("Error creating chat session");
+        return;
+      }
+    }
 
     const userMsg: LiveMessage = {
       id: `um_${Date.now()}`,
@@ -119,48 +297,79 @@ export default function FreelancerWorkspaceNexumAIMode({
     setIsGenerating(true);
 
     try {
-      const res = await fetch("/api/assistant/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: `[Context: Freelancer consulting on ${activeScope}] ${query}`,
-        }),
+      const res = await postPrivateAiMessage(currentChatId, {
+        content: query,
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      if (res.success && res.message) {
         const aiMsg: LiveMessage = {
-          id: `am_${Date.now()}`,
+          id: res.message.id,
           role: "assistant",
-          content: data.message?.content || data.reply || "I have analyzed your request against the contract baseline.",
-          createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          model: data.model || "Gemini 2.5 Pro",
+          content: res.message.content,
+          createdAt: new Date(res.message.createdAt).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          model: "Nexum AI (Gemini 2.5 Flash)",
         };
         setLiveMessages((prev) => [...prev, aiMsg]);
       } else {
-        setTimeout(() => {
-          const aiMsg: LiveMessage = {
-            id: `am_${Date.now()}`,
+        const errMsg = res.error || "AI service temporarily unavailable";
+        showToast(errMsg);
+        setLiveMessages((prev) => [
+          ...prev,
+          {
+            id: `err_${Date.now()}`,
             role: "assistant",
-            content: `Based on Agreement v3 canonical hash (0x9f8c2b7e) and your milestones for ${activeScope}: \n\n1. **Scope Assessment**: The requested work constitutes an architectural addition beyond the agreed acceptance criteria.\n2. **Recommendation**: Alex's $500 counteroffer represents fair compensation for ~8-10 developer hours. Accept with the +4 days extension to ensure test coverage.\n3. **Consensus Protection**: Ensure dual signatures are sealed before delivering code.`,
+            content: `Notice: ${errMsg}`,
             createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            model: "Nexum Scope Mediation Engine",
-          };
-          setLiveMessages((prev) => [...prev, aiMsg]);
-        }, 800);
+            model: "Nexum Guard",
+          },
+        ]);
       }
-    } catch {
-      setTimeout(() => {
-        const aiMsg: LiveMessage = {
-          id: `am_${Date.now()}`,
+    } catch (err: any) {
+      const errMsg = err?.message || "Failed to contact Nexum AI";
+      showToast(errMsg);
+      setLiveMessages((prev) => [
+        ...prev,
+        {
+          id: `err_${Date.now()}`,
           role: "assistant",
-          content: `Analysis complete: Your current milestone 2 delivery meets all cryptographic checks. If Alex Chen approves the counteroffer, Agreement v5 will anchor automatically.`,
+          content: `Notice: ${errMsg}`,
           createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        };
-        setLiveMessages((prev) => [...prev, aiMsg]);
-      }, 700);
+          model: "Nexum Guard",
+        },
+      ]);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleOpenPromoteModal = (content: string) => {
+    setDraftToPromote(content);
+    setIsPromoteModalOpen(true);
+  };
+
+  const handleConfirmPromote = async () => {
+    if (!targetConversationId || !draftToPromote.trim() || isPromoting) return;
+    setIsPromoting(true);
+
+    try {
+      const res = await sendMessage(targetConversationId, draftToPromote.trim());
+      if (res.success) {
+        showToast("✓ Draft promoted to client thread through mediation pipeline.");
+        setIsPromoteModalOpen(false);
+        const selectedConv = availableConversations.find(
+          (c) => c.id === targetConversationId
+        );
+        onOpenInChats(selectedConv?.projectId || targetConversationId, draftToPromote);
+      } else {
+        showToast(res.error || "Failed to promote draft");
+      }
+    } catch (err: any) {
+      showToast(err?.message || "Promotion failed");
+    } finally {
+      setIsPromoting(false);
     }
   };
 
@@ -190,7 +399,7 @@ export default function FreelancerWorkspaceNexumAIMode({
       )}
 
       {/* ==============================================================
-          LEFT COLUMN: PRIVATE AI HISTORY PANEL (Deto Same as Client)
+          LEFT COLUMN: PRIVATE AI HISTORY PANEL
          ============================================================== */}
       <aside className="w-[280px] lg:w-[300px] shrink-0 border-r border-slate-200/80 bg-white flex flex-col justify-between h-full overflow-hidden shadow-2xs">
         {/* Top: + New Chat & Search */}
@@ -204,35 +413,28 @@ export default function FreelancerWorkspaceNexumAIMode({
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>New chat</span>
             </button>
-            <button
-              type="button"
-              onClick={() => onOpenInChats("techkart")}
-              className="p-2.5 rounded-xl text-slate-600 hover:text-indigo-600 hover:bg-slate-100 border border-slate-200/80 bg-white transition shadow-2xs cursor-pointer flex items-center gap-1 font-bold text-xs"
-              title="Switch to Chats"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>Chats</span>
-              <span className="w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center ml-0.5">2</span>
-            </button>
           </div>
 
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search chats..."
-              className="w-full pl-8.5 pr-3 py-1.5 rounded-xl border border-slate-200/80 bg-slate-50/70 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100/60 transition shadow-2xs"
+              placeholder="Search private sessions..."
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
             />
           </div>
         </div>
 
-        {/* History Stream grouped by TODAY / YESTERDAY */}
-        <div className="flex-1 overflow-y-auto px-2.5 py-1.5 space-y-3">
-          {filteredHistory.length === 0 ? (
-            <div className="p-6 text-center text-xs text-slate-400">
-              Start a new conversation with Nexum AI.
+        {/* Middle: Sessions List */}
+        <div className="flex-1 overflow-y-auto px-2 space-y-4">
+          {isLoadingChats ? (
+            <div className="p-4 text-center text-xs text-slate-400">Loading sessions...</div>
+          ) : filteredHistory.length === 0 ? (
+            <div className="p-6 text-center text-xs text-slate-400 space-y-1">
+              <p className="font-semibold text-slate-600">No private AI chats yet</p>
+              <p>Click &quot;New chat&quot; to begin a private consultation session.</p>
             </div>
           ) : (
             <>
@@ -270,7 +472,7 @@ export default function FreelancerWorkspaceNexumAIMode({
               {yesterdayChats.length > 0 && (
                 <div className="space-y-1">
                   <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Yesterday
+                    Earlier
                   </div>
                   {yesterdayChats.map((c) => {
                     const isSelected = c.id === selectedChatId;
@@ -309,35 +511,30 @@ export default function FreelancerWorkspaceNexumAIMode({
       </aside>
 
       {/* ==============================================================
-          CENTRE COLUMN: AI CONVERSATION (Deto Same as Client)
+          CENTRE COLUMN: AI CONVERSATION
          ============================================================== */}
       <main className="flex-1 flex flex-col min-w-0 border-r border-slate-200/80 bg-slate-50/40 overflow-hidden">
-        {/* Top Scope Pills Bar - Compact & Sleek */}
+        {/* Top Scope Pills Bar */}
         <div className="px-4 sm:px-5 py-2.5 border-b border-slate-200/80 bg-white shrink-0 shadow-2xs flex items-center justify-between gap-2 overflow-x-auto">
           <div className="flex items-center gap-2 overflow-x-auto">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0 mr-1">
               Scope
             </span>
 
-            {[
-              { id: "all", label: "All my contracts (3)", match: "All my client contracts" },
-              { id: "techkart", label: "TechKart", match: "TechKart" },
-              { id: "fitlife", label: "FitLife", match: "FitLife" },
-              { id: "nexa_ai", label: "NexaAI", match: "NexaAI" },
-            ].map((scope) => {
-              const isActive = activeScope.includes(scope.match);
+            {scopes.map((scope) => {
+              const isActive = activeScope.includes(scope.label);
               return (
                 <button
                   key={scope.id}
                   type="button"
                   onClick={() => {
-                    setActiveScope(scope.match);
+                    setActiveScope(scope.label);
                     showToast(`Scope switched to: ${scope.label}`);
                   }}
-                  className={`px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer whitespace-nowrap border ${
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                     isActive
-                      ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs font-bold"
-                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                      ? "bg-indigo-50 text-indigo-700 border border-indigo-200/80 shadow-2xs"
+                      : "bg-slate-100/70 text-slate-600 hover:bg-slate-200/60 border border-transparent"
                   }`}
                 >
                   {scope.label}
@@ -346,157 +543,67 @@ export default function FreelancerWorkspaceNexumAIMode({
             })}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {!isRightDrawerOpen && (
-              <button
-                type="button"
-                onClick={() => setIsRightDrawerOpen(true)}
-                className="p-1 rounded-lg border border-slate-200/90 bg-white hover:bg-slate-50 text-slate-600 hover:text-indigo-600 transition cursor-pointer shadow-2xs"
-                title="Show project details"
-              >
-                <PanelRightOpen className="w-3.5 h-3.5" />
-              </button>
-            )}
+          <div className="hidden sm:flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/70 shrink-0">
+            <Lock className="w-3 h-3 text-emerald-600" />
+            <span>Cryptographically Isolated</span>
           </div>
         </div>
 
-        {/* Center Scrollable Messages Area */}
+        {/* Live Message History */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-          {/* Default Consultation Thread */}
-          {liveMessages.length === 0 && (
-            <div className="space-y-4 max-w-3xl mx-auto">
-              {/* User Question */}
-              <div className="flex flex-col items-end">
-                <div className="flex items-center gap-2 mb-1 px-1 text-[11px] font-bold text-slate-400">
-                  <span>You (Freelancer)</span>
-                  <span>•</span>
-                  <span>10:45 AM</span>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-[#4f46e5] text-white text-xs leading-relaxed max-w-xl shadow-2xs rounded-br-xs">
-                  Is Alex&apos;s request for dynamic category pills and best-selling carousel considered out of scope for Milestone 2? Should I accept his $500 counteroffer?
-                </div>
-              </div>
-
-              {/* AI Analysis Response Card */}
-              <div className="flex flex-col items-start space-y-3">
-                <div className="flex items-center gap-2 px-1 text-[11px] font-bold text-slate-400">
-                  <Sparkles className="w-3.5 h-3.5 text-[#4f46e5]" />
-                  <span>Nexum Scope Engine</span>
-                  <span>•</span>
-                  <span>10:46 AM</span>
-                </div>
-
-                <div className="w-full p-4 sm:p-5 rounded-2xl border border-slate-200 bg-white shadow-xs space-y-4 text-xs">
-                  <div className="space-y-2 leading-relaxed text-slate-700">
-                    <p>
-                      <strong>Scope Analysis for TechKart Agreement v3:</strong>
-                    </p>
-                    <ul className="list-disc pl-5 space-y-1.5 text-slate-600">
-                      <li>
-                        <strong>Agreement Baseline:</strong> Milestone 2 strictly covers the core e-commerce catalog, shopping cart state machine, and PayPal REST v2 order capture.
-                      </li>
-                      <li>
-                        <strong>Out of Scope:</strong> Dynamic category query indexing and personalized carousels were not specified in the original PRD. This constitutes a valid Change Request (CR-2).
-                      </li>
-                      <li>
-                        <strong>Counteroffer Assessment:</strong> Alex&apos;s counteroffer of <strong>+$500.00 USD</strong> (down from your quote of $600) with <strong>+4 days</strong> delivery schedule is within market standards for 8–10 development hours.
-                      </li>
-                    </ul>
-                  </div>
-
-                  {/* Based-on Record Chips */}
-                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                      Based on Verified Records
-                    </span>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {FREELANCER_BASED_ON_CHIPS.map((chip) => (
-                        <button
-                          key={chip.id}
-                          type="button"
-                          onClick={() => setSelectedChip(chip)}
-                          className="px-2.5 py-1 rounded-lg border border-indigo-100 bg-indigo-50/70 hover:bg-indigo-100 text-[#4f46e5] text-[11px] font-semibold transition cursor-pointer flex items-center gap-1"
-                        >
-                          <FileText className="w-3 h-3" />
-                          <span>{chip.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Suggested Draft Reply for Client */}
-                  <div className="p-3.5 rounded-xl bg-purple-50/70 border border-purple-200 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-purple-900 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                        <span>Recommended Client Response (Agreement v5)</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingDraft(!isEditingDraft)}
-                        className="text-[10px] font-bold text-[#4f46e5] hover:underline cursor-pointer"
-                      >
-                        {isEditingDraft ? "Done Editing" : "Edit Draft"}
-                      </button>
-                    </div>
-
-                    {isEditingDraft ? (
-                      <textarea
-                        rows={3}
-                        value={draftMessage}
-                        onChange={(e) => setDraftMessage(e.target.value)}
-                        className="w-full p-2.5 rounded-lg border border-purple-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none leading-relaxed"
-                      />
-                    ) : (
-                      <p className="text-xs text-slate-800 leading-relaxed font-medium">
-                        &ldquo;{draftMessage}&rdquo;
-                      </p>
-                    )}
-
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onOpenInChats("techkart", draftMessage);
-                          showToast("Inserted draft response into client chat!");
-                        }}
-                        className="px-3.5 py-1.5 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-98 flex items-center gap-1.5"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        <span>Insert Draft into Client Chat</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+          {isLoadingMessages ? (
+            <div className="text-center text-xs text-slate-400 py-8">
+              Loading consultation messages...
             </div>
-          )}
-
-          {/* Live Dynamic Messages */}
-          {liveMessages.map((msg) => {
-            const isUser = msg.role === "user";
-            return (
-              <div
-                key={msg.id}
-                className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
-              >
-                <div className="flex items-center gap-2 mb-1 px-1 text-[11px] font-bold text-slate-400">
-                  <span>{isUser ? "You (Freelancer)" : "Nexum AI"}</span>
-                  <span>•</span>
-                  <span>{msg.createdAt}</span>
-                </div>
-                <div
-                  className={`max-w-xl p-3.5 rounded-2xl text-xs leading-relaxed shadow-2xs whitespace-pre-line ${
-                    isUser
-                      ? "bg-[#4f46e5] text-white rounded-br-xs"
-                      : "bg-white border border-slate-200/90 text-slate-900 rounded-bl-xs"
-                  }`}
-                >
-                  {msg.content}
-                </div>
+          ) : liveMessages.length === 0 ? (
+            <div className="text-center py-12 px-4 space-y-2 max-w-md mx-auto">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto border border-indigo-100 shadow-2xs">
+                <Sparkles className="w-5 h-5" />
               </div>
-            );
-          })}
+              <h3 className="text-sm font-bold text-slate-800">Private Nexum AI Consultation</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Ask questions about contractual scope, analyze deliverables, or draft replies. Nothing here is shared with clients unless you explicitly promote a draft.
+              </p>
+            </div>
+          ) : (
+            liveMessages.map((msg) => {
+              const isUser = msg.role === "user";
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex flex-col ${isUser ? "items-end" : "items-start"} space-y-1`}
+                >
+                  <div className="flex items-center gap-2 text-[10px] text-slate-400 px-1 font-medium">
+                    <span>{isUser ? "You (Private)" : msg.model || "Nexum AI"}</span>
+                    <span>•</span>
+                    <span>{msg.createdAt}</span>
+                  </div>
+                  <div
+                    className={`max-w-xl p-3.5 rounded-2xl text-xs leading-relaxed shadow-2xs whitespace-pre-line ${
+                      isUser
+                        ? "bg-[#4f46e5] text-white rounded-br-xs"
+                        : "bg-white border border-slate-200/90 text-slate-900 rounded-bl-xs"
+                    }`}
+                  >
+                    {msg.content}
+                    {!isUser && (
+                      <div className="pt-2.5 mt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-slate-400 font-medium">Private advisory</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPromoteModal(msg.content)}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Promote to Client Thread</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
 
           {isGenerating && (
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 p-2">
@@ -529,7 +636,7 @@ export default function FreelancerWorkspaceNexumAIMode({
               <div className="flex items-center justify-between pt-1.5 border-t border-slate-100/80 mt-1 gap-2">
                 <button
                   type="button"
-                  onClick={() => showToast("Attaching specification for AI analysis...")}
+                  onClick={() => showToast("File attachment ready for consultation.")}
                   className="p-1.5 rounded-lg hover:bg-slate-200/60 text-slate-500 transition cursor-pointer shrink-0"
                   title="Attach file"
                 >
@@ -575,10 +682,10 @@ export default function FreelancerWorkspaceNexumAIMode({
             </h3>
             <div className="space-y-1.5">
               {[
-                "Is Alex's carousel request scope creep?",
-                "Draft a polite CR-2 quote explanation",
+                "Is the requested feature scope creep?",
+                "Draft a polite quote explanation",
                 "Explain PayPal escrow release consensus",
-                "Review Milestone 2 deliverable requirements",
+                "Review deliverable acceptance criteria",
               ].map((prompt, idx) => (
                 <button
                   key={idx}
@@ -606,6 +713,86 @@ export default function FreelancerWorkspaceNexumAIMode({
             Details
           </span>
         </button>
+      )}
+
+      {/* Explicit Promotion Confirmation Modal */}
+      {isPromoteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white rounded-2xl border border-slate-200 p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Send className="w-3.5 h-3.5" />
+                <span>Confirm Draft Promotion</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsPromoteModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              You are about to promote this private AI draft into a shared client thread. It will be sent under your identity and enter the standard mediation pipeline.
+            </p>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-700">Destination Client Thread:</label>
+              <select
+                value={targetConversationId}
+                onChange={(e) => setTargetConversationId(e.target.value)}
+                className="w-full text-xs p-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500"
+              >
+                {availableConversations.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title} — {c.counterpartName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-700">Message Content to Send:</label>
+              <textarea
+                rows={3}
+                value={draftToPromote}
+                onChange={(e) => setDraftToPromote(e.target.value)}
+                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-indigo-500 leading-relaxed resize-none"
+              />
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+              <span>Private advisory logs and hidden prompts remain strictly confidential.</span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsPromoteModalOpen(false)}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isPromoting || !targetConversationId || !draftToPromote.trim()}
+                onClick={handleConfirmPromote}
+                className="px-4 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+              >
+                {isPromoting ? (
+                  <span>Sending...</span>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Confirm & Send to Client</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Chip Detail Modal */}

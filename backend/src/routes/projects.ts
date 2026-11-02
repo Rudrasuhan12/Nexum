@@ -1,12 +1,14 @@
 import { Router, Request, Response } from "express";
+import { requireAuth } from "../middleware/auth.js";
 import { clientOverviewService } from "../services/clientOverviewService.js";
 
 const router = Router();
 
 // GET /api/projects - list projects with active proposals and milestones
-router.get("/", async (req: Request, res: Response) => {
+// clientId is always derived from the authenticated session — the query-string param is ignored.
+router.get("/", requireAuth, async (req: Request, res: Response) => {
   try {
-    const clientId = (req.query.clientId as string) || "usr_client_alex";
+    const clientId = (req as any).user?.id as string;
     const status = req.query.status as string;
     const search = req.query.search as string;
 
@@ -29,11 +31,12 @@ router.get("/", async (req: Request, res: Response) => {
 });
 
 // POST /api/projects - create new project or draft with milestones and PRD
-router.post("/", async (req: Request, res: Response) => {
+// clientId is always taken from the authenticated session — never from the request body.
+router.post("/", requireAuth, async (req: Request, res: Response) => {
   try {
+    const sessionClientId = (req as any).user?.id as string;
     const {
       id,
-      clientId = "usr_client_alex",
       title,
       description,
       state,
@@ -64,7 +67,7 @@ router.post("/", async (req: Request, res: Response) => {
 
     const created = await clientOverviewService.createProject({
       id,
-      clientId,
+      clientId: sessionClientId,
       title,
       description: description || "",
       state: state || (budgetCents > 0 ? "ACTIVE" : "DRAFT"),
@@ -97,9 +100,10 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 // GET /api/projects/:id - get single project or draft
-router.get("/:id", async (req: Request, res: Response) => {
+// Ownership is enforced: the session user must own the project.
+router.get("/:id", requireAuth, async (req: Request, res: Response) => {
   try {
-    const clientId = (req.query.clientId as string) || "usr_client_alex";
+    const clientId = (req as any).user?.id as string;
     const project = await clientOverviewService.getProjectById(req.params.id, clientId);
 
     if (!project) {
@@ -114,13 +118,14 @@ router.get("/:id", async (req: Request, res: Response) => {
 });
 
 // PUT /api/projects/:id - update existing project or draft
-router.put("/:id", async (req: Request, res: Response) => {
+// clientId is enforced from session; body-supplied clientId is ignored.
+router.put("/:id", requireAuth, async (req: Request, res: Response) => {
   try {
-    const clientId = (req.body.clientId as string) || "usr_client_alex";
+    const sessionClientId = (req as any).user?.id as string;
     const updated = await clientOverviewService.createProject({
       ...req.body,
       id: req.params.id,
-      clientId,
+      clientId: sessionClientId,
     });
 
     res.json({
@@ -135,9 +140,10 @@ router.put("/:id", async (req: Request, res: Response) => {
 });
 
 // DELETE /api/projects/:id - delete a project or draft
-router.delete("/:id", async (req: Request, res: Response) => {
+// Ownership verification is performed inside clientOverviewService.deleteProject.
+router.delete("/:id", requireAuth, async (req: Request, res: Response) => {
   try {
-    const clientId = (req.query.clientId as string) || (req.body?.clientId as string) || "usr_client_alex";
+    const clientId = (req as any).user?.id as string;
     const result = await clientOverviewService.deleteProject(req.params.id, clientId);
     res.json(result);
   } catch (err: unknown) {

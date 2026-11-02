@@ -23,6 +23,61 @@ enum AvailabilityStatus {
   UNAVAILABLE
 }
 
+enum ExperienceLevel {
+  BEGINNER
+  JUNIOR
+  MID
+  SENIOR
+  EXPERT
+}
+
+enum PreferredEngagement {
+  HOURLY
+  FIXED_PRICE
+  BOTH
+}
+
+enum WorkArrangement {
+  REMOTE
+  HYBRID
+  ON_SITE
+}
+
+enum SearchVisibility {
+  VISIBLE
+  HIDDEN
+}
+
+enum RateCurrency {
+  USD
+  INR
+  EUR
+  GBP
+}
+
+enum SkillProficiency {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum FilePurpose {
+  PROFILE_PHOTO
+  PROFILE_COVER
+  PORTFOLIO_IMAGE
+  PROPOSAL_ATTACHMENT
+  DELIVERABLE
+  CHAT_ATTACHMENT
+  PROJECT_FILE
+}
+
+enum ResumeVisibility {
+  PRIVATE
+  PROPOSAL_CLIENTS
+  PUBLIC
+}
+
 enum ProjectState {
   DRAFT
   INTAKE
@@ -56,6 +111,11 @@ enum PRDStatus {
 enum ProposalStatus {
   DRAFT
   SUBMITTED
+  UNDER_REVIEW
+  SHORTLISTED
+  INTERVIEW_DISCUSSION
+  COUNTEROFFER_RECEIVED
+  WITHDRAWN
   COUNTERED
   ACCEPTED
   REJECTED
@@ -74,6 +134,55 @@ enum PaymentState {
   NEEDS_SUPPORT
   REFUNDED
   PARTIALLY_REFUNDED
+}
+
+enum AgreementStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  COMPLETED
+  DISPUTED
+  TERMINATED
+}
+
+enum AgreementVersionStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  SUPERSEDED
+  REJECTED
+}
+
+enum AgreementSource {
+  PROPOSAL
+  CHANGE_REQUEST
+}
+
+enum MilestoneWorkStatus {
+  UPCOMING
+  IN_PROGRESS
+  READY_TO_SUBMIT
+  AWAITING_CLIENT_REVIEW
+  REVISIONS_REQUESTED
+  ACCEPTED
+  DISPUTED
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  ACCEPTED
+  REVISIONS_REQUESTED
+}
+
+enum ReviewDecision {
+  ACCEPTED
+  REVISIONS_REQUESTED
+}
+
+enum ChangeClassification {
+  NEW_MILESTONE
+  AMENDMENT
+  CLARIFICATION
+  DEFECT
+  REDUCTION
 }
 
 enum ApprovalDecision {
@@ -98,9 +207,13 @@ enum IncidentStatus {
 }
 
 enum ChangeRequestStatus {
-  PENDING
+  OPEN
+  QUOTE_SUBMITTED
   APPROVED
   REJECTED
+  DECLINED
+  WITHDRAWN
+  PENDING
 }
 
 enum DisputeStatus {
@@ -127,7 +240,7 @@ enum LedgerType {
 
 model User {
   id           String   @id @default(cuid())
-  role         Role
+  role         Role?
   email        String   @unique
   name         String
   passwordHash String?
@@ -138,23 +251,89 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  freelancerProfile    FreelancerProfile?
-  clientProjects       Project[]             @relation("ClientProjects")
-  proposals            ProposalVersion[]     @relation("FreelancerProposals")
-  approvals            Approval[]
-  messages             ConversationMessage[]
-  disputesOpened       DisputeHold[]         @relation("DisputeOpener")
-  opportunities        Opportunity[]
+  freelancerProfile      FreelancerProfile?
+  clientProjects         Project[]               @relation("ClientProjects")
+  proposals              ProposalVersion[]       @relation("FreelancerProposals")
+  approvals              Approval[]
+  messages               ConversationMessage[]
+  disputesOpened         DisputeHold[]           @relation("DisputeOpener")
+  opportunities          Opportunity[]
   assistantConversations AssistantConversation[]
+  sessions               Session[]
+  resumeFiles            ResumeFile[]
+  files                  File[]                  @relation("UserFiles")
+  freelancerSkills       FreelancerSkill[]
+  workExperiences        WorkExperience[]
+  educationEntries       EducationEntry[]
+  certifications         Certification[]
+  portfolioProjects      PortfolioProject[]
+  savedProjects          SavedProject[]          @relation("FreelancerSavedProjects")
+  projectInvitations     ProjectInvitation[]     @relation("FreelancerProjectInvitations")
+  freelancerProposals    Proposal[]              @relation("FreelancerProposalsList")
+  clientAgreements       Agreement[]             @relation("ClientAgreements")
+  freelancerAgreements   Agreement[]             @relation("FreelancerAgreements")
+  agreementApprovals     AgreementApproval[]
+  raisedChangeRequests   ChangeRequest[]         @relation("RaisedChangeRequests")
+  sentMessages           Message[]               @relation("MessageSender")
+  conversationParticipants ConversationParticipant[]
+  projectFilesUploaded   ProjectFile[]
+  workspaceTasksCreated  WorkspaceTask[]
+  meetingsProposed       Meeting[]               @relation("MeetingProposer")
+  meetingResponses       MeetingResponse[]
+  aiChats                AIChat[]
+  aiCalls                AICall[]
+  ledgerEntries          LedgerEntry[]
+  payouts                Payout[]
+  payoutAccount          PayoutAccount?
+
+  // Phase 8 additions:
+  deletedAt                  DateTime?
+  pendingEmail               String?
+  emailChangeToken           String?
+  emailChangeTokenExpiresAt  DateTime?
+  workingHours               Json?
+  visibility                 String    @default("PUBLIC")
+  showRate                   Boolean   @default(true)
+  showPortfolio              Boolean   @default(true)
+
+  notifications              Notification[]
+  notificationPrefs          NotificationPref[]
 }
 
 model FreelancerProfile {
-  id                    String             @id @default(cuid())
-  userId                String             @unique
-  user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Phase 2 profile fields
+  professionalTitle String?
+  headline          String?
+  locationText      String?
+  countryCode       String?
+  timezone          String? @default("UTC")
+  bio               String?
+  photoFileId       String?
+  coverFileId       String?
+  photoFile         File?   @relation("ProfilePhoto", fields: [photoFileId], references: [id], onDelete: SetNull)
+  coverFile         File?   @relation("ProfileCover", fields: [coverFileId], references: [id], onDelete: SetNull)
+
+  specialization        String?
+  servicesOffered       String[]         @default([])
+  preferredProjectTypes String[]         @default([])
+  tools                 String[]         @default([])
+  experienceLevel       ExperienceLevel?
+
+  availabilityStatus  AvailabilityStatus   @default(AVAILABLE)
+  weeklyCapacityHours Int?
+  preferredEngagement PreferredEngagement?
+  rateHourlyMinor     Int?
+  rateCurrency        RateCurrency?        @default(USD)
+  workArrangement     WorkArrangement?
+  searchVisibility    SearchVisibility     @default(VISIBLE)
+
+  // Phase 1 legacy fields retained
   title                 String
-  bio                   String
-  skills                String[]
+  skills                String[]           @default([])
   portfolio             Json               @default("[]")
   experienceClaims      Json               @default("[]")
   ratePreferences       Json               @default("{}")
@@ -165,8 +344,19 @@ model FreelancerProfile {
   workExperience        String?
   resumeUrl             String?
   isDemoData            Boolean            @default(false)
+  onboardingStatus      String             @default("NOT_STARTED")
+  onboardingStep        String?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
+
+  // Phase 2 profile relations
+  freelancerSkills  FreelancerSkill[]
+  workExperiences   WorkExperience[]
+  educationEntries  EducationEntry[]
+  certifications    Certification[]
+  portfolioProjects PortfolioProject[]
+
+  @@index([searchVisibility, availabilityStatus])
 }
 
 // ---------------------------------------------------------------------------
@@ -188,12 +378,37 @@ model Project {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
-  briefVersions ProjectBriefVersion[]
-  prdVersions   PRDVersion[]
-  proposals     ProposalVersion[]
-  opportunities Opportunity[]
-  messages      ConversationMessage[]
+  briefVersions  ProjectBriefVersion[]
+  prdVersions    PRDVersion[]
+  proposals      ProposalVersion[]
+  opportunities  Opportunity[]
+  messages       ConversationMessage[]
   changeRequests ChangeRequest[]
+  savedProjects  SavedProject[]        @relation("SavedProjects")
+
+  category        String?
+  skills          String[]         @default([])
+  experienceLevel ExperienceLevel?
+  budgetType      String           @default("FIXED_PRICE")
+  location        String?          @default("Remote")
+  budgetMinCents  Int?
+  budgetMaxCents  Int?
+  invitations     ProjectInvitation[] @relation("ProjectInvitations")
+  projectProposals Proposal[]          @relation("ProjectProposals")
+  agreement        Agreement?          @relation("ProjectAgreement")
+  projectMilestones Milestone[]        @relation("ProjectMilestones")
+  conversation     Conversation?
+  projectFiles     ProjectFile[]
+  workspaceTasks   WorkspaceTask[]
+  meetings         Meeting[]
+  projectDecisions ProjectDecision[]
+  requireFunding   Boolean             @default(false)
+  payments         Payment[]
+  ledgerEntries    LedgerEntry[]
+
+  @@index([state, visibility])
+  @@index([budgetCents])
+  @@index([category])
 }
 
 model ProjectBriefVersion {
@@ -206,7 +421,7 @@ model ProjectBriefVersion {
   status          String   @default("CURRENT")
   createdAt       DateTime @default(now())
 
-  @@unique([projectId, version])
+  @@index([projectId, version])
 }
 
 model Opportunity {
@@ -254,65 +469,160 @@ model PRDVersion {
   status        PRDStatus @default(DRAFT)
   createdAt     DateTime  @default(now())
 
-  @@unique([projectId, version])
+  @@index([projectId, version])
+}
+
+model Proposal {
+  id                String            @id @default(cuid())
+  projectId         String
+  project           Project           @relation("ProjectProposals", fields: [projectId], references: [id], onDelete: Cascade)
+  freelancerId      String
+  freelancer        User              @relation("FreelancerProposalsList", fields: [freelancerId], references: [id], onDelete: Restrict)
+  status            ProposalStatus    @default(DRAFT)
+  currentVersionId  String?
+  rejectionFeedback String?
+  submittedAt       DateTime?
+  lastActivityAt    DateTime          @default(now())
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  versions          ProposalVersion[] @relation("ProposalToVersions")
+  attachments       ProposalAttachment[]
+  events            ProposalEvent[]
+  agreement         Agreement?          @relation("ProposalAgreement")
+
+  @@index([freelancerId, status])
+  @@index([projectId, status])
 }
 
 model ProposalVersion {
-  id              String         @id @default(cuid())
+  id              String            @id @default(cuid())
+  proposalId      String?
+  proposal        Proposal?         @relation("ProposalToVersions", fields: [proposalId], references: [id], onDelete: Cascade)
   projectId       String
-  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project         Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   freelancerId    String
-  freelancer      User           @relation("FreelancerProposals", fields: [freelancerId], references: [id], onDelete: Restrict)
+  freelancer      User              @relation("FreelancerProposals", fields: [freelancerId], references: [id], onDelete: Restrict)
   version         Int
+  versionNumber   Int?
+  authorRole      Role              @default(FREELANCER)
   parentVersionId String?
-  parentVersion   ProposalVersion? @relation("ProposalHistory", fields: [parentVersionId], references: [id])
+  parentVersion   ProposalVersion?  @relation("ProposalHistory", fields: [parentVersionId], references: [id])
   childVersions   ProposalVersion[] @relation("ProposalHistory")
-  versionHash     String         @unique // SHA-256 canonical hash
-  scope           String
-  exclusions      Json           @default("[]")
-  amountCents     Int            // Integer minor units (USD cents)
-  currency        String         @default("USD")
-  milestonesJson  Json           @default("[]")
-  assumptions     Json           @default("[]")
+  versionHash     String            @unique // SHA-256 canonical hash
+  contentHash     String?
+  coverLetter     String?
+  approach        String?
+  scopeText       String?
+  scope           String            @default("")
+  deliverables    Json              @default("[]")
+  exclusions      Json              @default("[]")
+  exclusionsText  String?
+  assumptions     Json              @default("[]")
+  assumptionsText String?
+  dependencies    String?
+  paymentModel    String?
+  totalAmountMinor Int?
+  hourlyRateMinor  Int?
+  estimatedHours   Int?
+  amountCents     Int               @default(0) // Integer minor units (USD cents)
+  currency        String            @default("USD")
+  estimatedDurationWeeks Int?
+  startAvailableOn DateTime?
+  milestonesJson  Json              @default("[]")
+  portfolioSnapshot Json            @default("[]")
   expiresAt       DateTime?
-  status          ProposalStatus @default(DRAFT)
-  createdAt       DateTime       @default(now())
+  submittedAt     DateTime?
+  status          ProposalStatus    @default(DRAFT)
+  createdAt       DateTime          @default(now())
 
   milestones Milestone[]
+  events     ProposalEvent[]
 
-  @@unique([projectId, version])
+  @@index([projectId, version])
+  @@index([proposalId])
+}
+
+model ProposalAttachment {
+  id         String   @id @default(cuid())
+  proposalId String
+  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  fileId     String
+  file       File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([proposalId, fileId])
+}
+
+model ProposalEvent {
+  id                String          @id @default(cuid())
+  proposalId        String
+  proposal          Proposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  proposalVersionId String?
+  proposalVersion   ProposalVersion? @relation(fields: [proposalVersionId], references: [id], onDelete: SetNull)
+  actorRole         Role
+  actorId           String?
+  type              String
+  fromStatus        ProposalStatus
+  toStatus          ProposalStatus
+  metadata          Json            @default("{}")
+  createdAt         DateTime        @default(now())
+
+  @@index([proposalId, createdAt])
 }
 
 model Milestone {
-  id                String       @id @default(cuid())
-  proposalVersionId String
-  proposalVersion   ProposalVersion @relation(fields: [proposalVersionId], references: [id], onDelete: Cascade)
-  orderIndex        Int
-  title             String
-  deliverables      Json         @default("[]")
-  criteria          Json         @default("[]")
-  amountCents       Int          // Minor unit cents
-  currency          String       @default("USD")
-  state             PaymentState @default(NOT_STARTED)
-  fundingRule       String       @default("PRE_FUNDED_BEFORE_WORK")
-  deadline          DateTime?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id                    String              @id @default(cuid())
+  projectId             String?
+  project               Project?            @relation("ProjectMilestones", fields: [projectId], references: [id], onDelete: Cascade)
+  agreementId           String?
+  agreement             Agreement?          @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  proposalVersionId     String?
+  proposalVersion       ProposalVersion?    @relation(fields: [proposalVersionId], references: [id], onDelete: Cascade)
+  milestoneKey          String?
+  sequence              Int?
+  orderIndex            Int                 @default(1)
+  title                 String
+  description           String?
+  deliverables          Json                @default("[]")
+  criteria              Json                @default("[]")
+  amountMinor           Int                 @default(0)
+  amountCents           Int                 @default(0)
+  currency              String              @default("USD")
+  state                 PaymentState        @default(NOT_STARTED)
+  workStatus            MilestoneWorkStatus @default(UPCOMING)
+  statusBeforeDispute   MilestoneWorkStatus?
+  fundingRule           String              @default("PRE_FUNDED_BEFORE_WORK")
+  dueDate               DateTime?
+  deadline              DateTime?
+  startedAt             DateTime?
+  acceptedAt            DateTime?
+  removedAt             DateTime?
+  lastAgreementVersionId String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
 
-  paymentAttempts PaymentAttempt[]
-  ledgerEntries   LedgerEntry[]
-  disputeHolds    DisputeHold[]
+  revisions             MilestoneRevision[]
+  submissions           MilestoneSubmission[]
+  disputes              Dispute[]
+  paymentAttempts       PaymentAttempt[]
+  legacyLedgerEntries   LegacyLedgerEntry[] @relation("LegacyLedger")
+  disputeHolds          DisputeHold[]
+  payments              Payment[]
+  ledgerEntries         LedgerEntry[]
 
-  @@unique([proposalVersionId, orderIndex])
+  @@index([agreementId, sequence])
+  @@index([projectId, workStatus])
+  @@index([proposalVersionId, orderIndex])
 }
 
 model Approval {
   id          String           @id @default(cuid())
   actorId     String
   actor       User             @relation(fields: [actorId], references: [id], onDelete: Restrict)
-  objectType  String           // e.g. "PROPOSAL", "PRD", "DELIVERABLE"
+  objectType  String // e.g. "PROPOSAL", "PRD", "DELIVERABLE"
   objectId    String
-  versionHash String           // Canonical hash approved
+  versionHash String // Canonical hash approved
   decision    ApprovalDecision
   comments    String?
   timestamp   DateTime         @default(now())
@@ -351,14 +661,14 @@ model PaymentAttempt {
 }
 
 model WebhookEvent {
-  id               String   @id @default(cuid())
-  providerEventId  String   @unique // PayPal WH-... event id (strictly deduped)
-  type             String   // e.g. PAYMENT.CAPTURE.COMPLETED
+  id                String   @id @default(cuid())
+  providerEventId   String   @unique // PayPal WH-... event id (strictly deduped)
+  type              String // e.g. PAYMENT.CAPTURE.COMPLETED
   providerTimestamp DateTime
-  signatureResult  String   // SUCCESS, FAILURE, SKIPPED
-  processingResult String   @default("PENDING") // PROCESSED, DUPLICATE, IGNORED, ERROR
-  rawPayload       Json
-  createdAt        DateTime @default(now())
+  signatureResult   String // SUCCESS, FAILURE, SKIPPED
+  processingResult  String   @default("PENDING") // PROCESSED, DUPLICATE, IGNORED, ERROR
+  rawPayload        Json
+  createdAt         DateTime @default(now())
 
   @@index([type, providerTimestamp])
 }
@@ -383,12 +693,12 @@ model PaymentIncident {
   id                 String         @id @default(cuid())
   paymentAttemptId   String
   paymentAttempt     PaymentAttempt @relation(fields: [paymentAttemptId], references: [id], onDelete: Cascade)
-  incidentType       String         // e.g. TIMEOUT_AFTER_CAPTURE
+  incidentType       String // e.g. TIMEOUT_AFTER_CAPTURE
   status             IncidentStatus @default(OPEN)
   openedAt           DateTime       @default(now())
   closedAt           DateTime?
   operatorDiagnostic String?
-  userMessage        String         // OECD Paper 167 consumer protection explanation
+  userMessage        String // OECD Paper 167 consumer protection explanation
 
   @@index([status, openedAt])
 }
@@ -398,19 +708,30 @@ model PaymentIncident {
 // ---------------------------------------------------------------------------
 
 model ChangeRequest {
-  id                 String              @id @default(cuid())
+  id                 String                @id @default(cuid())
   projectId          String
-  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  baseVersionHash    String
-  classification     String              // MINOR, MAJOR, CRITICAL
-  confidence         Float
-  differences        Json
-  priceImpactCents   Int                 @default(0)
-  scheduleImpactDays Int                 @default(0)
-  status             ChangeRequestStatus @default(PENDING)
-  createdAt          DateTime            @default(now())
+  project            Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  agreementId        String?
+  agreement          Agreement?            @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  baseVersionId      String?
+  raisedByRole       Role                  @default(CLIENT)
+  raisedById         String?
+  raisedBy           User?                 @relation("RaisedChangeRequests", fields: [raisedById], references: [id], onDelete: SetNull)
+  description        String                @default("")
+  classification     String?               @default("NEW_MILESTONE")
+  status             ChangeRequestStatus   @default(OPEN)
+  proposedVersionId  String?
+  sourceMessageId    String?
+  baseVersionHash    String?               @default("")
+  confidence         Float?                @default(1.0)
+  differences        Json?                 @default("{}")
+  priceImpactCents   Int?                  @default(0)
+  scheduleImpactDays Int?                  @default(0)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt @default(now())
 
-  @@index([projectId, baseVersionHash])
+  @@index([projectId, status])
+  @@index([agreementId, status])
 }
 
 model DisputeHold {
@@ -433,16 +754,16 @@ model AIOutput {
   inputRecordIds   Json
   rawOutput        String
   parsedOutput     Json
-  schemaResult     String         // PASS, FAIL
+  schemaResult     String // PASS, FAIL
   validatorResults Json
   status           AIOutputStatus @default(DRAFT)
   createdAt        DateTime       @default(now())
 }
 
-model LedgerEntry {
+model LegacyLedgerEntry {
   id             String     @id @default(cuid())
   milestoneId    String
-  milestone      Milestone  @relation(fields: [milestoneId], references: [id], onDelete: Restrict)
+  milestone      Milestone  @relation("LegacyLedger", fields: [milestoneId], references: [id], onDelete: Restrict)
   type           LedgerType
   amountCents    Int
   currency       String     @default("USD")
@@ -450,6 +771,7 @@ model LedgerEntry {
   createdAt      DateTime   @default(now())
 
   @@index([milestoneId, type])
+  @@map("LedgerEntry")
 }
 
 model AuditEvent {
@@ -471,16 +793,16 @@ model AuditEvent {
 // ---------------------------------------------------------------------------
 
 model AssistantConversation {
-  id                 String             @id @default(cuid())
+  id                 String   @id @default(cuid())
   userId             String
-  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title              String
-  messageCount       Int                @default(0)
+  messageCount       Int      @default(0)
   lastMessageSnippet String?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  messages           AssistantMessage[]
+  messages AssistantMessage[]
 
   @@index([userId, updatedAt])
 }
@@ -489,7 +811,7 @@ model AssistantMessage {
   id             String                @id @default(cuid())
   conversationId String
   conversation   AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role           String                // "user", "assistant", "system"
+  role           String // "user", "assistant", "system"
   content        String
   status         String                @default("sent")
   createdAt      DateTime              @default(now())
@@ -497,94 +819,857 @@ model AssistantMessage {
   @@index([conversationId, createdAt])
 }
 
-
-
 // ---------------------------------------------------------------------------
-// Nexum Notification System & Resilient Event Queue with DLQ
+// Phase 1: Sessions, Jobs & Resume Management
 // ---------------------------------------------------------------------------
 
-enum NotificationType {
-  DELIVERABLE
-  PAYMENT
-  CHANGE_REQUEST
-  CONSENSUS
-  MILESTONE
-  DISPUTE
-  PROPOSAL
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([tokenHash])
+}
+
+model Job {
+  id        String   @id @default(cuid())
+  type      String
+  payload   Json
+  result    Json?
+  status    String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  attempts  Int      @default(0)
+  lastError String?
+  runAt     DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, runAt])
+}
+
+model ResumeFile {
+  id           String             @id @default(cuid())
+  userId       String
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storageKey   String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  sha256       String
+  status       String             @default("ACTIVE") // ACTIVE, REPLACED
+  visibility   ResumeVisibility   @default(PRIVATE)
+  uploadedAt   DateTime           @default(now())
+  extractions  ResumeExtraction[]
+
+  @@index([userId, status])
+}
+
+model ResumeExtraction {
+  id            String     @id @default(cuid())
+  resumeId      String
+  resume        ResumeFile @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  status        String     @default("PENDING") // PENDING, READY, FAILED
+  extractedJson Json?
+  failureReason String?
+  model         String?
+  promptVersion String?
+  createdAt     DateTime   @default(now())
+
+  @@index([resumeId, status])
+}
+
+// ===========================================================================
+// Phase 2: My Profile & Portfolio Models
+// ===========================================================================
+
+model File {
+  id           String      @id @default(cuid())
+  ownerId      String
+  owner        User        @relation("UserFiles", fields: [ownerId], references: [id], onDelete: Cascade)
+  purpose      FilePurpose
+  storageKey   String      @unique
+  originalName String
+  mime         String
+  sizeBytes    Int
+  sha256       String
+  createdAt    DateTime    @default(now())
+
+  photoProfiles     FreelancerProfile[] @relation("ProfilePhoto")
+  coverProfiles     FreelancerProfile[] @relation("ProfileCover")
+  portfolioProjects   PortfolioProject[]  @relation("PortfolioCover")
+  proposalAttachments ProposalAttachment[]
+  submissionFiles     MilestoneSubmissionFile[]
+  messageAttachments  MessageAttachment[]
+  projectFiles        ProjectFile[]
+
+  @@index([ownerId, purpose])
+}
+
+model FreelancerSkill {
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId    String
+  profile      FreelancerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  skillName    String
+  proficiency  SkillProficiency?
+  displayOrder Int               @default(0)
+  createdAt    DateTime          @default(now())
+
+  @@unique([profileId, skillName])
+  @@index([userId])
+  @@index([profileId])
+}
+
+model WorkExperience {
+  id               String            @id @default(cuid())
+  userId           String
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId        String
+  profile          FreelancerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  company          String
+  role             String
+  location         String?
+  startMonth       String // YYYY-MM
+  endMonth         String? // YYYY-MM
+  isCurrent        Boolean           @default(false)
+  description      String?
+  responsibilities String[]          @default([])
+  achievements     String[]          @default([])
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([profileId])
+}
+
+model EducationEntry {
+  id             String            @id @default(cuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId      String
+  profile        FreelancerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  institution    String
+  degree         String
+  fieldOfStudy   String?
+  startYear      Int
+  graduationYear Int?
+  description    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([profileId])
+}
+
+model Certification {
+  id            String            @id @default(cuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId     String
+  profile       FreelancerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name          String
+  issuer        String
+  issuedMonth   String // YYYY-MM
+  expiresMonth  String? // YYYY-MM
+  credentialId  String?
+  credentialUrl String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([profileId])
+}
+
+model PortfolioProject {
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId    String
+  profile      FreelancerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  title        String
+  description  String
+  role         String
+  tools        String[]          @default([])
+  projectUrl   String?
+  repoUrl      String?
+  startMonth   String? // YYYY-MM
+  endMonth     String? // YYYY-MM
+  coverFileId  String?
+  coverFile    File?             @relation("PortfolioCover", fields: [coverFileId], references: [id], onDelete: SetNull)
+  displayOrder Int               @default(0)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([profileId, displayOrder])
+}
+
+// ===========================================================================
+// Phase 3: Saved Projects (Bookmarks)
+// ===========================================================================
+
+model SavedProject {
+  id           String   @id @default(cuid())
+  freelancerId String
+  freelancer   User     @relation("FreelancerSavedProjects", fields: [freelancerId], references: [id], onDelete: Cascade)
+  projectId    String
+  project      Project  @relation("SavedProjects", fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@unique([freelancerId, projectId])
+  @@index([freelancerId])
+  @@index([projectId])
+}
+model ProjectInvitation {
+  id           String    @id @default(cuid())
+  projectId    String
+  project      Project   @relation("ProjectInvitations", fields: [projectId], references: [id], onDelete: Cascade)
+  freelancerId String
+  freelancer   User      @relation("FreelancerProjectInvitations", fields: [freelancerId], references: [id], onDelete: Cascade)
+  message      String?
+  status       String    @default("PENDING") // PENDING, DECLINED, PROPOSAL_SUBMITTED, EXPIRED, WITHDRAWN
+  createdAt    DateTime  @default(now())
+  respondedAt  DateTime?
+
+  @@unique([projectId, freelancerId])
+  @@index([freelancerId, status])
+  @@index([projectId, status])
+}
+
+
+// ===========================================================================
+// Phase 5: Agreements, Versions, Approvals & Milestone Workflow
+// ===========================================================================
+
+model Agreement {
+  id              String            @id @default(cuid())
+  projectId       String            @unique
+  project         Project           @relation("ProjectAgreement", fields: [projectId], references: [id], onDelete: Cascade)
+  proposalId      String?           @unique
+  proposal        Proposal?         @relation("ProposalAgreement", fields: [proposalId], references: [id], onDelete: SetNull)
+  clientId        String
+  client          User              @relation("ClientAgreements", fields: [clientId], references: [id], onDelete: Restrict)
+  freelancerId    String
+  freelancer      User              @relation("FreelancerAgreements", fields: [freelancerId], references: [id], onDelete: Restrict)
+  status          AgreementStatus   @default(PENDING_APPROVAL)
+  activeVersionId String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  versions        AgreementVersion[]
+  milestones      Milestone[]
+  changeRequests  ChangeRequest[]
+
+  @@map("agreements")
+  @@index([freelancerId, status])
+  @@index([clientId, status])
+}
+
+model AgreementVersion {
+  id               String                 @id @default(cuid())
+  agreementId      String
+  agreement        Agreement              @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  versionNumber    Int
+  parentVersionId  String?
+  source           AgreementSource        @default(PROPOSAL)
+  sourceRefId      String?
+  terms            Json                   // { scope, deliverables, exclusions, assumptions, paymentModel, currency, totalAmountMinor, durationWeeks, milestones }
+  contentHash      String
+  status           AgreementVersionStatus @default(PENDING_APPROVAL)
+  createdAt        DateTime               @default(now())
+  activatedAt      DateTime?
+
+  approvals        AgreementApproval[]
+  revisions        MilestoneRevision[]
+
+  @@map("agreement_versions")
+  @@unique([agreementId, versionNumber])
+  @@index([agreementId, status])
+}
+
+model AgreementApproval {
+  id                 String           @id @default(cuid())
+  agreementVersionId String
+  agreementVersion   AgreementVersion @relation(fields: [agreementVersionId], references: [id], onDelete: Cascade)
+  partyRole          Role             // CLIENT or FREELANCER
+  userId             String
+  user               User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  decision           ApprovalDecision
+  contentHash        String
+  reason             String?
+  decidedAt          DateTime         @default(now())
+
+  @@map("agreement_approvals")
+  @@unique([agreementVersionId, partyRole])
+  @@index([agreementVersionId])
+}
+
+model MilestoneRevision {
+  id                 String           @id @default(cuid())
+  milestoneId        String
+  milestone          Milestone        @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  agreementVersionId String
+  agreementVersion   AgreementVersion @relation(fields: [agreementVersionId], references: [id], onDelete: Cascade)
+  snapshot           Json
+  createdAt          DateTime         @default(now())
+
+  @@map("milestone_revisions")
+  @@index([milestoneId])
+}
+
+model MilestoneSubmission {
+  id             String                    @id @default(cuid())
+  milestoneId    String
+  milestone      Milestone                 @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  revisionNumber Int                       @default(1)
+  completionNote String
+  links          Json                      @default("[]") // Array<{ label: string; url: string }>
+  status         SubmissionStatus          @default(SUBMITTED)
+  submittedAt    DateTime                  @default(now())
+  reviewedAt     DateTime?
+
+  files          MilestoneSubmissionFile[]
+  reviews        MilestoneReview[]
+
+  @@map("milestone_submissions")
+  @@index([milestoneId, revisionNumber])
+}
+
+model MilestoneSubmissionFile {
+  id           String              @id @default(cuid())
+  submissionId String
+  submission   MilestoneSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  fileId       String
+  file         File                @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@map("milestone_submission_files")
+  @@unique([submissionId, fileId])
+}
+
+model MilestoneReview {
+  id                 String              @id @default(cuid())
+  submissionId       String
+  submission         MilestoneSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  decision           ReviewDecision
+  unmetCriteria      Json                @default("[]") // string[] of criterion ids
+  feedback           String?
+  agreementVersionId String
+  decidedBy          String
+  decidedAt          DateTime            @default(now())
+
+  @@map("milestone_reviews")
+  @@index([submissionId])
+}
+
+model Dispute {
+  id                  String        @id @default(cuid())
+  milestoneId         String
+  milestone           Milestone     @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  openedByRole        Role          @default(CLIENT)
+  reason              String
+  status              DisputeStatus @default(OPEN)
+  freelancerStatement String?
+  resolutionNote      String?
+  createdAt           DateTime      @default(now())
+  resolvedAt          DateTime?
+
+  @@map("disputes")
+  @@index([milestoneId, status])
+}
+
+
+// ===========================================================================
+// Phase 6: Workspace, Mediated Chat, Tasks, Meetings & Private Nexum AI
+// ===========================================================================
+
+enum ParticipantRole {
+  CLIENT
+  FREELANCER
+  OBSERVER
+}
+
+enum SenderKind {
+  USER
+  NEXUM
   SYSTEM
-  MESSAGE
 }
 
-enum NotificationPriority {
-  LOW
-  NORMAL
-  HIGH
-  URGENT
+enum MessageClass {
+  QUESTION
+  CLARIFICATION
+  FEEDBACK
+  SCOPE_CHANGE
+  PRICE_OR_DEADLINE
+  APPROVAL_LIKE
+  PAYMENT_QUESTION
+  DISPUTE
+  GENERAL
+  NEXUM_CARD
 }
 
-enum NotificationJobStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-  DEAD_LETTER
+enum MessageDeliveryStatus {
+  PENDING_REVIEW
+  AWAITING_SENDER_CONFIRMATION
+  DELIVERED
+  DISCARDED
 }
+
+enum MediationState {
+  REVIEWED
+  NOT_REVIEWED
+}
+
+enum ProposedAction {
+  RELAY
+  DRAFT_CHANGE_REQUEST
+  LINK_PENDING_VERSION
+  NONE
+}
+
+enum ProjectFileCategory {
+  REFERENCE
+  ATTACHMENT
+  DELIVERABLE
+}
+
+enum WorkspaceTaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskVisibility {
+  PRIVATE
+  SHARED
+}
+
+enum MeetingStatus {
+  PROPOSED
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+enum DecisionKind {
+  PROJECT_NOTE
+  APPROVED_CHANGE
+}
+
+enum AIDraftStatus {
+  DRAFT
+  SENT
+  DISCARDED
+}
+
+model Conversation {
+  id           String                    @id @default(cuid())
+  projectId    String                    @unique
+  project      Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id                String          @id @default(cuid())
+  conversationId    String
+  conversation      Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              ParticipantRole
+  lastReadMessageId String?
+  lastReadAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id              String                @id @default(cuid())
+  conversationId  String
+  conversation    Conversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId        String?
+  sender          User?                 @relation("MessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+  senderKind      SenderKind            @default(USER)
+  originalBody    String
+  clientMessageId String?
+  messageClass    MessageClass          @default(GENERAL)
+  status          MessageDeliveryStatus @default(PENDING_REVIEW)
+  mediationState  MediationState        @default(NOT_REVIEWED)
+  visibleToUserId String?
+  cardType        String?
+  cardPayload     Json?
+  relatedType     String?
+  relatedId       String?
+  createdAt       DateTime              @default(now())
+  deliveredAt     DateTime?
+
+  attachments     MessageAttachment[]
+  mediationResult MediationResult?
+
+  @@unique([conversationId, clientMessageId])
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model MessageAttachment {
+  id        String   @id @default(cuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  fileId    String
+  file      File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([messageId])
+  @@index([fileId])
+  @@map("message_attachments")
+}
+
+model MediationResult {
+  id                         String         @id @default(cuid())
+  messageId                  String         @unique
+  message                    Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  classification             MessageClass
+  confidence                 Float
+  summaryForRecipient        String
+  structuredPayload          Json?
+  proposedAction             ProposedAction @default(RELAY)
+  requiresSenderConfirmation Boolean        @default(false)
+  status                     String         @default("DRAFT")
+  model                      String?
+  promptVersion              String?
+  validatorResults           Json?
+  createdAt                  DateTime       @default(now())
+
+  @@map("mediation_results")
+}
+
+model ProjectFile {
+  id             String              @id @default(cuid())
+  projectId      String
+  project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fileId         String
+  file           File                @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  uploadedBy     String
+  uploader       User                @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+  category       ProjectFileCategory @default(REFERENCE)
+  name           String
+  versionGroupId String              @default(cuid())
+  versionNumber  Int                 @default(1)
+  note           String?
+  createdAt      DateTime            @default(now())
+
+  @@index([projectId, category])
+  @@index([versionGroupId, versionNumber])
+  @@map("project_files")
+}
+
+model WorkspaceTask {
+  id          String              @id @default(cuid())
+  projectId   String
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId String?
+  title       String
+  description String?
+  status      WorkspaceTaskStatus @default(TODO)
+  dueDate     DateTime?
+  visibility  TaskVisibility      @default(PRIVATE)
+  createdBy   String
+  creator     User                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  createdAt   DateTime            @default(now())
+  completedAt DateTime?
+
+  @@index([projectId, visibility])
+  @@map("workspace_tasks")
+}
+
+model Meeting {
+  id         String            @id @default(cuid())
+  projectId  String
+  project    Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title      String
+  proposedBy String
+  proposer   User              @relation("MeetingProposer", fields: [proposedBy], references: [id], onDelete: Restrict)
+  startsAt   DateTime
+  endsAt     DateTime
+  joinUrl    String?
+  status     MeetingStatus     @default(PROPOSED)
+  createdAt  DateTime          @default(now())
+  responses  MeetingResponse[]
+
+  @@index([projectId, startsAt])
+  @@map("meetings")
+}
+
+model MeetingResponse {
+  id          String   @id @default(cuid())
+  meetingId   String
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  response    String
+  respondedAt DateTime @default(now())
+
+  @@unique([meetingId, userId])
+  @@map("meeting_responses")
+}
+
+model ProjectDecision {
+  id                 String       @id @default(cuid())
+  projectId          String
+  project            Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title              String
+  description        String
+  kind               DecisionKind @default(PROJECT_NOTE)
+  binding            Boolean      @default(false)
+  sourceType         String       @default("MANUAL_NOTE")
+  sourceRefId        String?
+  agreementVersionId String?
+  recordedBy         String?
+  createdAt          DateTime     @default(now())
+
+  @@index([projectId, kind])
+  @@map("project_decisions")
+}
+
+// ---------------------------------------------------------------------------
+// Private AI Workspace Tables (Isolated; no FK to shared conversations)
+// ---------------------------------------------------------------------------
+
+model AIChat {
+  id        String          @id @default(cuid())
+  ownerId   String
+  owner     User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId String?
+  title     String          @default("New chat")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  messages  AIChatMessage[]
+  drafts    AIDraft[]
+
+  @@index([ownerId, updatedAt])
+  @@map("ai_chats")
+}
+
+model AIChatMessage {
+  id        String   @id @default(cuid())
+  chatId    String
+  chat      AIChat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([chatId, createdAt])
+  @@map("ai_chat_messages")
+}
+
+model AIDraft {
+  id                   String        @id @default(cuid())
+  chatId               String
+  chat                 AIChat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  ownerId              String
+  targetConversationId String?
+  body                 String
+  status               AIDraftStatus @default(DRAFT)
+  createdAt            DateTime      @default(now())
+
+  @@index([chatId, ownerId])
+  @@map("ai_drafts")
+}
+
+model AICall {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose         String
+  model           String
+  promptVersion   String
+  inputRecordRefs Json     @default("[]")
+  tokensIn        Int      @default(0)
+  tokensOut       Int      @default(0)
+  latencyMs       Int      @default(0)
+  status          String   @default("SUCCESS")
+  createdAt       DateTime @default(now())
+
+  @@index([userId, purpose])
+  @@map("ai_calls")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: Earnings, Payments & Evidence (PayPal Sandbox)
+// ---------------------------------------------------------------------------
+
+enum PaymentEventSource {
+  API
+  WEBHOOK
+  RECONCILE
+  DEV
+}
+
+enum LedgerEntryKind {
+  FUNDED
+  RELEASED
+  REFUNDED
+  HOLD
+  PAYOUT_SIMULATED
+}
+
+enum PayoutStatus {
+  SIMULATED_PAID
+  CANCELLED
+}
+
+model Payment {
+  id                   String        @id @default(cuid())
+  projectId            String
+  project              Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId          String
+  milestone            Milestone     @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  milestoneKey         String?
+  amountMinor          Int           @default(0)
+  currency             String        @default("USD")
+  status               PaymentState  @default(NOT_STARTED)
+  paypalOrderId        String?       @unique
+  paypalCaptureId      String?       @unique
+  requestId            String        @default(cuid())
+  agreementVersionHash String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  events               PaymentEvent[]
+  ledgerEntries        LedgerEntry[]
+  evidencePacket       EvidencePacket?
+
+  @@index([projectId, status])
+  @@index([milestoneId])
+  @@map("payments")
+}
+
+model PaymentEvent {
+  id            String             @id @default(cuid())
+  paymentId     String
+  payment       Payment            @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  source        PaymentEventSource @default(API)
+  paypalEventId String?            @unique
+  eventType     String
+  rawPayload    Json
+  verified      Boolean            @default(false)
+  receivedAt    DateTime           @default(now())
+
+  @@index([paymentId])
+  @@map("payment_events")
+}
+
+model LedgerEntry {
+  id           String          @id @default(cuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  projectId    String
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneKey String?
+  milestoneId  String?
+  milestone    Milestone?      @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  kind         LedgerEntryKind
+  amountMinor  Int
+  currency     String          @default("USD")
+  paymentId    String?
+  payment      Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdAt    DateTime        @default(now())
+
+  @@index([userId, kind])
+  @@index([projectId])
+  @@map("ledger_entries")
+}
+
+model Payout {
+  id             String       @id @default(cuid())
+  freelancerId   String
+  freelancer     User         @relation(fields: [freelancerId], references: [id], onDelete: Restrict)
+  amountMinor    Int
+  currency       String       @default("USD")
+  status         PayoutStatus @default(SIMULATED_PAID)
+  methodLabel    String       @default("PayPal (Demo)")
+  idempotencyKey String       @unique
+  createdAt      DateTime     @default(now())
+
+  @@index([freelancerId, status])
+  @@map("payouts")
+}
+
+model PayoutAccount {
+  id           String   @id @default(cuid())
+  freelancerId String   @unique
+  freelancer   User     @relation(fields: [freelancerId], references: [id], onDelete: Cascade)
+  label        String   @default("Personal PayPal")
+  accountEmail String
+  last4        String   @default("0000")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("payout_accounts")
+}
+
+model EvidencePacket {
+  id          String   @id @default(cuid())
+  paymentId   String   @unique
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  projectId   String
+  milestoneId String
+  payload     Json
+  sha256      String
+  createdAt   DateTime @default(now())
+
+  @@index([projectId, milestoneId])
+  @@map("evidence_packets")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8: Notifications & Preferences
+// ---------------------------------------------------------------------------
 
 model Notification {
-  id          String               @id @default(cuid())
-  userId      String?              // specific user or null for broadcast
-  role        Role?                // CLIENT, FREELANCER, OPERATOR
-  type        NotificationType     @default(SYSTEM)
-  priority    NotificationPriority @default(NORMAL)
-  title       String
-  message     String
-  projectName String?
-  projectId   String?
-  actionUrl   String?
-  metadata    Json?                // Arbitrary future event payload data
-  read        Boolean              @default(false)
-  readAt      DateTime?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String
+  title      String
+  body       String
+  linkKind   String
+  linkId     String
+  readAt     DateTime?
+  dedupeKey  String?   @unique
+  createdAt  DateTime  @default(now())
 
-  @@index([userId, read])
-  @@index([role, read])
+  @@index([userId, readAt])
   @@index([createdAt])
+  @@map("notifications")
 }
 
-model NotificationJob {
-  id              String                @id @default(cuid())
-  eventName       String
-  recipientUserId String?
-  recipientRole   String?               // "CLIENT" | "FREELANCER" | "ALL"
-  payload         Json
-  status          NotificationJobStatus @default(PENDING)
-  attempts        Int                   @default(0)
-  maxAttempts     Int                   @default(3)
-  nextRunAt       DateTime              @default(now())
-  lastError       String?
-  lockedAt        DateTime?
-  lockedBy        String?
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+model NotificationPref {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  inApp     Boolean  @default(true)
+  email     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@index([status, nextRunAt])
+  @@unique([userId, type])
+  @@map("notification_prefs")
 }
 
-model NotificationDeadLetter {
-  id              String   @id @default(cuid())
-  originalJobId   String
-  eventName       String
-  recipientUserId String?
-  recipientRole   String?
-  payload         Json
-  errorReason     String
-  stackTrace      String?
-  attempts        Int
-  failedAt        DateTime @default(now())
-  replayedAt      DateTime?
-  replayedBy      String?
-
-  @@index([eventName])
-  @@index([failedAt])
-}

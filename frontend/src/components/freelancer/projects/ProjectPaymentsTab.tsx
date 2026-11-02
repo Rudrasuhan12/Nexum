@@ -58,7 +58,7 @@ export default function ProjectPaymentsTab({
               Paid to Freelancer
             </p>
             <p className="text-xl font-black text-emerald-600 mt-0.5">
-              ₹20,000
+              ${(project.milestones.filter((m) => m.workStatus === "ACCEPTED").reduce((acc, m) => acc + (m.amountCents || 0), 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} USD
             </p>
             <p className="text-[10px] text-emerald-700 mt-1">Disbursed to PayPal</p>
           </div>
@@ -68,9 +68,9 @@ export default function ProjectPaymentsTab({
               Held in Escrow
             </p>
             <p className="text-xl font-black text-[#4f46e5] mt-0.5">
-              ₹30,000
+              ${(project.milestones.filter((m) => m.workStatus !== "ACCEPTED" && m.paymentStatus !== "NOT_FUNDED").reduce((acc, m) => acc + (m.amountCents || 0), 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} USD
             </p>
-            <p className="text-[10px] text-indigo-700 mt-1">Milestone 2 Verified Capture</p>
+            <p className="text-[10px] text-indigo-700 mt-1">Active Escrow Funding</p>
           </div>
         </div>
       </div>
@@ -82,7 +82,12 @@ export default function ProjectPaymentsTab({
         </h3>
 
         <div className="divide-y divide-slate-100">
-          {project.milestones.map((ms) => {
+          {project.milestones.length === 0 ? (
+            <p className="text-xs text-slate-400 py-6 text-center">
+              No milestone payment records established yet.
+            </p>
+          ) : (
+            project.milestones.map((ms) => {
             const payConfig = getPaymentStatusConfig(ms.paymentStatus);
 
             return (
@@ -127,7 +132,8 @@ export default function ProjectPaymentsTab({
                 </div>
               </div>
             );
-          })}
+          })
+          )}
         </div>
       </div>
 

@@ -66,11 +66,15 @@ export async function PATCH(request: Request) {
     // Update user session cookie
     const updatedUser = await updateSessionPresence(presence);
 
-    // Forward to Express backend if reachable
+    // Forward to Express backend with incoming session cookies
+    const cookieHeader = request.headers.get("cookie") || "";
     try {
       await fetch(`${BACKEND_URL}/api/users/${user.id}/presence`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          cookie: cookieHeader,
+        },
         body: JSON.stringify({ presence, role: user.role }),
       }).catch(() => {});
     } catch {

@@ -1,25 +1,46 @@
 import { NextResponse } from "next/server";
-import { notificationStore } from "@/lib/notifications-data";
+import { getCurrentUser } from "@/lib/auth";
+
+const BACKEND_URL =
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  "http://localhost:4000";
 
 export async function PATCH(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const updated = notificationStore.markAsRead(id);
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
 
-    if (!updated) {
+    const { id } = await params;
+    const cookieHeader = request.headers.get("cookie") || "";
+    const authHeader = request.headers.get("authorization") || "";
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (cookieHeader) headers["cookie"] = cookieHeader;
+    if (authHeader) headers["authorization"] = authHeader;
+
+    const res = await fetch(`${BACKEND_URL}/api/notifications/${id}`, {
+      method: "PATCH",
+      headers,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
       return NextResponse.json(
-        { success: false, error: "Notification not found" },
-        { status: 404 }
+        { success: false, error: err.error?.message || "Failed to mark notification as read" },
+        { status: res.status }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      notification: updated,
-    });
+    const data = await res.json();
+    return NextResponse.json({ success: true, ...data });
   } catch (error) {
     console.error("Notification mark read error:", error);
     return NextResponse.json(
@@ -28,25 +49,3 @@ export async function PATCH(
     );
   }
 }
-
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const removed = notificationStore.deleteNotification(id);
-
-    return NextResponse.json({
-      success: removed,
-      message: removed ? "Notification dismissed" : "Notification not found",
-    });
-  } catch (error) {
-    console.error("Notification delete error:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to delete notification" },
-      { status: 500 }
-    );
-  }
-}
-

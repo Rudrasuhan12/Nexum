@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   ShieldCheck,
+  MessageSquare,
 } from "lucide-react";
 import { FreelancerProjectItem } from "@/lib/freelancer-projects-types";
 
@@ -18,8 +19,12 @@ export default function ProjectMessagesTab({
   project,
   onOpenWorkspace,
 }: ProjectMessagesTabProps) {
-  const [showOriginal1, setShowOriginal1] = useState(false);
-  const [showOriginal2, setShowOriginal2] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const acceptedMilestones = project.milestones.filter((m) => m.workStatus === "ACCEPTED");
+  const inReviewMilestones = project.milestones.filter((m) => m.workStatus === "AWAITING_CLIENT_REVIEW");
+
+  const hasMessages = acceptedMilestones.length > 0 || inReviewMilestones.length > 0;
 
   return (
     <div className="space-y-6">
@@ -46,78 +51,107 @@ export default function ProjectMessagesTab({
 
       {/* Messages Thread Preview */}
       <div className="space-y-4">
-        {/* Message 1 */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#4f46e5]" />
-              <span className="text-xs font-bold text-slate-900">
-                Nexum AI · Mediated Update
-              </span>
-              <span className="text-[10px] text-slate-400">Oct 24, 2026, 11:32 AM</span>
-            </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Approved
-            </span>
+        {!hasMessages ? (
+          <div className="p-10 text-center rounded-2xl bg-white border border-slate-200/90 text-slate-500">
+            <MessageSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-slate-800">No mediated messages yet</p>
+            <p className="text-xs text-slate-400 mt-1">
+              As deliverables are submitted and reviewed, mediated consensus updates will appear here. Use &quot;Open Full Workspace&quot; to message the client.
+            </p>
           </div>
+        ) : (
+          <>
+            {acceptedMilestones.map((m) => {
+              const isExpanded = expandedId === `accepted-${m.id}`;
+              return (
+                <div
+                  key={`accepted-${m.id}`}
+                  className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-[#4f46e5]" />
+                      <span className="text-xs font-bold text-slate-900">
+                        Nexum AI · Mediated Update
+                      </span>
+                      {m.approvedAt && (
+                        <span className="text-[10px] text-slate-400">{m.approvedAt}</span>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Approved
+                    </span>
+                  </div>
 
-          <p className="text-xs text-slate-700 leading-relaxed">
-            Client {project.client.companyName} approved Milestone 1: UI/UX Design & Frontend Development.
-            Funds of ₹20,000 have completed release sweep.
-          </p>
+                  <p className="text-xs text-slate-700 leading-relaxed">
+                    Client {project.client.companyName} approved {m.title}.
+                    Funds of {m.amountDisplay} completed milestone acceptance.
+                  </p>
 
-          <button
-            type="button"
-            onClick={() => setShowOriginal1(!showOriginal1)}
-            className="text-[11px] font-semibold text-[#4f46e5] hover:underline flex items-center gap-1 cursor-pointer"
-          >
-            <span>{showOriginal1 ? "Hide Client's Original Wording" : "Read Client's Original Wording"}</span>
-            {showOriginal1 ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : `accepted-${m.id}`)}
+                    className="text-[11px] font-semibold text-[#4f46e5] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>{isExpanded ? "Hide Acceptance Note" : "Read Acceptance Note"}</span>
+                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
 
-          {showOriginal1 && (
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 italic">
-              &quot;Hi Sambit, the storefront screens look crisp and the cart persistence works nicely on mobile.
-              Approved milestone 1! Let&apos;s push ahead with the backend APIs.&quot;
-            </div>
-          )}
-        </div>
+                  {isExpanded && (
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 italic">
+                      &quot;Milestone deliverables verified and approved against bilateral acceptance criteria.&quot;
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
-        {/* Message 2 */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span className="text-xs font-bold text-slate-900">
-                Nexum AI · Review Notification
-              </span>
-              <span className="text-[10px] text-slate-400">Nov 14, 2026, 2:42 PM</span>
-            </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-              In Client Review
-            </span>
-          </div>
+            {inReviewMilestones.map((m) => {
+              const isExpanded = expandedId === `review-${m.id}`;
+              return (
+                <div
+                  key={`review-${m.id}`}
+                  className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span className="text-xs font-bold text-slate-900">
+                        Nexum AI · Review Notification
+                      </span>
+                      {m.submittedAt && (
+                        <span className="text-[10px] text-slate-400">{m.submittedAt}</span>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                      In Client Review
+                    </span>
+                  </div>
 
-          <p className="text-xs text-slate-700 leading-relaxed">
-            Milestone 2 deliverable (Backend APIs & PayPal order capture) was submitted by you.
-            Escrow capture of ₹30,000 is verified in PayPal Sandbox.
-          </p>
+                  <p className="text-xs text-slate-700 leading-relaxed">
+                    Milestone deliverable ({m.title}) was submitted by you.
+                    Escrow funding of {m.amountDisplay} is held pending verification.
+                  </p>
 
-          <button
-            type="button"
-            onClick={() => setShowOriginal2(!showOriginal2)}
-            className="text-[11px] font-semibold text-[#4f46e5] hover:underline flex items-center gap-1 cursor-pointer"
-          >
-            <span>{showOriginal2 ? "Hide Submission Note" : "Read Submission Note"}</span>
-            {showOriginal2 ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : `review-${m.id}`)}
+                    className="text-[11px] font-semibold text-[#4f46e5] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>{isExpanded ? "Hide Deliverable Scope" : "Read Deliverable Scope"}</span>
+                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
 
-          {showOriginal2 && (
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 italic">
-              &quot;All order and payment APIs are deployed to staging. PayPal sandbox order capture webhook verified with zero dropped payloads.&quot;
-            </div>
-          )}
-        </div>
+                  {isExpanded && (
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 italic">
+                      &quot;{m.deliverablesSummary || "Milestone deliverables submitted for stakeholder review."}&quot;
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
 
       {/* Mediation Guarantees Card */}

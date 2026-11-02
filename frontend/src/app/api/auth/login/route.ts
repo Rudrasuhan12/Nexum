@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { DEMO_USERS, setSession, UserRole, DemoUser } from "@/lib/auth";
+import { setSession, UserRole, DemoUser } from "../../../../lib/auth";
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
@@ -9,114 +9,124 @@ const BACKEND_URL =
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { role, personaKey, email, password } = body as {
-      role?: UserRole;
-      personaKey?: string;
+    const { email, password } = body as {
       email?: string;
       password?: string;
     };
 
-    if (email !== undefined && email.trim() === "") {
+    if (!email || typeof email !== "string" || email.trim() === "") {
       return NextResponse.json(
         { error: "Email address is required." },
         { status: 400 }
       );
     }
 
-    if (password !== undefined && password.length < 4) {
+    if (!password || typeof password !== "string" || password.length === 0) {
+      return NextResponse.json(
+        { error: "Password is required." },
+        { status: 400 }
+      );
+    }
+
+    if (password.length < 4) {
       return NextResponse.json(
         { error: "Password must be at least 4 characters." },
         { status: 400 }
       );
     }
 
-    // 1. Try authenticating with backend API / Neon DB
-    if (email && password) {
-      try {
-        const backendRes = await fetch(`${BACKEND_URL}/api/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email.trim(), password }),
-        });
-
-        if (backendRes.ok) {
-          const backendData = await backendRes.json();
-          if (backendData.success && backendData.user) {
-            const loggedInUser: DemoUser = {
-              id: backendData.user.id,
-              name: backendData.user.name,
-              email: backendData.user.email,
-              role: backendData.user.role as UserRole,
-              avatar:
-                backendData.user.role === "CLIENT"
-                  ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=128&h=128&fit=crop&crop=faces"
-                  : "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=128&h=128&fit=crop&crop=faces",
-              title: backendData.user.title || (backendData.user.role === "CLIENT" ? "Verified Client" : "Verified Freelancer"),
-              companyOrHandle: backendData.user.companyOrHandle || (backendData.user.role === "CLIENT" ? "Nexum Client" : `@${backendData.user.name?.toLowerCase().replace(/\s+/g, "_") || "freelancer"}`),
-              location: backendData.user.location || "Remote",
-              timezone: backendData.user.timezone || "UTC",
-              statusBadge: backendData.user.statusBadge || (backendData.user.role === "CLIENT" ? "Verified Buyer" : "Verified Freelancer"),
-              summary: backendData.user.summary || (backendData.user.role === "CLIENT" ? "Managing freelance projects with milestone escrow proof." : "Full-stack freelancer delivering verified milestones."),
-              canLogin: true,
-              isDemoData: false,
-            };
-
-            await setSession(loggedInUser);
-            return NextResponse.json({
-              success: true,
-              user: loggedInUser,
-              message: `Signed in as ${loggedInUser.name} (${loggedInUser.role})`,
-            });
-          }
-        }
-      } catch {
-        // Fallback to local demo auth if backend is unreachable
-      }
-    }
-
-    // 2. Demo Persona / Fallback Auth
-    let targetUser = null;
-    if (personaKey && DEMO_USERS[personaKey]) {
-      targetUser = DEMO_USERS[personaKey];
-    } else if (email) {
-      targetUser = Object.values(DEMO_USERS).find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
-    } else if (role) {
-      if (role === "CLIENT") {
-        targetUser = DEMO_USERS.CLIENT;
-      } else if (role === "FREELANCER") {
-        targetUser = DEMO_USERS.FREELANCER_A;
-      }
-    }
-
-    if (!targetUser) {
+    // Call Express authentication backend (Argon2id + database sessions)
+    let backendRes: Response;
+    try {
+      backendRes = await fetch(`${BACKEND_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+    } catch (networkErr) {
+      console.error("Backend login connection failure:", networkErr);
       return NextResponse.json(
-        {
-          error: email
-            ? `No workspace found for "${email}". Please verify your credentials or create an account.`
-            : "Invalid persona or user not found. Select Client or Freelancer.",
-        },
-        { status: 400 }
+        { error: "Authentication service is currently unavailable. Please try again later." },
+        { status: 503 }
       );
     }
 
-    if (!targetUser.canLogin) {
+    if (!backendRes.ok) {
+      const errorData = await backendRes.json().catch(() => ({}));
+      const message =
+        errorData.error?.message ||
+        errorData.error ||
+        (backendRes.status === 401
+          ? "Invalid email or password."
+          : `Authentication failed (HTTP ${backendRes.status})`);
+
       return NextResponse.json(
-        {
-          error: `${targetUser.name} is a seeded candidate profile for match discovery and cannot be directly logged into.`,
-        },
-        { status: 403 }
+        { error: message },
+        { status: backendRes.status }
       );
     }
 
-    await setSession(targetUser);
+    const backendData = await backendRes.json();
+    if (!backendData.success || !backendData.user) {
+      return NextResponse.json(
+        { error: "Invalid response from authentication backend." },
+        { status: 502 }
+      );
+    }
 
-    return NextResponse.json({
+    const user = backendData.user;
+    const loggedInUser: DemoUser = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role as UserRole,
+      avatar:
+        user.role === "CLIENT"
+          ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=128&h=128&fit=crop&crop=faces"
+          : "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=128&h=128&fit=crop&crop=faces",
+      title:
+        user.title ||
+        (user.role === "CLIENT" ? "Verified Client" : "Verified Freelancer"),
+      companyOrHandle:
+        user.companyOrHandle ||
+        (user.role === "CLIENT"
+          ? "Nexum Client"
+          : `@${user.name?.toLowerCase().replace(/\s+/g, "_") || "freelancer"}`),
+      location: user.location || "Remote",
+      timezone: user.timezone || "UTC",
+      statusBadge:
+        user.statusBadge ||
+        (user.role === "CLIENT" ? "Verified Buyer" : "Verified Freelancer"),
+      summary:
+        user.summary ||
+        (user.role === "CLIENT"
+          ? "Managing freelance projects with milestone escrow proof."
+          : "Full-stack freelancer delivering verified milestones."),
+      canLogin: true,
+      isDemoData: false,
+    };
+
+    // Issue signed Next.js session cookie
+    await setSession(loggedInUser);
+
+    const response = NextResponse.json({
       success: true,
-      user: targetUser,
-      message: `Signed in as ${targetUser.name} (${targetUser.role})`,
+      user: loggedInUser,
+      message: `Signed in as ${loggedInUser.name} (${loggedInUser.role})`,
     });
+
+    // Forward Set-Cookie header (such as Express sessionId) to client
+    const rawSetCookie = backendRes.headers.get("set-cookie");
+    if (rawSetCookie) {
+      response.headers.set("set-cookie", rawSetCookie);
+    }
+
+    return response;
   } catch (error) {
     console.error("Login API error:", error);
-    return NextResponse.json({ error: "Internal authentication error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal authentication error" },
+      { status: 500 }
+    );
   }
 }

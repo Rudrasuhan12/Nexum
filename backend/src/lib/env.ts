@@ -1,0 +1,35 @@
+import { z } from "zod";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const envSchema = z.object({
+  PORT: z.string().default("4000"),
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL environment variable is required"),
+  CORS_ORIGIN: z.string().default("http://localhost:3000,http://127.0.0.1:3000"),
+  SESSION_SECRET: z.string().min(16, "SESSION_SECRET must be at least 16 characters"),
+  PAYPAL_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  PAYPAL_CLIENT_ID: z.string().optional(),
+  PAYPAL_CLIENT_SECRET: z.string().optional(),
+  PAYPAL_WEBHOOK_ID: z.string().optional().default(""),
+  ENABLE_FAULT_INJECTOR: z.string().optional().default("false"),
+  AI_DAILY_BUDGET: z.string().optional().default("50"),
+  GEMINI_API_KEY: z.string().optional().default(""),
+});
+
+export type EnvConfig = z.infer<typeof envSchema>;
+
+export function validateEnv(customEnv?: Record<string, string | undefined>): EnvConfig {
+  const result = envSchema.safeParse(customEnv || process.env);
+  if (!result.success) {
+    const errorDetails = result.error.errors
+      .map((err) => `${err.path.join(".")}: ${err.message}`)
+      .join(", ");
+    throw new Error(`Environment validation failed: ${errorDetails}`);
+  }
+  return result.data;
+}
+
+export const env = validateEnv();
+

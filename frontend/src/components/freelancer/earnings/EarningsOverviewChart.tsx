@@ -17,8 +17,21 @@ export default function EarningsOverviewChart({ data }: EarningsOverviewChartPro
       ? data.slice(-3)
       : data;
 
-  const maxVal = 60000; // ₹60K reference line in screenshot
-  const yTicks = [60000, 45000, 30000, 15000, 0];
+  const maxDataVal = Math.max(0, ...displayData.map((d) => d.received + d.pending));
+  const maxVal = Math.max(1000, Math.ceil(maxDataVal / 500) * 500);
+  const yTicks = [
+    maxVal,
+    Math.round(maxVal * 0.75),
+    Math.round(maxVal * 0.5),
+    Math.round(maxVal * 0.25),
+    0,
+  ];
+
+  const formatTick = (tick: number) => {
+    if (tick === 0) return "$0";
+    if (tick >= 1000) return `$${(tick / 1000).toFixed(tick % 1000 === 0 ? 0 : 1)}K`;
+    return `$${tick}`;
+  };
 
   return (
     <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex flex-col justify-between h-full">
@@ -54,7 +67,7 @@ export default function EarningsOverviewChart({ data }: EarningsOverviewChartPro
           {yTicks.map((tick) => (
             <div key={tick} className="flex items-center gap-3">
               <span className="w-9 text-right text-[11px] font-mono font-medium text-slate-400 shrink-0">
-                {tick === 0 ? "₹0" : `₹${tick / 1000}K`}
+                {formatTick(tick)}
               </span>
               <div className="flex-1 border-t border-dashed border-slate-100" />
             </div>

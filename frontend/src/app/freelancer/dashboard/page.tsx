@@ -33,7 +33,7 @@ const VALID_TABS = [
 function FreelancerDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isLoading, loginAs } = useAuth();
+  const { user, isLoading } = useAuth();
 
   const tabParam = searchParams.get("tab");
   const activeTab = tabParam && (VALID_TABS as readonly string[]).includes(tabParam)
@@ -68,12 +68,12 @@ function FreelancerDashboardContent() {
     setTimeout(() => setToastMessage(null), 3800);
   };
 
-  // Ensure logged in as Freelancer for dev
+  // Enforce authentication & role separation
   useEffect(() => {
     if (!isLoading && (!user || user.role !== "FREELANCER")) {
-      loginAs("FREELANCER_A");
+      router.push("/login");
     }
-  }, [user, isLoading, loginAs]);
+  }, [user, isLoading, router]);
 
   const freelancer = user || DEMO_USERS.FREELANCER_A;
   const client = DEMO_USERS.CLIENT;

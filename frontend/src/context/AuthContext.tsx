@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { DemoUser, UserPresenceStatus } from "@/lib/auth-types";
+import { DemoUser, UserPresenceStatus, DEMO_USERS } from "@/lib/auth-types";
 
 export interface SignupPayload {
   email: string;
@@ -172,32 +172,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const loginAs = async (roleOrKey: "CLIENT" | "FREELANCER_A" | string): Promise<boolean> => {
-    setIsLoading(true);
-    try {
-      const isRole = roleOrKey === "CLIENT" || roleOrKey === "FREELANCER";
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isRole ? { role: roleOrKey } : { personaKey: roleOrKey }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Login failed");
-      }
-
-      const data = await res.json();
-      setUser(data.user);
-      return true;
-    } catch (err) {
-      console.error("Login failed:", err);
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const loginWithCredentials = async (
     email: string,
     password?: string
@@ -221,6 +195,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Login with credentials failed:", err);
       const msg = err instanceof Error ? err.message : "Network error during authentication";
       return { success: false, error: msg };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginAs = async (roleOrKey: "CLIENT" | "FREELANCER_A" | string): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      let targetEmail = "";
+      if (roleOrKey === "CLIENT") targetEmail = DEMO_USERS.CLIENT.email;
+      else if (roleOrKey === "FREELANCER_A" || roleOrKey === "FREELANCER") targetEmail = DEMO_USERS.FREELANCER_A.email;
+      else if (DEMO_USERS[roleOrKey]) targetEmail = DEMO_USERS[roleOrKey].email;
+
+      if (!targetEmail) {
+        console.warn(`[AuthContext] Unknown demo role or persona: ${roleOrKey}`);
+        return false;
+      }
+
+      const result = await loginWithCredentials(targetEmail, "demo1234");
+      return result.success;
+    } catch (err) {
+      console.error("Login failed:", err);
+      return false;
     } finally {
       setIsLoading(false);
     }

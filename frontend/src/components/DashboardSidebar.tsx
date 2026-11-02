@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
-import { fetchClientMilestones } from "@/lib/api-client";
+import { fetchFreelancerDashboard, fetchProjectTasks, fetchClientMilestones } from "@/lib/api-client";
 
 export interface NavItemConfig {
   id: string;
@@ -49,27 +49,89 @@ export default function DashboardSidebar({
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useAuth();
-  const [milestonesBadge, setMilestonesBadge] = React.useState<number | undefined>(undefined);
 
-  React.useEffect(() => {
-    let isMounted = true;
-    const fetchBadge = async () => {
-      const isClient =
-        currentRole === "CLIENT" ||
-        user?.role === "CLIENT" ||
-        pathname?.startsWith("/client");
+  // --- Freelancer badge state ---
+  const [proposalsBadge, setProposalsBadge] = useState<number | undefined>(undefined);
+  const [projectsBadge, setProjectsBadge] = useState<number | undefined>(undefined);
+  const [tasksBadge, setTasksBadge] = useState<number | undefined>(undefined);
 
-      if (isClient) {
-        try {
-          const res = await fetchClientMilestones(user?.id);
-          if (isMounted && res.success && res.stats) {
-            // Badges in navigation denote items requiring client action/review
-            const count = res.stats.awaitingReviewCount || 0;
-            setMilestonesBadge(count > 0 ? count : undefined);
-          }
-        } catch {
-          // Keep quiet on background badge fetch fail
+  // --- Client badge state ---
+  const [milestonesBadge, setMilestonesBadge] = useState<number | undefined>(undefined);
+
+  const isFreelancer =
+    currentRole === "FREELANCER" ||
+    (user?.role === "FREELANCER" && !pathname?.startsWith("/client")) ||
+    pathname?.startsWith("/freelancer");
+
+  const isClient =
+    currentRole === "CLIENT" ||
+    user?.role === "CLIENT" ||
+    pathname?.startsWith("/client");
+
+  // Freelancer-only: fetch badge counts for proposals, projects, tasks
+  useEffect(() => {
+    let mounted = true;
+
+    if (!isFreelancer || !user?.id) {
+      setProposalsBadge(undefined);
+      setProjectsBadge(undefined);
+      setTasksBadge(undefined);
+      return;
+    }
+
+    Promise.all([
+      fetchFreelancerDashboard(),
+      fetchProjectTasks(),
+    ])
+      .then(([dashRes, taskRes]) => {
+        if (!mounted) return;
+        if (dashRes.success && dashRes.dashboard) {
+          // Actionable proposals (e.g. counteroffer received or open drafts)
+          const counteroffers = dashRes.dashboard.allProposals?.byStatus?.["COUNTEROFFER_RECEIVED"] || 0;
+          setProposalsBadge(counteroffers > 0 ? counteroffers : undefined);
+
+          // Actual active projects from agreement/project lifecycle
+          const activeCount = dashRes.dashboard.activeProjects?.count || 0;
+          setProjectsBadge(activeCount > 0 ? activeCount : undefined);
+        } else {
+          setProposalsBadge(undefined);
+          setProjectsBadge(undefined);
         }
+
+        if (taskRes.success && typeof taskRes.pendingCount === "number" && taskRes.pendingCount > 0) {
+          setTasksBadge(taskRes.pendingCount);
+        } else {
+          setTasksBadge(undefined);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setProposalsBadge(undefined);
+          setProjectsBadge(undefined);
+          setTasksBadge(undefined);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isFreelancer, user?.id]);
+
+  // Client-only: fetch milestones awaiting review badge count
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchBadge = async () => {
+      if (!isClient || !user?.id) return;
+      try {
+        const res = await fetchClientMilestones(user?.id);
+        if (isMounted && res.success && res.stats) {
+          // Badge denotes items requiring client action/review
+          const count = res.stats.awaitingReviewCount || 0;
+          setMilestonesBadge(count > 0 ? count : undefined);
+        }
+      } catch {
+        // Keep quiet on background badge fetch fail
       }
     };
 
@@ -84,14 +146,14 @@ export default function DashboardSidebar({
       isMounted = false;
       window.removeEventListener("nexum:milestones-updated", handleUpdate);
     };
-  }, [user?.id, user?.role, currentRole, pathname]);
+  }, [isClient, user?.id]);
 
   const handleLogout = async () => {
     await logout();
     router.push("/login");
   };
 
-  // Primary Navigation Group for Client
+  // Primary Navigation Group for Client (Preserving Client Dashboard untouched)
   const clientNavItems: NavItemConfig[] = [
     {
       id: "overview",
@@ -138,7 +200,7 @@ export default function DashboardSidebar({
     },
   ];
 
-  // Primary Navigation Group for Freelancer (exactly matching proposed structure)
+  // Primary Navigation Group for Freelancer
   const freelancerNavItems: NavItemConfig[] = [
     {
       id: "overview",
@@ -153,30 +215,25 @@ export default function DashboardSidebar({
       href: "/freelancer/dashboard?tab=find_projects",
     },
     {
-      id: "profile",
-      label: "My Profile & Portfolio",
-      icon: User,
-      href: "/freelancer/dashboard?tab=profile",
-    },
-    {
-      id: "workspace",
-      label: "Workspace",
-      icon: Cpu,
-      href: "/freelancer/workspace",
-    },
-    {
       id: "proposals",
       label: "My Proposals",
       icon: FileText,
-      badge: 2,
+      badge: proposalsBadge,
       href: "/freelancer/dashboard?tab=proposals",
     },
     {
       id: "projects",
       label: "My Projects",
       icon: FolderKanban,
-      badge: 1,
+      badge: projectsBadge,
       href: "/freelancer/dashboard?tab=projects",
+    },
+    {
+      id: "workspace",
+      label: "Workspace",
+      icon: Cpu,
+      badge: tasksBadge,
+      href: "/freelancer/workspace",
     },
     {
       id: "earnings",
@@ -184,12 +241,13 @@ export default function DashboardSidebar({
       icon: CreditCard,
       href: "/freelancer/dashboard?tab=earnings",
     },
+    {
+      id: "profile",
+      label: "Profile & Portfolio",
+      icon: User,
+      href: "/freelancer/dashboard?tab=profile",
+    },
   ];
-
-  const isFreelancer =
-    currentRole === "FREELANCER" ||
-    (user?.role === "FREELANCER" && !pathname?.startsWith("/client")) ||
-    pathname?.startsWith("/freelancer");
 
   const mainNavItems = isFreelancer ? freelancerNavItems : clientNavItems;
 
@@ -269,13 +327,17 @@ export default function DashboardSidebar({
 
         {/* Circular Pill Badge (render only if numeric count > 0) */}
         {item.badge !== undefined && Number(item.badge) > 0 && (
-          <span className="w-5 h-5 rounded-full bg-[#ef4444] text-white text-[11px] font-bold flex items-center justify-center shrink-0 shadow-xs">
+          <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#ef4444] text-white text-[11px] font-bold flex items-center justify-center shrink-0 shadow-xs">
             {item.badge}
           </span>
         )}
       </button>
     );
   };
+
+  const fallbackAvatar = isFreelancer
+    ? "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=128&h=128&fit=crop&crop=faces"
+    : "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=128&h=128&fit=crop&crop=faces";
 
   return (
     <aside className="w-[240px] shrink-0 border-r border-slate-100 bg-white flex flex-col justify-between h-screen sticky top-0 z-30 select-none">
@@ -344,10 +406,10 @@ export default function DashboardSidebar({
             className="flex items-center gap-2.5 p-2 rounded-2xl bg-white border border-slate-200 shadow-2xs cursor-pointer hover:border-[#4f46e5]/40 hover:bg-[#eef2ff]/20 transition duration-150"
             title="Profile & Settings"
           >
-            <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-slate-100 ring-1 ring-slate-200/60">
+            <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-slate-100 ring-1 ring-slate-200/60 bg-slate-100">
               <Image
-                src={user.avatar}
-                alt={user.name}
+                src={user.avatar || fallbackAvatar}
+                alt={user.name || "User"}
                 width={40}
                 height={40}
                 className="w-full h-full object-cover"

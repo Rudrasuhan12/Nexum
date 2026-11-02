@@ -1,19 +1,27 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Search } from "lucide-react";
+import { Search, FolderKanban } from "lucide-react";
 import {
   FreelancerProjectItem,
   ProjectMilestone,
   MilestoneSubmission,
   ProjectTask,
+  TaskStatus,
   ProjectFile,
+  ProjectLifecycleStatus,
 } from "@/lib/freelancer-projects-types";
 import {
-  INITIAL_FREELANCER_PROJECTS,
   calculateSummaryKPIs,
 } from "@/lib/freelancer-projects-data";
-import { fetchBackendProjects } from "@/lib/api-client";
+import {
+  fetchActiveProjects,
+  submitMilestoneDeliverable,
+  fetchProjectTasks,
+  fetchProjectFiles,
+  createProjectTask,
+  updateProjectTask,
+} from "@/lib/api-client";
 import ProjectSummaryCards from "./projects/ProjectSummaryCards";
 import ProjectDirectory from "./projects/ProjectDirectory";
 import SelectedProjectHeader from "./projects/SelectedProjectHeader";
@@ -50,13 +58,14 @@ export default function FreelancerProjectsMilestonesView({
     }
   };
 
-  // State: projects list
-  const [projects, setProjects] = useState<FreelancerProjectItem[]>(
-    INITIAL_FREELANCER_PROJECTS
-  );
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(
-    INITIAL_FREELANCER_PROJECTS[0].id
-  );
+  // State: live projects list from database
+  const [projects, setProjects] = useState<FreelancerProjectItem[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Selected project tasks & files loaded dynamically
+  const [selectedProjectTasks, setSelectedProjectTasks] = useState<ProjectTask[]>([]);
+  const [selectedProjectFiles, setSelectedProjectFiles] = useState<ProjectFile[]>([]);
 
   // Filters & sorting
   const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
@@ -78,22 +87,178 @@ export default function FreelancerProjectsMilestonesView({
     useState<ProjectMilestone | null>(null);
   const [showProposeModal, setShowProposeModal] = useState(false);
 
-  // Dynamic Left/Right Sticky Tracking (Sticky according to shorter column)
+  // Dynamic Left/Right Sticky Tracking
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const [shorterColumn, setShorterColumn] = useState<"left" | "right" | "none">("none");
 
-  // Fetch real projects from backend if available
+  // Fetch real projects from backend
   useEffect(() => {
     let mounted = true;
     async function loadBackendData() {
       try {
-        const res = await fetchBackendProjects();
-        if (mounted && res.success && res.data && res.data.length > 0) {
-          // If backend has projects, we merge or enrich our project list
+        setIsLoading(true);
+        const res = await fetchActiveProjects();
+        if (mounted && res.success && Array.isArray(res.projects)) {
+          const mapped: FreelancerProjectItem[] = res.projects.map((live: any, idx: number) => {
+            // Map live backend status to UI lifecycle status
+            let mappedState: ProjectLifecycleStatus = "ACTIVE";
+            let statusLabel = "In Progress";
+            let statusBadgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200/80";
+
+            if (
+              live.agreementStatus === "PENDING_APPROVAL" ||
+              live.derivedStatus === "INTAKE" ||
+              live.derivedStatus === "MATCHING" ||
+              live.derivedStatus === "DRAFT"
+            ) {
+              mappedState = "AWAITING_APPROVAL";
+              statusLabel = "Awaiting Approval";
+              statusBadgeColor = "bg-amber-50 text-amber-700 border-amber-200/80";
+            } else if (
+              live.derivedStatus === "COMPLETED" ||
+              live.agreementStatus === "COMPLETED"
+            ) {
+              mappedState = "COMPLETED";
+              statusLabel = "Completed";
+              statusBadgeColor = "bg-purple-50 text-purple-700 border-purple-200";
+            } else if (
+              live.derivedStatus === "CANCELLED" ||
+              live.agreementStatus === "TERMINATED"
+            ) {
+              mappedState = "CANCELLED";
+              statusLabel = "Cancelled";
+              statusBadgeColor = "bg-rose-50 text-rose-700 border-rose-200";
+            } else {
+              mappedState = "ACTIVE";
+              statusLabel = live.derivedStatus === "IN_REVIEW" ? "In Review" : "In Progress";
+              statusBadgeColor =
+                live.derivedStatus === "IN_REVIEW"
+                  ? "bg-amber-50 text-amber-700 border-amber-200/80"
+                  : "bg-emerald-50 text-emerald-700 border-emerald-200/80";
+            }
+
+            const totalBudgetCents = live.totalAmountMinor || 0;
+            const totalBudgetDisplay =
+              "$" +
+              (totalBudgetCents / 100).toLocaleString("en-US", { minimumFractionDigits: 0 }) +
+              " USD";
+            const progressPercent =
+              live.totalMilestones > 0
+                ? Math.round((live.completedMilestones / live.totalMilestones) * 100)
+                : mappedState === "COMPLETED"
+                ? 100
+                : 0;
+
+            const milestones = Array.isArray(live.milestones) ? live.milestones : [];
+
+            const clientName = live.client?.name || "Client Partner";
+
+            return {
+              id: live.id || live.projectId || `proj-${idx}`,
+              title: live.title || "Project",
+              description:
+                live.description || `${live.title || "Project"} bilateral agreement and verified milestones.`,
+              state: mappedState,
+              statusLabel,
+              statusBadgeColor,
+              client: {
+                id: live.client?.id || `cli-${idx}`,
+                name: clientName,
+                companyName: clientName,
+                verified: false,
+                avatarLetter: (clientName[0] || "C").toUpperCase(),
+                avatarBg: "bg-indigo-600 text-white",
+                email: live.client?.email,
+              },
+              startDate: live.createdAt
+                ? new Date(live.createdAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                : "",
+              dueDate: live.activeMilestone?.dueDate
+                ? new Date(live.activeMilestone.dueDate).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                : milestones[0]?.dueDate || "No deadline",
+              completedDate:
+                mappedState === "COMPLETED" && live.updatedAt
+                  ? new Date(live.updatedAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })
+                  : undefined,
+              totalBudgetCents,
+              totalBudgetDisplay,
+              currency: live.currency || "USD",
+              pricingType: "FIXED_PRICE",
+              agreementVersion: `v${live.activeVersionNumber || 1} ${
+                mappedState === "COMPLETED"
+                  ? "Fulfilled"
+                  : mappedState === "AWAITING_APPROVAL"
+                  ? "Under Review"
+                  : "Active"
+              }`,
+              progressPercent,
+              techTags: live.skills || [],
+              thumbnailType: "GENERIC",
+              milestones,
+              tasks: [],
+              files: [],
+              progressSteps: [
+                {
+                  id: `ps-${idx}-1`,
+                  title: "Requirements & contract scope",
+                  status: "COMPLETED",
+                },
+                {
+                  id: `ps-${idx}-2`,
+                  title: "Milestone deliverable execution",
+                  status: mappedState === "COMPLETED" ? "COMPLETED" : "CURRENT",
+                },
+                {
+                  id: `ps-${idx}-3`,
+                  title: "Final verification and payout",
+                  status: mappedState === "COMPLETED" ? "COMPLETED" : "PENDING",
+                },
+              ],
+              nextActions: live.activeMilestone
+                ? [
+                    {
+                      id: `na-${live.activeMilestone.id}`,
+                      title: `Deliverable: ${live.activeMilestone.title}`,
+                      description: `Work status: ${live.activeMilestone.workStatus}`,
+                      actionLabel:
+                        live.activeMilestone.workStatus === "IN_PROGRESS" ||
+                        live.activeMilestone.workStatus === "REVISIONS_REQUESTED"
+                          ? "Submit Deliverables"
+                          : "View Details",
+                      actionType: "SUBMIT",
+                      iconType: "DOCUMENT",
+                    },
+                  ]
+                : [],
+            };
+          });
+
+          // Deduplicate projects by ID to guarantee unique React keys
+          const uniqueProjects = Array.from(new Map(mapped.map((p) => [p.id, p])).values());
+          setProjects(uniqueProjects);
+          if (uniqueProjects.length > 0) {
+            setSelectedProjectId((prev) =>
+              uniqueProjects.some((p) => p.id === prev) ? prev : uniqueProjects[0].id
+            );
+          }
         }
       } catch {
-        // Fallback gracefully to INITIAL_FREELANCER_PROJECTS
+        setProjects([]);
+      } finally {
+        if (mounted) setIsLoading(false);
       }
     }
     loadBackendData();
@@ -102,7 +267,91 @@ export default function FreelancerProjectsMilestonesView({
     };
   }, []);
 
-  // Summary KPIs
+  // Fetch real tasks and files for selected project
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setSelectedProjectTasks([]);
+      setSelectedProjectFiles([]);
+      return;
+    }
+
+    let active = true;
+    async function loadProjectDetails() {
+      try {
+        const [tasksRes, filesRes] = await Promise.all([
+          fetchProjectTasks(selectedProjectId),
+          fetchProjectFiles(selectedProjectId),
+        ]);
+
+        if (active) {
+          if (tasksRes.success && Array.isArray(tasksRes.tasks)) {
+            setSelectedProjectTasks(
+              tasksRes.tasks.map((t: any) => ({
+                id: t.id,
+                title: t.title,
+                description: t.description || "",
+                status: t.status === "DONE" ? "COMPLETED" : t.status === "IN_PROGRESS" ? "IN_PROGRESS" : "TO_DO",
+                priority: (t.priority || "MEDIUM") as any,
+                dueDate: t.dueDate
+                  ? new Date(t.dueDate).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })
+                  : "No deadline",
+                relatedMilestoneId: t.milestoneId || "",
+                milestoneTitle: t.milestoneId ? "Associated Milestone" : "Project Task",
+                completed: t.status === "DONE",
+              }))
+            );
+          } else {
+            setSelectedProjectTasks([]);
+          }
+
+          if (filesRes.success && Array.isArray(filesRes.files)) {
+            setSelectedProjectFiles(
+              filesRes.files.map((f: any) => {
+                const sizeStr =
+                  f.sizeBytes > 1024 * 1024
+                    ? `${(f.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+                    : `${Math.round(f.sizeBytes / 1024)} KB`;
+                return {
+                  id: f.fileId || f.id,
+                  name: f.name,
+                  fileType: f.mime || "Document",
+                  fileSize: sizeStr,
+                  uploadedBy: "FREELANCER",
+                  uploadedByName: f.uploader?.name || "Member",
+                  uploadDate: f.createdAt
+                    ? new Date(f.createdAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })
+                    : "",
+                  downloadUrl: `/api/files/${f.fileId || f.id}`,
+                };
+              })
+            );
+          } else {
+            setSelectedProjectFiles([]);
+          }
+        }
+      } catch {
+        if (active) {
+          setSelectedProjectTasks([]);
+          setSelectedProjectFiles([]);
+        }
+      }
+    }
+
+    loadProjectDetails();
+    return () => {
+      active = false;
+    };
+  }, [selectedProjectId]);
+
+  // Summary KPIs calculated strictly from real database records
   const summaryKPIs = useMemo(() => {
     return calculateSummaryKPIs(projects);
   }, [projects]);
@@ -133,24 +382,27 @@ export default function FreelancerProjectsMilestonesView({
         if (sortBy === "OLDEST") {
           return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
         }
-        // Default: NEWEST
         return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
       });
   }, [projects, selectedStatus, searchQuery, sortBy]);
 
-  // Selected project - defaults strictly to the 1st visible item if not matched
+  // Selected project with dynamic tasks & files injected
   const selectedProject = useMemo(() => {
     const found = filteredProjects.find((p) => p.id === selectedProjectId);
-    if (found) return found;
-    return filteredProjects[0] || projects[0] || INITIAL_FREELANCER_PROJECTS[0];
-  }, [filteredProjects, selectedProjectId, projects]);
+    const base = found || filteredProjects[0] || projects[0] || null;
+    if (!base) return null;
+    return {
+      ...base,
+      tasks: selectedProjectTasks,
+      files: selectedProjectFiles,
+    };
+  }, [filteredProjects, selectedProjectId, projects, selectedProjectTasks, selectedProjectFiles]);
 
   // Dynamic sticky height detection between directory and workspace columns
   useEffect(() => {
     const checkHeights = () => {
       if (!leftPanelRef.current || !rightPanelRef.current) return;
 
-      // On mobile / tablet screens (< 1024px), columns stack vertically so disable sticky
       if (window.innerWidth < 1024) {
         setShorterColumn("none");
         return;
@@ -159,41 +411,44 @@ export default function FreelancerProjectsMilestonesView({
       const leftH = leftPanelRef.current.offsetHeight;
       const rightH = rightPanelRef.current.offsetHeight;
 
-      // When there is a discernible difference in height (>= 30px)
-      if (leftH + 30 < rightH) {
-        setShorterColumn("left");
-      } else if (rightH + 30 < leftH) {
-        setShorterColumn("right");
-      } else {
+      if (Math.abs(leftH - rightH) < 48) {
         setShorterColumn("none");
+      } else if (leftH < rightH) {
+        setShorterColumn("left");
+      } else {
+        setShorterColumn("right");
       }
     };
 
     checkHeights();
-
-    const ro = new ResizeObserver(() => {
-      checkHeights();
-    });
-
-    if (leftPanelRef.current) ro.observe(leftPanelRef.current);
-    if (rightPanelRef.current) ro.observe(rightPanelRef.current);
-
+    const timer = setTimeout(checkHeights, 150);
     window.addEventListener("resize", checkHeights);
+
     return () => {
-      ro.disconnect();
+      clearTimeout(timer);
       window.removeEventListener("resize", checkHeights);
     };
-  }, [filteredProjects, selectedProject.id, activeTab]);
+  }, [activeTab, projects, selectedProjectId, filteredProjects]);
 
-  // Handle project selection
-  const handleSelectProject = (projId: string) => {
-    setSelectedProjectId(projId);
+  // Action handlers
+  const handleSelectProject = (projectId: string) => {
+    setSelectedProjectId(projectId);
     setMobileView("workspace");
   };
 
-  // Handle deliverable submission confirmation
-  const handleDeliverableSubmitted = (newSub: MilestoneSubmission) => {
-    if (!submittingMilestone) return;
+  const handleDeliverableSubmitted = (submission: MilestoneSubmission) => {
+    if (!submittingMilestone || !selectedProject) return;
+
+    const links: string[] = [];
+    if (submission.githubPrUrl) links.push(submission.githubPrUrl);
+    if (submission.demoUrl) links.push(submission.demoUrl);
+
+    submitMilestoneDeliverable(submittingMilestone.id, {
+      note: submission.completionNote || submission.deliverableDescription || "Deliverable submitted",
+      links: links.length > 0 ? links : undefined,
+    }).catch((err) => {
+      console.warn("Backend deliverable sync:", err);
+    });
 
     setProjects((prevProjects) =>
       prevProjects.map((p) => {
@@ -205,8 +460,8 @@ export default function FreelancerProjectsMilestonesView({
             return {
               ...m,
               workStatus: "AWAITING_CLIENT_REVIEW",
-              submittedAt: newSub.submissionDate,
-              submissions: [...m.submissions, newSub],
+              submittedAt: "Just now",
+              submissions: [submission, ...m.submissions],
             };
           }),
         };
@@ -215,12 +470,12 @@ export default function FreelancerProjectsMilestonesView({
 
     setSubmittingMilestone(null);
     showToast(
-      `Deliverable submitted for ${submittingMilestone.title}. Status updated to In Review.`
+      `Deliverable for ${submittingMilestone.title} submitted to client for verification.`
     );
   };
 
-  // Handle proposing a new milestone
   const handleProposeMilestone = (newMs: ProjectMilestone) => {
+    if (!selectedProject) return;
     setProjects((prevProjects) =>
       prevProjects.map((p) => {
         if (p.id !== selectedProject.id) return p;
@@ -231,56 +486,77 @@ export default function FreelancerProjectsMilestonesView({
       })
     );
     setShowProposeModal(false);
-    showToast(
-      `Proposed "${newMs.title}". A change request has been recorded for client approval.`
-    );
+    showToast(`New milestone proposed and pending bilateral agreement update.`);
   };
 
-  // Handle task completion toggle
-  const handleToggleTask = (taskId: string) => {
-    setProjects((prevProjects) =>
-      prevProjects.map((p) => {
-        if (p.id !== selectedProject.id) return p;
-        return {
-          ...p,
-          tasks: p.tasks.map((t) => {
-            if (t.id !== taskId) return t;
-            const completed = !t.completed;
-            return {
+  const handleToggleTask = async (taskId: string) => {
+    if (!selectedProject) return;
+    const task = selectedProjectTasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const nextCompleted = !task.completed;
+    const nextStatus = nextCompleted ? "DONE" : "TODO";
+
+    // Optimistic update
+    setSelectedProjectTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? {
               ...t,
-              completed,
-              status: completed ? "COMPLETED" : "IN_PROGRESS",
-            };
-          }),
-        };
-      })
+              status: nextCompleted ? "COMPLETED" : "TO_DO",
+              completed: nextCompleted,
+            }
+          : t
+      )
     );
+
+    try {
+      const res = await updateProjectTask(taskId, { status: nextStatus as any });
+      if (!res.success) {
+        showToast(res.error || "Failed to update task status");
+        setSelectedProjectTasks((prev) =>
+          prev.map((t) => (t.id === taskId ? task : t))
+        );
+      }
+    } catch {
+      showToast("Failed to communicate with task service");
+      setSelectedProjectTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? task : t))
+      );
+    }
   };
 
-  // Handle add task
-  const handleAddTask = (newTask: ProjectTask) => {
-    setProjects((prevProjects) =>
-      prevProjects.map((p) => {
-        if (p.id !== selectedProject.id) return p;
-        return {
-          ...p,
-          tasks: [newTask, ...p.tasks],
+  const handleAddTask = async (newTask: ProjectTask) => {
+    if (!selectedProjectId) return;
+    try {
+      const res = await createProjectTask(selectedProjectId, {
+        title: newTask.title,
+        description: newTask.description,
+        status: "TODO" as any,
+      });
+      if (res.success && res.task) {
+        const persistedTask: ProjectTask = {
+          id: res.task.id,
+          title: res.task.title,
+          description: res.task.description || "",
+          status: "TO_DO",
+          priority: newTask.priority,
+          dueDate: newTask.dueDate,
+          relatedMilestoneId: res.task.milestoneId || "",
+          milestoneTitle: "Project Task",
+          completed: false,
         };
-      })
-    );
+        setSelectedProjectTasks((prev) => [persistedTask, ...prev]);
+        showToast(`Task "${newTask.title}" added to project.`);
+      } else {
+        showToast(res.error || "Failed to create task on backend");
+      }
+    } catch {
+      showToast("Failed to create task");
+    }
   };
 
-  // Handle file upload
   const handleUploadFile = (newFile: ProjectFile) => {
-    setProjects((prevProjects) =>
-      prevProjects.map((p) => {
-        if (p.id !== selectedProject.id) return p;
-        return {
-          ...p,
-          files: [newFile, ...p.files],
-        };
-      })
-    );
+    setSelectedProjectFiles((prev) => [newFile, ...prev]);
   };
 
   return (
@@ -292,7 +568,7 @@ export default function FreelancerProjectsMilestonesView({
         </div>
       )}
 
-      {/* Top Page Header (Title + Subtitle + Find More Projects Button) */}
+      {/* Top Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">
@@ -334,19 +610,26 @@ export default function FreelancerProjectsMilestonesView({
               : undefined
           }
         >
-          <ProjectDirectory
-            projects={projects}
-            filteredProjects={filteredProjects}
-            selectedProjectId={selectedProject.id}
-            onSelectProject={handleSelectProject}
-            selectedStatus={selectedStatus}
-            onSelectStatus={setSelectedStatus}
-            kpis={summaryKPIs}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            sortBy={sortBy}
-            onSortChange={setSortBy}
-          />
+          {isLoading ? (
+            <div className="p-8 text-center rounded-2xl bg-white border border-slate-200/90 text-slate-500 space-y-2">
+              <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-xs font-semibold text-slate-500">Loading delivery projects...</p>
+            </div>
+          ) : (
+            <ProjectDirectory
+              projects={projects}
+              filteredProjects={filteredProjects}
+              selectedProjectId={selectedProject?.id || ""}
+              onSelectProject={handleSelectProject}
+              selectedStatus={selectedStatus}
+              onSelectStatus={setSelectedStatus}
+              kpis={summaryKPIs}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              sortBy={sortBy}
+              onSortChange={setSortBy}
+            />
+          )}
         </div>
 
         {/* Right Panel: Selected Project Workspace (7 cols on desktop) */}
@@ -361,84 +644,98 @@ export default function FreelancerProjectsMilestonesView({
               : undefined
           }
         >
-          {/* Project Header */}
-          <SelectedProjectHeader
-            project={selectedProject}
-            onBackToDirectory={() => setMobileView("directory")}
-            onOpenWorkspace={() => onNavigateTab("workspace")}
-            showToast={showToast}
-          />
-
-          {/* Project Navigation Tabs */}
-          <ProjectTabs
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            milestonesCount={selectedProject.milestones.length}
-            tasksCount={selectedProject.tasks.length}
-            filesCount={selectedProject.files.length}
-          />
-
-          {/* Tab Content */}
-          <div className="pt-1">
-            {activeTab === "milestones" && (
-              <ProjectMilestonesTab
+          {selectedProject ? (
+            <>
+              {/* Project Header */}
+              <SelectedProjectHeader
                 project={selectedProject}
-                onOpenSubmitModal={(ms) => setSubmittingMilestone(ms)}
-                onOpenDetailsModal={(ms) => setViewingMilestone(ms)}
-                onOpenProposeModal={() => setShowProposeModal(true)}
-                onSendMessageAction={() => onNavigateTab("workspace")}
-                showToast={showToast}
-              />
-            )}
-
-            {activeTab === "overview" && (
-              <ProjectOverviewTab
-                project={selectedProject}
-                onNavigateToTab={(tab) => setActiveTab(tab)}
+                onBackToDirectory={() => setMobileView("directory")}
                 onOpenWorkspace={() => onNavigateTab("workspace")}
-              />
-            )}
-
-            {activeTab === "tasks" && (
-              <ProjectTasksTab
-                tasks={selectedProject.tasks}
-                onToggleTask={handleToggleTask}
-                onAddTask={handleAddTask}
                 showToast={showToast}
               />
-            )}
 
-            {activeTab === "files" && (
-              <ProjectFilesTab
-                files={selectedProject.files}
-                onUploadFile={handleUploadFile}
-                showToast={showToast}
+              {/* Project Navigation Tabs */}
+              <ProjectTabs
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                milestonesCount={selectedProject.milestones.length}
+                tasksCount={selectedProject.tasks.length}
+                filesCount={selectedProject.files.length}
               />
-            )}
 
-            {activeTab === "messages" && (
-              <ProjectMessagesTab
-                project={selectedProject}
-                onOpenWorkspace={() => onNavigateTab("workspace")}
-              />
-            )}
+              {/* Tab Content */}
+              <div className="pt-1">
+                {activeTab === "milestones" && (
+                  <ProjectMilestonesTab
+                    project={selectedProject}
+                    onOpenSubmitModal={(ms) => setSubmittingMilestone(ms)}
+                    onOpenDetailsModal={(ms) => setViewingMilestone(ms)}
+                    onOpenProposeModal={() => setShowProposeModal(true)}
+                    onSendMessageAction={() => onNavigateTab("workspace")}
+                    showToast={showToast}
+                  />
+                )}
 
-            {activeTab === "payments" && (
-              <ProjectPaymentsTab
-                project={selectedProject}
-                onOpenEarnings={() => onNavigateTab("earnings")}
-              />
-            )}
+                {activeTab === "overview" && (
+                  <ProjectOverviewTab
+                    project={selectedProject}
+                    onNavigateToTab={(tab) => setActiveTab(tab)}
+                    onOpenWorkspace={() => onNavigateTab("workspace")}
+                  />
+                )}
 
-            {activeTab === "activity" && (
-              <ProjectActivityTab project={selectedProject} />
-            )}
-          </div>
+                {activeTab === "tasks" && (
+                  <ProjectTasksTab
+                    projectId={selectedProject.id}
+                    tasks={selectedProject.tasks}
+                    onToggleTask={handleToggleTask}
+                    onAddTask={handleAddTask}
+                    showToast={showToast}
+                  />
+                )}
+
+                {activeTab === "files" && (
+                  <ProjectFilesTab
+                    projectId={selectedProject.id}
+                    files={selectedProject.files}
+                    onUploadFile={handleUploadFile}
+                    showToast={showToast}
+                  />
+                )}
+
+                {activeTab === "messages" && (
+                  <ProjectMessagesTab
+                    project={selectedProject}
+                    onOpenWorkspace={() => onNavigateTab("workspace")}
+                  />
+                )}
+
+                {activeTab === "payments" && (
+                  <ProjectPaymentsTab
+                    project={selectedProject}
+                    onOpenEarnings={() => onNavigateTab("earnings")}
+                  />
+                )}
+
+                {activeTab === "activity" && (
+                  <ProjectActivityTab project={selectedProject} />
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="p-12 text-center rounded-2xl bg-white border border-slate-200/90 text-slate-500">
+              <FolderKanban className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <h3 className="text-base font-bold text-slate-800">No project selected</h3>
+              <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                Select a project from the directory or browse opportunities to begin delivering milestones.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Modals */}
-      {submittingMilestone && (
+      {submittingMilestone && selectedProject && (
         <MilestoneSubmissionModal
           milestone={submittingMilestone}
           onClose={() => setSubmittingMilestone(null)}
@@ -446,7 +743,7 @@ export default function FreelancerProjectsMilestonesView({
         />
       )}
 
-      {viewingMilestone && (
+      {viewingMilestone && selectedProject && (
         <MilestoneDetailsModal
           milestone={viewingMilestone}
           onClose={() => setViewingMilestone(null)}
@@ -458,7 +755,7 @@ export default function FreelancerProjectsMilestonesView({
         />
       )}
 
-      {showProposeModal && (
+      {showProposeModal && selectedProject && (
         <ProposeMilestoneModal
           projectTitle={selectedProject.title}
           nextOrderIndex={selectedProject.milestones.length + 1}

@@ -10,6 +10,7 @@ import {
 import { ProjectTask } from "@/lib/freelancer-projects-types";
 
 interface ProjectTasksTabProps {
+  projectId?: string;
   tasks: ProjectTask[];
   onToggleTask: (taskId: string) => void;
   onAddTask: (newTask: ProjectTask) => void;
@@ -17,6 +18,7 @@ interface ProjectTasksTabProps {
 }
 
 export default function ProjectTasksTab({
+  projectId,
   tasks,
   onToggleTask,
   onAddTask,
@@ -27,7 +29,7 @@ export default function ProjectTasksTab({
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newPriority, setNewPriority] = useState<"LOW" | "MEDIUM" | "HIGH">("MEDIUM");
-  const [newDueDate, setNewDueDate] = useState("Dec 01, 2026");
+  const [newDueDate, setNewDueDate] = useState("");
 
   const filteredTasks = tasks.filter((t) => {
     if (filter === "COMPLETED") return t.completed;
@@ -46,15 +48,16 @@ export default function ProjectTasksTab({
       description: newDesc.trim() || "Task added by freelancer",
       status: "TO_DO",
       priority: newPriority,
-      dueDate: newDueDate,
-      relatedMilestoneId: "ms-shopkart-3",
-      milestoneTitle: "Milestone 3: Testing & Deployment",
+      dueDate: newDueDate.trim() || "No deadline",
+      relatedMilestoneId: "",
+      milestoneTitle: "Project Task",
       completed: false,
     };
 
     onAddTask(task);
     setNewTitle("");
     setNewDesc("");
+    setNewDueDate("");
     setShowAddForm(false);
     showToast(`Task "${task.title}" added to project board.`);
   };
@@ -143,8 +146,8 @@ export default function ProjectTasksTab({
                 type="text"
                 value={newDueDate}
                 onChange={(e) => setNewDueDate(e.target.value)}
-                placeholder="Due date"
-                className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-700 bg-white w-32"
+                placeholder="Due date (optional)"
+                className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-700 bg-white w-40"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -169,8 +172,12 @@ export default function ProjectTasksTab({
       {/* Task List */}
       <div className="space-y-2.5">
         {filteredTasks.length === 0 ? (
-          <div className="p-8 text-center rounded-2xl bg-white border border-slate-200 text-slate-500 text-xs">
-            No tasks found for this filter.
+          <div className="p-10 text-center rounded-2xl bg-white border border-slate-200/90 text-slate-500">
+            <CheckSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-slate-800">No implementation tasks found</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Use the &quot;Add Task&quot; button above to create deliverable checklists and work items for this project.
+            </p>
           </div>
         ) : (
           filteredTasks.map((t) => (
@@ -226,9 +233,9 @@ export default function ProjectTasksTab({
                   <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      Due {t.dueDate}
+                      Due: {t.dueDate}
                     </span>
-                    <span>· {t.milestoneTitle}</span>
+                    {t.milestoneTitle && <span>· {t.milestoneTitle}</span>}
                   </div>
                 </div>
               </div>

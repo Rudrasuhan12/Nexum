@@ -135,7 +135,7 @@ export async function verifySessionToken(token: string): Promise<DemoUser | null
       statusBadge: data.statusBadge,
       summary: "",
       canLogin: true,
-      isDemoData: true,
+      isDemoData: false,
       presenceStatus: data.presenceStatus || "available",
     };
   } catch {
@@ -149,7 +149,58 @@ export async function getCurrentUser(): Promise<DemoUser | null> {
     const cookieStore = await cookies();
     const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
     if (!token) return null;
-    return await verifySessionToken(token);
+
+    // 1. Try local HMAC session verification
+    const localUser = await verifySessionToken(token);
+    if (localUser) return localUser;
+
+    // 2. Validate against Express database session if local HMAC fails
+    const backendUrl =
+      process.env.BACKEND_URL ||
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      "http://localhost:4000";
+    try {
+      const res = await fetch(`${backendUrl}/api/auth/me`, {
+        headers: {
+          Cookie: `${AUTH_COOKIE_NAME}=${token}`,
+        },
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.id) {
+          return {
+            id: data.id,
+            name: data.name,
+            email: data.email,
+            role: data.role as UserRole,
+            avatar:
+              data.role === "CLIENT"
+                ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=128&h=128&fit=crop&crop=faces"
+                : "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=128&h=128&fit=crop&crop=faces",
+            title:
+              data.role === "CLIENT"
+                ? "Verified Client"
+                : "Senior Full-Stack & Payment Rails Engineer",
+            companyOrHandle:
+              data.role === "CLIENT"
+                ? "Nexum Client"
+                : `@${data.name.toLowerCase().replace(/\s+/g, "_")}`,
+            location: "Remote",
+            timezone: "UTC",
+            statusBadge:
+              data.role === "CLIENT" ? "Verified Buyer" : "Verified Freelancer",
+            summary: "Active platform user",
+            canLogin: true,
+            isDemoData: false,
+          };
+        }
+      }
+    } catch {
+      // Fall through
+    }
+
+    return null;
   } catch {
     return null;
   }

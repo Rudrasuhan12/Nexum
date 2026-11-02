@@ -172,7 +172,7 @@ export default function SelectedProjectHeader({
         {/* Project Value */}
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4f46e5] font-bold text-xs shrink-0">
-            ₹
+            {project.currency === "INR" ? "₹" : "$"}
           </div>
           <div>
             <p className="text-[10px] text-slate-400 font-medium">Project Value</p>
