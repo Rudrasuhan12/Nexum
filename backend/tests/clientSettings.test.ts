@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { clientOverviewService } from "../src/services/clientOverviewService.js";
 
 describe("Client Workspace Settings Service & End-to-End Suite", () => {
@@ -134,5 +134,14 @@ describe("Client Workspace Settings Service & End-to-End Suite", () => {
     expect(ticketResult.success).toBe(true);
     expect(ticketResult.ticketId).toMatch(/^tkt_/);
     expect(ticketResult.message.toLowerCase()).toContain("support ticket");
+  });
+
+  afterAll(async () => {
+    // Restore demo password so demo login remains functional across test runs
+    await clientOverviewService.changePassword(
+      "usr_client_alex",
+      "thirdPassword2026!",
+      "demo1234"
+    );
   });
 });

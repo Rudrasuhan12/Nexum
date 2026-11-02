@@ -113,15 +113,8 @@ export default function LoginPage() {
 
     setIsSubmitting(true);
     try {
-      if (persona === "client" && email.trim() === client.email) {
-        const ok = (await loginWithCredentials(client.email, password || "demo1234")).success;
-        if (ok) return router.push("/client/dashboard");
-      } else if (persona === "freelancer" && email.trim() === freelancerA.email) {
-        const ok = (await loginWithCredentials(freelancerA.email, password || "demo1234")).success;
-        if (ok) return router.push("/freelancer/dashboard");
-      }
-
-      const result = await loginWithCredentials(email.trim(), password);
+      const passToUse = password || (persona ? "demo1234" : "");
+      const result = await loginWithCredentials(email.trim(), passToUse);
       if (result.success) {
         if (result.user?.role === "FREELANCER") {
           router.push("/freelancer/dashboard");

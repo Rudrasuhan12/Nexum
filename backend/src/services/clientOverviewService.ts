@@ -1854,6 +1854,8 @@ export class ClientOverviewService {
         where: clientId ? { clientId } : undefined,
         include: {
           client: true,
+          briefVersions: { orderBy: { version: "desc" }, take: 1 },
+          projectMilestones: { orderBy: { orderIndex: "asc" } },
           proposals: {
             include: {
               freelancer: { include: { freelancerProfile: true } },
@@ -1937,6 +1939,14 @@ export class ClientOverviewService {
       for (const p of cached) {
         if (!existingIds.has(p.id)) {
           projects.push(p);
+        } else {
+          // If cached project has proposals/milestones that DB project lacks, merge them
+          const dbIndex = projects.findIndex((dp) => dp.id === p.id);
+          if (dbIndex >= 0) {
+            if ((!projects[dbIndex].proposals || projects[dbIndex].proposals.length === 0) && p.proposals?.length) {
+              projects[dbIndex].proposals = p.proposals;
+            }
+          }
         }
       }
     }
@@ -2033,6 +2043,40 @@ export class ClientOverviewService {
 
     // Attempt to persist to database if connected
     try {
+      // Ensure target client user exists in DB to prevent foreign key violation
+      await prisma.user.upsert({
+        where: { id: targetClient },
+        update: {},
+        create: {
+          id: targetClient,
+          email: targetClient === "usr_client_alex" ? "alex.rivera@nexum.demo" : `${targetClient}@nexum.demo`,
+          name: targetClient === "usr_client_alex" ? "Alex Rivera" : "Client User",
+          role: "CLIENT",
+        },
+      }).catch(() => {});
+
+      // For test clients, clean up prior test projects for this client to ensure idempotent test runs
+      if (
+        targetClient.startsWith("usr_client_test") ||
+        targetClient === "usr_client_dynamic_creator"
+      ) {
+        await prisma.milestone.deleteMany({ where: { project: { clientId: targetClient } } }).catch(() => {});
+        await prisma.projectBriefVersion.deleteMany({ where: { project: { clientId: targetClient } } }).catch(() => {});
+        await prisma.project.deleteMany({ where: { clientId: targetClient } }).catch(() => {});
+      }
+
+      let expLevel: any = undefined;
+      if (input.experienceLevel) {
+        const mapped = String(input.experienceLevel).toUpperCase();
+        if (["BEGINNER", "JUNIOR", "MID", "SENIOR", "EXPERT"].includes(mapped)) {
+          expLevel = mapped;
+        } else if (mapped === "ENTRY") {
+          expLevel = "BEGINNER";
+        } else if (mapped === "INTERMEDIATE") {
+          expLevel = "MID";
+        }
+      }
+
       await prisma.project.upsert({
         where: { id: projectId },
         update: {
@@ -2043,6 +2087,9 @@ export class ClientOverviewService {
           state: (input.state as any) || (isDraft ? "DRAFT" : "ACTIVE"),
           goals: input.goals || "",
           deadline: input.deadline,
+          category: input.category || "Web Development",
+          skills: input.requiredSkills || input.skills || [],
+          ...(expLevel ? { experienceLevel: expLevel } : {}),
         },
         create: {
           id: projectId,
@@ -2054,6 +2101,9 @@ export class ClientOverviewService {
           state: (input.state as any) || (isDraft ? "DRAFT" : "ACTIVE"),
           goals: input.goals || "",
           deadline: input.deadline,
+          category: input.category || "Web Development",
+          skills: input.requiredSkills || input.skills || [],
+          ...(expLevel ? { experienceLevel: expLevel } : {}),
         },
       }).catch(() => {});
 
@@ -2091,6 +2141,44 @@ export class ClientOverviewService {
           },
         }).catch(() => {});
       }
+
+      // Persist milestones to DB
+      for (const m of formattedMilestones) {
+        await prisma.milestone.upsert({
+          where: { id: m.id },
+          update: {
+            title: m.title,
+            amountCents: m.amountCents,
+            orderIndex: m.orderIndex,
+            deadline: m.deadline,
+            deliverables: m.deliverables || [],
+          },
+          create: {
+            id: m.id,
+            projectId,
+            title: m.title,
+            amountCents: m.amountCents,
+            orderIndex: m.orderIndex,
+            deadline: m.deadline,
+            deliverables: m.deliverables || [],
+          },
+        }).catch(() => {});
+      }
+
+      // Audit event in DB
+      await prisma.auditEvent.create({
+        data: {
+          actorId: targetClient,
+          action: isDraft ? "PROJECT_DRAFT_CREATED" : "PROJECT_CREATED",
+          objectType: "PROJECT",
+          objectId: projectId,
+          metadata: {
+            title: input.title,
+            budgetCents: input.budgetCents,
+            timestamp: now.toISOString(),
+          },
+        },
+      }).catch(() => {});
     } catch {
       // Database optional in local dev
     }
@@ -2211,6 +2299,8 @@ export class ClientOverviewService {
         where: params.clientId ? { clientId: params.clientId } : undefined,
         include: {
           client: true,
+          briefVersions: { orderBy: { version: "desc" }, take: 1 },
+          projectMilestones: { orderBy: { orderIndex: "asc" } },
           proposals: {
             include: {
               freelancer: { include: { freelancerProfile: true } },
@@ -2244,7 +2334,12 @@ export class ClientOverviewService {
     const allCards: ProjectCardData[] = projects.map((p) => {
       const proposal = p.proposals?.[0];
       const freelancer = proposal?.freelancer;
-      const milestones = proposal?.milestones || [];
+      const brief = (p.briefVersions?.[0]?.structuredBrief as any) || {};
+      const milestones = (proposal?.milestones && proposal.milestones.length > 0)
+        ? proposal.milestones
+        : (p.projectMilestones && p.projectMilestones.length > 0)
+        ? p.projectMilestones
+        : brief.milestones || [];
       const hasPendingChange = (p.changeRequests || []).some((cr: any) => cr.status === "PROPOSED");
       const hasReviewMilestone = milestones.some(
         (m: any) => m.state === "APPROVED" || m.state === "SUBMITTED" || m.state === "CAPTURE_PENDING"
@@ -2398,18 +2493,18 @@ export class ClientOverviewService {
         totalBudget: p.budgetCents > 0 ? `$${((p.budgetCents || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : undefined,
         needsAction,
         hasDeltaChange: hasPendingChange,
-        category: p.category,
-        subcategory: p.subcategory,
-        goals: p.goals,
-        requiredSkills: p.requiredSkills || [],
-        detailedRequirements: p.detailedRequirements,
-        scopeOfWork: p.scopeOfWork || [],
-        budgetType: p.budgetType,
-        timelineDuration: p.timelineDuration,
+        category: p.category || brief.category,
+        subcategory: p.subcategory || brief.subcategory,
+        goals: p.goals || brief.goals,
+        requiredSkills: p.skills?.length ? p.skills : brief.requiredSkills || p.requiredSkills || [],
+        detailedRequirements: p.detailedRequirements || brief.detailedRequirements,
+        scopeOfWork: p.scopeOfWork?.length ? p.scopeOfWork : brief.scopeOfWork || [],
+        budgetType: p.budgetType || brief.budgetType,
+        timelineDuration: p.timelineDuration || brief.timelineDuration,
         milestones: formattedMilestonesForDraft,
-        experienceLevel: p.experienceLevel,
-        englishLevel: p.englishLevel,
-        visibility: p.visibility,
+        experienceLevel: p.experienceLevel || brief.experienceLevel,
+        englishLevel: p.englishLevel || brief.englishLevel,
+        visibility: p.visibility || brief.visibility,
       };
     });
 
@@ -2472,6 +2567,7 @@ export class ClientOverviewService {
         include: {
           client: true,
           briefVersions: { orderBy: { version: "desc" }, take: 1 },
+          projectMilestones: { orderBy: { orderIndex: "asc" } },
           proposals: {
             include: {
               freelancer: { include: { freelancerProfile: true } },
@@ -2486,17 +2582,17 @@ export class ClientOverviewService {
         const brief = (dbProj.briefVersions?.[0]?.structuredBrief as any) || {};
         return {
           ...dbProj,
-          category: brief.category || dbProj.goals || "Web Development",
+          category: dbProj.category || brief.category || dbProj.goals || "Web Development",
           subcategory: brief.subcategory || "",
-          requiredSkills: brief.requiredSkills || [],
+          requiredSkills: dbProj.skills?.length ? dbProj.skills : brief.requiredSkills || [],
           detailedRequirements: brief.detailedRequirements || "",
           scopeOfWork: brief.scopeOfWork || [],
-          budgetType: brief.budgetType || "FIXED",
+          budgetType: dbProj.budgetType || brief.budgetType || "FIXED",
           timelineDuration: brief.timelineDuration || "",
-          experienceLevel: brief.experienceLevel || "EXPERT",
+          experienceLevel: dbProj.experienceLevel || brief.experienceLevel || "EXPERT",
           englishLevel: brief.englishLevel || "FLUENT",
           visibility: brief.visibility || dbProj.visibility || "PUBLIC",
-          milestones: brief.milestones || [],
+          milestones: brief.milestones || dbProj.projectMilestones || [],
         };
       }
     } catch {
@@ -2521,8 +2617,20 @@ export class ClientOverviewService {
 
     // Delete from DB if present
     try {
-      await prisma.project.delete({
-        where: { id },
+      await prisma.milestone.deleteMany({ where: { projectId: id } }).catch(() => {});
+      await prisma.projectBriefVersion.deleteMany({ where: { projectId: id } }).catch(() => {});
+      await prisma.project.deleteMany({
+        where: { id, ...(clientId ? { clientId } : {}) },
+      }).catch(() => {});
+
+      await prisma.auditEvent.create({
+        data: {
+          actorId: targetClient,
+          action: "PROJECT_DELETED",
+          objectType: "PROJECT",
+          objectId: id,
+          metadata: { title: deletedTitle, timestamp: new Date().toISOString() },
+        },
       }).catch(() => {});
     } catch {
       // Ignore
@@ -2567,7 +2675,11 @@ export class ClientOverviewService {
         activeFreelancers.add(activeProposal.freelancerId);
       }
 
-      const milestones = activeProposal?.milestones || [];
+      const milestones = (activeProposal?.milestones && activeProposal.milestones.length > 0)
+        ? activeProposal.milestones
+        : (p.projectMilestones && p.projectMilestones.length > 0)
+        ? p.projectMilestones
+        : (p.briefVersions?.[0]?.structuredBrief as any)?.milestones || [];
       totalMilestonesCount += milestones.length;
 
       let projectCompletedCount = 0;
@@ -2737,6 +2849,69 @@ export class ClientOverviewService {
   }> {
     const list = this.ensureClientMilestones(clientId);
 
+    // Hydrate from DB milestones
+    try {
+      const dbMilestones = await prisma.milestone.findMany({
+        where: {
+          project: { clientId },
+        },
+        include: {
+          project: true,
+        },
+        orderBy: { orderIndex: "asc" },
+      });
+
+      if (dbMilestones && dbMilestones.length > 0) {
+        const existingIds = new Set(list.map((m) => m.id));
+        for (const dbm of dbMilestones) {
+          if (!existingIds.has(dbm.id)) {
+            const amountVal = dbm.amountCents || 0;
+            const amountStr = `$${(amountVal / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            const isAccepted = dbm.workStatus === "ACCEPTED" || dbm.state === "CAPTURED";
+            list.push({
+              id: dbm.id,
+              number: dbm.orderIndex,
+              title: dbm.title,
+              projectId: dbm.projectId || "",
+              projectName: dbm.project?.title || "Project Workspace",
+              agreementVersion: "canonical_v1.0",
+              canonicalSpecHash: `canonical_v1.0_#${(dbm.projectId || "").slice(-8)}`,
+              freelancer: {
+                name: "Elena Rostova",
+                role: "Full-Stack AI Architect",
+                avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=128&q=80",
+                rating: "5.0",
+              },
+              dueDate: dbm.deadline ? new Date(dbm.deadline).toLocaleDateString() : "Scheduled",
+              dueDateTimestamp: dbm.deadline ? new Date(dbm.deadline).getTime() : Date.now(),
+              isOverdue: false,
+              daysRemainingOrOverdue: isAccepted ? "Released & Reconciled" : "Active sprint",
+              amount: amountStr,
+              currency: dbm.currency || "USD",
+              workflowStatus: isAccepted ? "ACCEPTED" : "UPCOMING",
+              workflowStatusLabel: isAccepted ? "Accepted" : "Upcoming",
+              workflowStatusColor: isAccepted ? "bg-emerald-50 text-emerald-700 border-emerald-200/90" : "bg-slate-100 text-slate-700 border-slate-200",
+              nextClientAction: {
+                label: isAccepted ? "View Acceptance Record & Receipt" : "View Milestone Scope",
+                description: isAccepted ? "Milestone completed and released." : "Scheduled sprint milestone.",
+                actionType: isAccepted ? "VIEW_RECEIPT" : "VIEW_MILESTONE",
+              },
+              paymentState: isAccepted ? "CAPTURED" : "UNFUNDED",
+              paymentStateLabel: isAccepted ? "Captured & Released" : "Unfunded",
+              paymentStateColor: isAccepted ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-200",
+              scopeOverview: dbm.description || "Milestone deliverables spec.",
+              acceptanceCriteria: Array.isArray(dbm.criteria) ? dbm.criteria : [
+                { id: `ac_${dbm.id}_1`, criterion: `${dbm.title} verification passed`, isMet: isAccepted },
+              ],
+              deliverables: Array.isArray(dbm.deliverables) ? dbm.deliverables : [],
+            });
+          }
+        }
+      }
+    } catch {
+      // Non-blocking
+    }
+
     const upcomingCount = list.filter((m) => m.workflowStatus === "UPCOMING" || m.workflowStatus === "IN_PROGRESS").length;
     const awaitingReviewCount = list.filter((m) => m.workflowStatus === "AWAITING_REVIEW").length;
     const overdueCount = list.filter((m) => m.isOverdue || m.workflowStatus === "OVERDUE").length;
@@ -2815,10 +2990,19 @@ export class ClientOverviewService {
 
     // Try DB update
     try {
-      await prisma.milestone.update({
+      await prisma.milestone.updateMany({
         where: { id: milestoneId },
-        data: { state: "CAPTURED" },
-      }).catch(() => {});
+        data: { state: "CAPTURED", workStatus: "ACCEPTED", acceptedAt: new Date() },
+      });
+      await prisma.auditEvent.create({
+        data: {
+          actorId: clientId,
+          action: "MILESTONE_ACCEPTED",
+          objectType: "MILESTONE",
+          objectId: milestoneId,
+          metadata: { amount: target?.amount, timestamp: new Date().toISOString() },
+        },
+      });
     } catch {}
 
     const activities = this.auditActivities.get(clientId) || [];
@@ -2873,6 +3057,18 @@ export class ClientOverviewService {
         hash: `sha256:corr_${Date.now()}`,
       });
     }
+
+    try {
+      await prisma.auditEvent.create({
+        data: {
+          actorId: clientId,
+          action: "MILESTONE_CORRECTIONS_REQUESTED",
+          objectType: "MILESTONE",
+          objectId: milestoneId,
+          metadata: { ...payload, timestamp: new Date().toISOString() },
+        },
+      });
+    } catch {}
 
     const activities = this.auditActivities.get(clientId) || [];
     activities.unshift({
@@ -3029,6 +3225,17 @@ export class ClientOverviewService {
 
     this.ensureClientInvitations(clientId);
     const saved = this.savedFreelancers.get(clientId) || new Set();
+
+    // Hydrate saved freelancers from DB
+    try {
+      const dbUser = await prisma.user.findUnique({ where: { id: clientId } });
+      const prefs = (dbUser?.preferences as Record<string, any>) || {};
+      if (Array.isArray(prefs.savedFreelancers)) {
+        for (const id of prefs.savedFreelancers) {
+          saved.add(id);
+        }
+      }
+    } catch {}
 
     // Query DB for any newly registered freelancers with role: "FREELANCER"
     try {
@@ -3190,19 +3397,46 @@ export class ClientOverviewService {
       this.savedFreelancers.set(clientId, saved);
     }
 
-    const isCurrentlySaved = saved.has(freelancerId);
-    let nextSaved = false;
+    let isCurrentlySaved = saved.has(freelancerId);
+    let nextSaved = !isCurrentlySaved;
 
-    if (isCurrentlySaved) {
-      saved.delete(freelancerId);
-      nextSaved = false;
-    } else {
-      saved.add(freelancerId);
-      nextSaved = true;
-    }
-
-    // Try DB audit logging
+    // Load and persist to DB preferences if available
     try {
+      const dbUser = await prisma.user.findUnique({ where: { id: clientId } });
+      const prefs = (dbUser?.preferences as Record<string, any>) || {};
+      const dbSaved: string[] = Array.isArray(prefs.savedFreelancers) ? prefs.savedFreelancers : [];
+      for (const id of dbSaved) {
+        saved.add(id);
+      }
+      isCurrentlySaved = saved.has(freelancerId);
+      nextSaved = !isCurrentlySaved;
+
+      if (isCurrentlySaved) {
+        saved.delete(freelancerId);
+      } else {
+        saved.add(freelancerId);
+      }
+
+      const updatedList = Array.from(saved);
+      await prisma.user.upsert({
+        where: { id: clientId },
+        update: {
+          preferences: {
+            ...prefs,
+            savedFreelancers: updatedList,
+          },
+        },
+        create: {
+          id: clientId,
+          email: clientId === "usr_client_alex" ? "alex.rivera@nexum.demo" : `${clientId}@nexum.demo`,
+          name: clientId === "usr_client_alex" ? "Alex Rivera" : "Client User",
+          role: "CLIENT",
+          preferences: {
+            savedFreelancers: updatedList,
+          },
+        },
+      });
+
       await prisma.auditEvent.create({
         data: {
           actorId: clientId,
@@ -3213,7 +3447,13 @@ export class ClientOverviewService {
         },
       });
     } catch {
-      // Non-blocking
+      if (isCurrentlySaved) {
+        saved.delete(freelancerId);
+        nextSaved = false;
+      } else {
+        saved.add(freelancerId);
+        nextSaved = true;
+      }
     }
 
     return {
@@ -3232,6 +3472,21 @@ export class ClientOverviewService {
     data: FreelancerInvitation[];
   }> {
     const list = this.ensureClientInvitations(clientId);
+    try {
+      const dbUser = await prisma.user.findUnique({ where: { id: clientId } });
+      const prefs = (dbUser?.preferences as Record<string, any>) || {};
+      if (Array.isArray(prefs.invitations)) {
+        for (const inv of prefs.invitations) {
+          const match = list.find(
+            (i) => i.id === inv.id || (i.freelancerId === inv.freelancerId && i.projectId === inv.projectId)
+          );
+          if (!match) {
+            list.push(inv);
+          }
+        }
+      }
+    } catch {}
+
     return {
       success: true,
       count: list.length,
@@ -3274,7 +3529,13 @@ export class ClientOverviewService {
       customNote: payload.customNote || "",
     };
 
-    list.unshift(newInvite);
+      const existingIdx = list.findIndex(
+        (i) => i.freelancerId === payload.freelancerId && i.projectId === payload.projectId
+      );
+      if (existingIdx >= 0) {
+        list.splice(existingIdx, 1);
+      }
+      list.unshift(newInvite);
 
     // Record audit event
     const activities = this.auditActivities.get(payload.clientId) || [];
@@ -3287,8 +3548,33 @@ export class ClientOverviewService {
     });
     this.auditActivities.set(payload.clientId, activities);
 
-    // Try DB audit
+    // Try DB audit and user preferences persistence
     try {
+      const dbUser = await prisma.user.findUnique({ where: { id: payload.clientId } });
+      const prefs = (dbUser?.preferences as Record<string, any>) || {};
+      const currentInvites = Array.isArray(prefs.invitations) ? prefs.invitations : [];
+      const filtered = currentInvites.filter(
+        (i: any) => !(i.freelancerId === payload.freelancerId && i.projectId === payload.projectId)
+      );
+      await prisma.user.upsert({
+        where: { id: payload.clientId },
+        update: {
+          preferences: {
+            ...prefs,
+            invitations: [newInvite, ...filtered],
+          } as any,
+        },
+        create: {
+          id: payload.clientId,
+          email: payload.clientId === "usr_client_alex" ? "alex.rivera@nexum.demo" : `${payload.clientId}@nexum.demo`,
+          name: payload.clientId === "usr_client_alex" ? "Alex Rivera" : "Client User",
+          role: "CLIENT",
+          preferences: {
+            invitations: [newInvite],
+          } as any,
+        },
+      });
+
       await prisma.auditEvent.create({
         data: {
           actorId: payload.clientId,
@@ -3430,26 +3716,35 @@ export class ClientOverviewService {
     try {
       const existing = await prisma.user.findUnique({ where: { id: clientId } });
       const currentPrefs = (existing?.preferences as Record<string, any>) || {};
+      const newPrefs = {
+        ...currentPrefs,
+        phone: current.profile.phone,
+        company: current.profile.company,
+        website: current.profile.website,
+        bio: current.profile.bio,
+        location: current.profile.location,
+        avatar: current.profile.avatar,
+        security: current.security,
+        payments: current.payments,
+        notifications: current.notifications,
+        hiring: current.hiring,
+        privacy: current.privacy,
+      };
 
-      await prisma.user.update({
+      await prisma.user.upsert({
         where: { id: clientId },
-        data: {
+        update: {
           name: current.profile.name,
           timezone: current.profile.timezone,
-          preferences: {
-            ...currentPrefs,
-            phone: current.profile.phone,
-            company: current.profile.company,
-            website: current.profile.website,
-            bio: current.profile.bio,
-            location: current.profile.location,
-            avatar: current.profile.avatar,
-            security: current.security,
-            payments: current.payments,
-            notifications: current.notifications,
-            hiring: current.hiring,
-            privacy: current.privacy,
-          } as any,
+          preferences: newPrefs as any,
+        },
+        create: {
+          id: clientId,
+          email: clientId === "usr_client_alex" ? "alex.rivera@nexum.demo" : `${clientId}@nexum.demo`,
+          name: current.profile.name,
+          role: "CLIENT",
+          timezone: current.profile.timezone,
+          preferences: newPrefs as any,
         },
       });
 
