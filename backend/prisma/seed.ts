@@ -1,4 +1,9 @@
 import { PrismaClient, Role, AvailabilityStatus, ProjectState, ProposalStatus, PaymentState } from "@prisma/client";
+import dotenv from "dotenv";
+import path from "path";
+
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+dotenv.config({ path: path.resolve(process.cwd(), "backend", ".env") });
 
 const prisma = new PrismaClient();
 
@@ -25,8 +30,23 @@ async function main() {
   });
   console.log(`✅ Seeded Client: ${client.name} (${client.email})`);
 
-  // 2. Seed Freelancers (A, B, C)
+  // 2. Seed Freelancers (A, B, C, Rohan)
   const freelancers = [
+    {
+      id: "usr_freelancer_rohan",
+      email: "rohan.verma@nexum.demo",
+      name: "Rohan Verma",
+      title: "Senior Full-Stack & Payment Rails Engineer",
+      bio: "Direct experience with PayPal REST v2 Orders, webhook signature validation, and dual SHA-256 state machines.",
+      skills: ["PayPal v2", "Next.js", "State Machines", "TypeScript", "Node.js", "PostgreSQL"],
+      ratePreferences: { minHourlyCents: 6500, preferredHourlyCents: 6500, currency: "USD" },
+      portfolio: [
+        { title: "Bilateral Payment Rails", year: 2026, impact: "$120K captured via REST v2" },
+      ],
+      experienceClaims: [
+        { org: "TechKart", role: "Lead Payment Architect", years: 4 },
+      ],
+    },
     {
       id: "usr_freelancer_elena",
       email: "elena.rostova@nexum.demo",
@@ -74,13 +94,29 @@ async function main() {
         { org: "AIStudio Labs", role: "Senior AI Engineer", years: 3 },
       ],
     },
+    {
+      id: "usr_freelancer_sambit",
+      email: "sambit.kumar@nexum.demo",
+      name: "Sambit Kumar",
+      title: "Full-Stack Specialist & E-commerce Architect",
+      bio: "Specializing in high-conversion e-commerce web applications, Next.js, and PayPal payment workflows.",
+      skills: ["Next.js", "React", "TypeScript", "Tailwind CSS", "Node.js", "PostgreSQL", "PayPal"],
+      ratePreferences: { minHourlyCents: 7500, preferredHourlyCents: 9500, currency: "USD" },
+      portfolio: [
+        { title: "TechKart E-commerce Web", year: 2026, impact: "$500K GMV" },
+      ],
+      experienceClaims: [
+        { org: "TechKart Global", role: "Senior Frontend & Fullstack", years: 5 },
+      ],
+    },
   ];
 
   for (const f of freelancers) {
     const user = await prisma.user.upsert({
-      where: { email: f.email },
+      where: { id: f.id },
       update: {
         name: f.name,
+        email: f.email,
         role: Role.FREELANCER,
         status: "ACTIVE",
       },
@@ -221,6 +257,131 @@ async function main() {
     });
 
     console.log("✅ Seeded Proposal & Milestones (Sum: $10.00 USD / 1000 cents)");
+  }
+
+  // 4b. Seed TechKart Project & Proposal (Sambit Kumar)
+  const sambitUser = await prisma.user.findUnique({ where: { email: "sambit.kumar@nexum.demo" } });
+  if (sambitUser) {
+    const techkartProject = await prisma.project.upsert({
+      where: { id: "techkart" },
+      update: {
+        title: "TechKart – E-commerce Website",
+        state: ProjectState.ACTIVE,
+        budgetCents: 1000000, // $10,000 USD
+      },
+      create: {
+        id: "techkart",
+        clientId: client.id,
+        title: "TechKart – E-commerce Website",
+        description: "Full-stack Next.js e-commerce application with PayPal escrow integration.",
+        goals: "Complete UI/UX design, frontend cart/catalog development, and backend payment integration.",
+        budgetCents: 1000000,
+        currency: "USD",
+        state: ProjectState.ACTIVE,
+        visibility: "PUBLIC",
+      },
+    });
+
+    const techkartProposal = await prisma.proposalVersion.upsert({
+      where: { versionHash: "hash_canonical_techkart_v3_active_2026" },
+      update: {
+        status: ProposalStatus.ACCEPTED,
+      },
+      create: {
+        id: "prop_techkart_v3",
+        projectId: techkartProject.id,
+        freelancerId: sambitUser.id,
+        version: 3,
+        versionHash: "hash_canonical_techkart_v3_active_2026",
+        scope: "Full-stack e-commerce catalog, shopping cart, customer checkout, and PayPal webhook reconciliation.",
+        amountCents: 1000000,
+        currency: "USD",
+        status: ProposalStatus.ACCEPTED,
+      },
+    });
+
+    // Milestone 1 ($2,000)
+    await prisma.milestone.upsert({
+      where: {
+        proposalVersionId_orderIndex: {
+          proposalVersionId: techkartProposal.id,
+          orderIndex: 1,
+        },
+      },
+      update: {
+        title: "Milestone 1: UI/UX Design & Architecture",
+        amountCents: 200000,
+        state: PaymentState.CAPTURED,
+      },
+      create: {
+        id: "ms_techkart_1",
+        proposalVersionId: techkartProposal.id,
+        orderIndex: 1,
+        title: "Milestone 1: UI/UX Design & Architecture",
+        deliverables: ["Figma prototypes", "Design tokens", "Interactive wireframes"],
+        criteria: ["Client approval on high-fidelity designs"],
+        amountCents: 200000,
+        currency: "USD",
+        state: PaymentState.CAPTURED,
+        fundingRule: "PRE_FUNDED_BEFORE_WORK",
+      },
+    });
+
+    // Milestone 2 ($4,000)
+    await prisma.milestone.upsert({
+      where: {
+        proposalVersionId_orderIndex: {
+          proposalVersionId: techkartProposal.id,
+          orderIndex: 2,
+        },
+      },
+      update: {
+        title: "Milestone 2: Frontend Development & Orders Engine",
+        amountCents: 400000,
+        state: PaymentState.AUTHORIZED,
+      },
+      create: {
+        id: "ms_techkart_2",
+        proposalVersionId: techkartProposal.id,
+        orderIndex: 2,
+        title: "Milestone 2: Frontend Development & Orders Engine",
+        deliverables: ["Product catalog", "Shopping cart state", "Checkout forms"],
+        criteria: ["Responsive Next.js components tested across mobile and desktop"],
+        amountCents: 400000,
+        currency: "USD",
+        state: PaymentState.AUTHORIZED,
+        fundingRule: "PRE_FUNDED_BEFORE_WORK",
+      },
+    });
+
+    // Milestone 3 ($4,000)
+    await prisma.milestone.upsert({
+      where: {
+        proposalVersionId_orderIndex: {
+          proposalVersionId: techkartProposal.id,
+          orderIndex: 3,
+        },
+      },
+      update: {
+        title: "Milestone 3: Backend Webhook & Idempotency",
+        amountCents: 400000,
+        state: PaymentState.NOT_STARTED,
+      },
+      create: {
+        id: "ms_techkart_3",
+        proposalVersionId: techkartProposal.id,
+        orderIndex: 3,
+        title: "Milestone 3: Backend Webhook & Idempotency",
+        deliverables: ["PayPal webhook listener", "Prisma migrations", "Unit tests"],
+        criteria: ["Passes 100% of integration test suites"],
+        amountCents: 400000,
+        currency: "USD",
+        state: PaymentState.NOT_STARTED,
+        fundingRule: "PRE_FUNDED_BEFORE_WORK",
+      },
+    });
+
+    console.log(`✅ Seeded TechKart Project, Proposal, and 3 Milestones ($10,000 USD)`);
   }
 
   // 5. Append initial Audit Event

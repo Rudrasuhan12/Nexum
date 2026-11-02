@@ -13,11 +13,13 @@ import {
   MessageSquare,
   FileText,
 } from "lucide-react";
-import { PrivateAIChatEntry, BasedOnChip } from "@/lib/workspace-types";
+import { PrivateAIChatEntry, BasedOnChip, WorkspaceProject } from "@/lib/workspace-types";
 import {
   INITIAL_FREELANCER_AI_CHAT_HISTORY,
   FREELANCER_BASED_ON_CHIPS,
 } from "@/lib/freelancer-workspace-data";
+import { fetchWorkspaceProjects } from "@/lib/api-client";
+import { useAuth } from "@/context/AuthContext";
 import ReviewVersionModal from "@/components/client/workspace/ReviewVersionModal";
 
 interface FreelancerWorkspaceNexumAIModeProps {
@@ -41,13 +43,17 @@ export default function FreelancerWorkspaceNexumAIMode({
 }: FreelancerWorkspaceNexumAIModeProps) {
   void isStandalone;
 
+  const { user } = useAuth();
+
   // Chat History State
   const [chatHistory, setChatHistory] = useState<PrivateAIChatEntry[]>(INITIAL_FREELANCER_AI_CHAT_HISTORY);
   const [selectedChatId, setSelectedChatId] = useState<string>("fchat_scope_cr2");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Active Scope State
+  // Projects & Scope State
+  const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [activeScope, setActiveScope] = useState<string>(initialScope);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
 
   // Live messages for current conversation session
   const [liveMessages, setLiveMessages] = useState<LiveMessage[]>([]);
@@ -56,11 +62,29 @@ export default function FreelancerWorkspaceNexumAIMode({
   // Based-on record detail modal
   const [selectedChip, setSelectedChip] = useState<BasedOnChip | null>(null);
 
-  // Draft editing state
-  const [draftMessage, setDraftMessage] = useState(
-    "Hi Alex, I reviewed the dynamic category pills request. While it falls outside Milestone 2 baseline scope, I am happy to incorporate it under CR-2 for +$500 and +4 days delivery extension. Let's seal Agreement v5."
-  );
-  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  // Load real freelancer projects
+  useEffect(() => {
+    let isMounted = true;
+    async function loadProjects() {
+      try {
+        const freelancerId = user?.id || "usr_freelancer_sambit";
+        const res = await fetchWorkspaceProjects(freelancerId, "FREELANCER");
+        if (isMounted) {
+          if (res.success && Array.isArray(res.data)) {
+            setProjects(res.data);
+          }
+          setIsLoadingProjects(false);
+        }
+      } catch (err) {
+        console.warn("Failed to load freelancer projects:", err);
+        if (isMounted) setIsLoadingProjects(false);
+      }
+    }
+    loadProjects();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   // AI Composer
   const [inputValue, setInputValue] = useState("");
@@ -178,6 +202,10 @@ export default function FreelancerWorkspaceNexumAIMode({
 
   const todayChats = filteredHistory.filter((c) => c.dateGroup === "TODAY");
   const yesterdayChats = filteredHistory.filter((c) => c.dateGroup === "YESTERDAY");
+
+  const activeProject = projects.find(
+    (p) => activeScope.includes(p.shortName) || activeScope.includes(p.name) || p.id === activeScope
+  );
 
   return (
     <div className="flex-1 flex overflow-hidden bg-slate-50/50 select-none w-full">
@@ -319,28 +347,38 @@ export default function FreelancerWorkspaceNexumAIMode({
               Scope
             </span>
 
-            {[
-              { id: "all", label: "All my contracts (3)", match: "All my client contracts" },
-              { id: "techkart", label: "TechKart", match: "TechKart" },
-              { id: "fitlife", label: "FitLife", match: "FitLife" },
-              { id: "nexa_ai", label: "NexaAI", match: "NexaAI" },
-            ].map((scope) => {
-              const isActive = activeScope.includes(scope.match);
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScope("All my client contracts");
+                showToast(`Scope switched to: All my contracts (${projects.length})`);
+              }}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer whitespace-nowrap border ${
+                activeScope.includes("All my client contracts")
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs font-bold"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              All my contracts ({projects.length})
+            </button>
+
+            {projects.map((p) => {
+              const isMatch = activeScope.includes(p.shortName) || activeScope.includes(p.name);
               return (
                 <button
-                  key={scope.id}
+                  key={p.id}
                   type="button"
                   onClick={() => {
-                    setActiveScope(scope.match);
-                    showToast(`Scope switched to: ${scope.label}`);
+                    setActiveScope(p.shortName || p.name);
+                    showToast(`Scope switched to: ${p.shortName || p.name}`);
                   }}
                   className={`px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer whitespace-nowrap border ${
-                    isActive
+                    isMatch
                       ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs font-bold"
                       : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
                   }`}
                 >
-                  {scope.label}
+                  {p.shortName || p.name}
                 </button>
               );
             })}
@@ -362,114 +400,162 @@ export default function FreelancerWorkspaceNexumAIMode({
 
         {/* Center Scrollable Messages Area */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-          {/* Default Consultation Thread */}
+          {/* Default Dynamic Consultation Thread */}
           {liveMessages.length === 0 && (
-            <div className="space-y-4 max-w-3xl mx-auto">
-              {/* User Question */}
-              <div className="flex flex-col items-end">
-                <div className="flex items-center gap-2 mb-1 px-1 text-[11px] font-bold text-slate-400">
-                  <span>You (Freelancer)</span>
-                  <span>•</span>
-                  <span>10:45 AM</span>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-[#4f46e5] text-white text-xs leading-relaxed max-w-xl shadow-2xs rounded-br-xs">
-                  Is Alex&apos;s request for dynamic category pills and best-selling carousel considered out of scope for Milestone 2? Should I accept his $500 counteroffer?
-                </div>
+            isLoadingProjects ? (
+              <div className="p-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
+                <span>Loading contract records...</span>
               </div>
-
-              {/* AI Analysis Response Card */}
-              <div className="flex flex-col items-start space-y-3">
-                <div className="flex items-center gap-2 px-1 text-[11px] font-bold text-slate-400">
-                  <Sparkles className="w-3.5 h-3.5 text-[#4f46e5]" />
-                  <span>Nexum Scope Engine</span>
-                  <span>•</span>
-                  <span>10:46 AM</span>
+            ) : projects.length === 0 ? (
+              <div className="p-8 rounded-2xl border border-slate-200/80 bg-white text-center flex flex-col items-center justify-center max-w-lg mx-auto my-8">
+                <Sparkles className="w-8 h-8 text-indigo-500 mb-2" />
+                <h3 className="text-sm font-bold text-slate-900 mb-1">Nexum AI Freelancer Copilot</h3>
+                <p className="text-xs text-slate-500 max-w-sm mb-4 leading-relaxed">
+                  No active client contracts found. Once you accept a contract proposal, Nexum AI will privately assist you in protecting scope boundaries, calculating milestone timelines, and drafting formal amendment quotes.
+                </p>
+              </div>
+            ) : activeProject ? (
+              <div className="p-5 rounded-2xl border border-slate-200/80 bg-white shadow-xs space-y-4 max-w-2xl mx-auto">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono bg-indigo-50 text-indigo-700 border border-indigo-100 mb-1">
+                      Contract Baseline · {activeProject.agreementVersion}
+                    </div>
+                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                      {activeProject.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Client: {activeProject.clientName} · Started {activeProject.startDate}
+                    </p>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${activeProject.statusColor || "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                    {activeProject.status}
+                  </span>
                 </div>
 
-                <div className="w-full p-4 sm:p-5 rounded-2xl border border-slate-200 bg-white shadow-xs space-y-4 text-xs">
-                  <div className="space-y-2 leading-relaxed text-slate-700">
-                    <p>
-                      <strong>Scope Analysis for TechKart Agreement v3:</strong>
-                    </p>
-                    <ul className="list-disc pl-5 space-y-1.5 text-slate-600">
-                      <li>
-                        <strong>Agreement Baseline:</strong> Milestone 2 strictly covers the core e-commerce catalog, shopping cart state machine, and PayPal REST v2 order capture.
-                      </li>
-                      <li>
-                        <strong>Out of Scope:</strong> Dynamic category query indexing and personalized carousels were not specified in the original PRD. This constitutes a valid Change Request (CR-2).
-                      </li>
-                      <li>
-                        <strong>Counteroffer Assessment:</strong> Alex&apos;s counteroffer of <strong>+$500.00 USD</strong> (down from your quote of $600) with <strong>+4 days</strong> delivery schedule is within market standards for 8–10 development hours.
-                      </li>
-                    </ul>
+                <div className="grid grid-cols-3 gap-2.5 p-3 rounded-xl bg-slate-50/80 border border-slate-100 text-xs">
+                  <div>
+                    <div className="font-extrabold text-slate-900 text-sm font-mono">{activeProject.budget}</div>
+                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">Total Escrow</div>
                   </div>
+                  <div>
+                    <div className="font-extrabold text-slate-900 text-sm">{activeProject.milestones?.length || 0} Milestones</div>
+                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">Deliverables</div>
+                  </div>
+                  <div>
+                    <div className="font-extrabold text-slate-900 text-sm">{activeProject.duration}</div>
+                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">Timeline</div>
+                  </div>
+                </div>
 
-                  {/* Based-on Record Chips */}
-                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                {activeProject.milestones && activeProject.milestones.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                      Based on Verified Records
+                      Milestones Escrow Payouts
                     </span>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {FREELANCER_BASED_ON_CHIPS.map((chip) => (
-                        <button
-                          key={chip.id}
-                          type="button"
-                          onClick={() => setSelectedChip(chip)}
-                          className="px-2.5 py-1 rounded-lg border border-indigo-100 bg-indigo-50/70 hover:bg-indigo-100 text-[#4f46e5] text-[11px] font-semibold transition cursor-pointer flex items-center gap-1"
-                        >
-                          <FileText className="w-3 h-3" />
-                          <span>{chip.label}</span>
-                        </button>
+                    <div className="space-y-1">
+                      {activeProject.milestones.map((m) => (
+                        <div key={m.id} className="p-2.5 rounded-xl border border-slate-100 bg-slate-50/60 flex items-center justify-between text-xs">
+                          <span className="font-semibold text-slate-800">
+                            {m.number}. {m.title}
+                          </span>
+                          <span className="font-mono font-bold text-slate-700 text-[11px]">
+                            {m.amount} · {m.status}
+                          </span>
+                        </div>
                       ))}
                     </div>
                   </div>
+                )}
 
-                  {/* Suggested Draft Reply for Client */}
-                  <div className="p-3.5 rounded-xl bg-purple-50/70 border border-purple-200 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-purple-900 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                        <span>Recommended Client Response (Agreement v5)</span>
-                      </span>
+                {/* Suggested Inquiries */}
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Private Strategy Inquiries for {activeProject.shortName}
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {[
+                      `Assess scope boundaries and criteria for ${activeProject.shortName}`,
+                      `Draft a polite milestone delivery note to ${activeProject.clientName}`,
+                      `Check PayPal REST v2 escrow funding status for next milestone`,
+                      `Verify mutual consensus status of current agreement version`,
+                    ].map((prompt, idx) => (
                       <button
-                        type="button"
-                        onClick={() => setIsEditingDraft(!isEditingDraft)}
-                        className="text-[10px] font-bold text-[#4f46e5] hover:underline cursor-pointer"
-                      >
-                        {isEditingDraft ? "Done Editing" : "Edit Draft"}
-                      </button>
-                    </div>
-
-                    {isEditingDraft ? (
-                      <textarea
-                        rows={3}
-                        value={draftMessage}
-                        onChange={(e) => setDraftMessage(e.target.value)}
-                        className="w-full p-2.5 rounded-lg border border-purple-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none leading-relaxed"
-                      />
-                    ) : (
-                      <p className="text-xs text-slate-800 leading-relaxed font-medium">
-                        &ldquo;{draftMessage}&rdquo;
-                      </p>
-                    )}
-
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <button
+                        key={idx}
                         type="button"
                         onClick={() => {
-                          onOpenInChats("techkart", draftMessage);
-                          showToast("Inserted draft response into client chat!");
+                          setInputValue(prompt);
+                          showToast("Inquiry populated into composer.");
                         }}
-                        className="px-3.5 py-1.5 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-98 flex items-center gap-1.5"
+                        className="text-left p-2.5 rounded-xl border border-slate-200/80 bg-slate-50/70 hover:bg-indigo-50/60 hover:border-indigo-200 text-xs text-slate-700 hover:text-indigo-900 font-medium transition cursor-pointer"
                       >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        <span>Insert Draft into Client Chat</span>
+                        {prompt} →
                       </button>
-                    </div>
+                    ))}
                   </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-5 rounded-2xl border border-slate-200/80 bg-white shadow-xs space-y-4 max-w-2xl mx-auto">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-900">Multi-Contract Strategy Copilot</h3>
+                    <p className="text-xs text-slate-500 font-normal">Active monitoring across {projects.length} client contract{projects.length === 1 ? "" : "s"}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {projects.map((p) => (
+                    <div key={p.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50/70 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-bold text-slate-900">{p.name}</span>
+                        <span className="text-[11px] text-slate-500 block">Client: {p.clientName} · {p.budget}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveScope(p.shortName || p.name);
+                          showToast(`Switched scope to: ${p.shortName || p.name}`);
+                        }}
+                        className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                      >
+                        Consult →
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Cross-Contract Suggested Inquiries
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {[
+                      "Summarize pending deliverable deadlines across all my contracts",
+                      "Check escrow deposit status for active milestones",
+                      "How do I formulate a change request quote for extra client work?",
+                      "List all upcoming client sync calls",
+                    ].map((prompt, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setInputValue(prompt);
+                          showToast("Inquiry populated into composer.");
+                        }}
+                        className="text-left p-2.5 rounded-xl border border-slate-200/80 bg-slate-50/70 hover:bg-indigo-50/60 hover:border-indigo-200 text-xs text-slate-700 hover:text-indigo-900 font-medium transition cursor-pointer"
+                      >
+                        {prompt} →
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
           )}
 
           {/* Live Dynamic Messages */}

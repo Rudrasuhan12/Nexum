@@ -9,6 +9,8 @@ import projectsRouter from "./routes/projects.js";
 import paymentsRouter from "./routes/payments.js";
 import notificationsRouter from "./routes/notifications.js";
 import clientRouter from "./routes/client.js";
+import workspaceRouter from "./routes/workspace.js";
+import telegramRouter from "./routes/telegram.js";
 
 // Load environment variables
 dotenv.config();
@@ -47,6 +49,8 @@ app.use("/api/projects", projectsRouter);
 app.use("/api/payments", paymentsRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/client", clientRouter);
+app.use("/api/workspace", workspaceRouter);
+app.use("/api/telegram", telegramRouter);
 
 // Root fallback
 app.get("/", (_req: express.Request, res: express.Response) => {
