@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import crypto from "crypto";
 import cookieParser from "cookie-parser";
+import dotenv from "dotenv";
 import { env } from "./lib/env.js";
 
 import healthRouter from "./routes/health.js";
@@ -44,6 +45,11 @@ import freelancerDashboardRouter from "./routes/freelancer/dashboard.js";
 import notificationsRouter from "./routes/notifications.js";
 import freelancerSettingsRouter from "./routes/freelancer/settings.js";
 import freelancerAssistantRouter from "./routes/freelancer/assistant.js";
+import workspaceRouter from "./routes/workspace.js";
+import telegramRouter from "./routes/telegram.js";
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
 const port = env.PORT || 4000;
@@ -150,8 +156,8 @@ app.use("/api/dev/payments", devPaymentsRouter);
 
 // Client Overview Routes
 app.use("/api/client", clientRouter);
-
-
+app.use("/api/workspace", workspaceRouter);
+app.use("/api/telegram", telegramRouter);
 
 // Root fallback
 app.get("/", (_req: express.Request, res: express.Response) => {

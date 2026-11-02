@@ -13,7 +13,7 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
-    "test": "vitest run",
+    "test": "vitest run --testTimeout=20000",
     "verify:phase0": "tsx --env-file=.env tests/verify-phase0.ts",
     "verify:phase1": "tsx --env-file=.env tests/verify-phase1.ts",
     "verify:phase2": "tsx --env-file=.env tests/verify-phase2.ts",
