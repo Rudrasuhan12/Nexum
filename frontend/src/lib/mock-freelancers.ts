@@ -17,6 +17,15 @@ export interface WorkHistoryItem {
   description: string;
 }
 
+export interface FitScoreBreakdown {
+  overallScore: number;
+  stackMatch: number;        // Technical stack overlap (40% weight)
+  trackRecordMatch: number;  // Ledger-verified milestone track record (25% weight)
+  budgetMatch: number;       // Hourly rate alignment with sprint budget (20% weight)
+  availabilityMatch: number; // Bandwidth & turnaround capacity (15% weight)
+  summaryText: string;
+}
+
 export interface FreelancerProfile {
   id: string;
   name: string;
@@ -36,6 +45,7 @@ export interface FreelancerProfile {
   recommendationReason: string;
   recommendedForProjectId?: string;
   fitScore: number;
+  fitBreakdown?: FitScoreBreakdown;
   portfolioHighlights: PortfolioHighlight[];
   workHistory: WorkHistoryItem[];
   verifiedCredentials: string[];

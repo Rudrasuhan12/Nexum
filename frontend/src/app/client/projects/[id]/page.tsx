@@ -31,11 +31,13 @@ import {
   Lock,
   ChevronRight,
   TrendingUp,
+  FolderKanban,
 } from "lucide-react";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import DashboardTopHeader from "@/components/DashboardTopHeader";
 import { useAuth } from "@/context/AuthContext";
-import { getProjectById, ProjectDetailData } from "@/lib/mock-projects";
+import { getProjectById, ProjectDetailData, MOCK_PROJECTS, ProjectLifecycleStatus, MilestoneItem } from "@/lib/mock-projects";
+import { fetchProjectById } from "@/lib/api-client";
 
 type ProjectTab =
   | "overview"
@@ -56,10 +58,247 @@ function ProjectWorkspaceContent() {
   const projectId = (params?.id as string) || "proj_1";
   const initialTab = (searchParams.get("tab") as ProjectTab) || "overview";
 
+  const isStaticMock = Boolean(MOCK_PROJECTS[projectId]);
   const [activeTab, setActiveTab] = useState<ProjectTab>(initialTab);
-  const [projectData, setProjectData] = useState<ProjectDetailData>(() =>
-    getProjectById(projectId)
+  const [projectData, setProjectData] = useState<ProjectDetailData | null>(() =>
+    isStaticMock ? getProjectById(projectId) : null
   );
+  const [isLoading, setIsLoading] = useState(!isStaticMock);
+  const [isLiveLoaded, setIsLiveLoaded] = useState(false);
+  const [notFound, setNotFound] = useState(false);
+
+  // Fetch live project data from database/backend API
+  React.useEffect(() => {
+    let isMounted = true;
+    async function loadLiveProject() {
+      try {
+        const live = await fetchProjectById(projectId);
+        if (live && isMounted) {
+          setIsLiveLoaded(true);
+          const proposal = live.proposals?.[0];
+          const freelancer = proposal?.freelancer;
+          const rawMilestones = (live.milestones && live.milestones.length > 0)
+            ? live.milestones
+            : (proposal?.milestones || []);
+
+          // Status & lifecycle derivation
+          let status: ProjectLifecycleStatus = "IN_PROGRESS";
+          let statusLabel = "In Progress";
+          let statusColor = "bg-blue-50 text-blue-700 border-blue-200/80";
+          let stageSummary = "Milestone in active engineering progress under consensus agreement.";
+          let nextAction: ProjectDetailData["nextAction"] = {
+            label: "Track Milestone Progress",
+            description: "Sprint review scheduled on calendar.",
+            type: "VIEW",
+            urgent: false,
+            tabTarget: "milestones",
+          };
+
+          if (live.state === "DRAFT") {
+            status = "DRAFT";
+            statusLabel = "Draft";
+            statusColor = "bg-amber-50 text-amber-800 border-amber-200/90";
+            stageSummary = "Draft spec saved. Ready to complete remaining details and publish.";
+            nextAction = {
+              label: "Resume Project Setup",
+              description: "Complete remaining technical details and publish scope to match talent.",
+              type: "RESUME",
+              urgent: false,
+              tabTarget: "brief",
+            };
+          } else if (
+            live.state === "MATCHING" ||
+            live.state === "INTAKE" ||
+            live.state === "FINDING_FREELANCERS" ||
+            (!freelancer && (live.state === "ACTIVE" || !live.state))
+          ) {
+            status = "FINDING_FREELANCERS";
+            statusLabel = "Finding Freelancers";
+            statusColor = "bg-indigo-50 text-indigo-700 border-indigo-200/80";
+            stageSummary = "Approved brief published. Broadcast to verified talent network for proposals.";
+            nextAction = {
+              label: "Evaluate Candidate Proposals",
+              description: "Review candidate profiles and proposal quotes.",
+              type: "VIEW",
+              urgent: false,
+              tabTarget: "proposals",
+            };
+          } else if (live.state === "IN_REVIEW") {
+            status = "IN_REVIEW";
+            statusLabel = "In Review";
+            statusColor = "bg-amber-50 text-amber-800 border-amber-200/80";
+            stageSummary = "Milestone deliverable package submitted with full test assert logs.";
+            nextAction = {
+              label: "Review Deliverable & Release Funds",
+              description: "Review automated tests & approve release of funds from Sandbox escrow.",
+              type: "ACTION_REQUIRED",
+              urgent: true,
+              tabTarget: "milestones",
+            };
+          } else if (live.state === "COMPLETED") {
+            status = "COMPLETED";
+            statusLabel = "Completed";
+            statusColor = "bg-emerald-50 text-emerald-700 border-emerald-200/80";
+            stageSummary = "All milestones accepted, verified & released via PayPal captures.";
+            nextAction = {
+              label: "View Contract Archive",
+              description: "All milestone funds disbursed and cryptographic receipts archived.",
+              type: "VIEW",
+              urgent: false,
+              tabTarget: "payments",
+            };
+          } else if (live.state === "DISPUTED") {
+            status = "DISPUTED";
+            statusLabel = "Disputed";
+            statusColor = "bg-rose-50 text-rose-700 border-rose-200/80";
+            stageSummary = "Milestone hold active. Bilateral AI mediation underway.";
+            nextAction = {
+              label: "Review Mediation Terms",
+              description: "Compare delivered criteria vs approved PRD to resolve dispute.",
+              type: "ACTION_REQUIRED",
+              urgent: true,
+              tabTarget: "workspace",
+            };
+          }
+
+          // Format Milestones
+          const mappedMilestones: MilestoneItem[] = rawMilestones.map((m: any, idx: number) => {
+            const amountVal = m.amountCents ? m.amountCents / 100 : (parseFloat(m.amount) || 0);
+            const isReleased = m.state === "CAPTURED" || m.status === "RELEASED";
+            const isInReview = m.state === "APPROVED" || m.state === "SUBMITTED" || m.status === "IN_REVIEW";
+            return {
+              id: m.id || `ms_${idx + 1}`,
+              number: idx + 1,
+              title: m.title || `Milestone ${idx + 1}`,
+              deliverables: m.deliverables || ["Milestone deliverable package with automated tests"],
+              dueDate: m.deadline ? new Date(m.deadline).toLocaleDateString() : (m.days ? `${m.days} days after kickoff` : "Scheduled"),
+              amount: `$${amountVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
+              status: isReleased ? ("RELEASED" as const) : isInReview ? ("IN_REVIEW" as const) : ("PENDING_FUNDING" as const),
+              statusLabel: isReleased ? "Approved & Released" : isInReview ? "In Review" : "Upcoming",
+              paypalOrderId: m.paypalOrderId || undefined,
+              captureId: m.captureId || undefined,
+            };
+          });
+
+          const totalBudgetString = live.budgetCents
+            ? `$${((live.budgetCents || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+            : "$0.00 USD";
+
+          const releasedVal = mappedMilestones
+            .filter((m) => m.status === "RELEASED")
+            .reduce((sum, m) => sum + (parseFloat(m.amount.replace(/[^0-9.]/g, "")) || 0), 0);
+          const escrowVal = mappedMilestones
+            .filter((m) => m.status === "IN_REVIEW" || m.status === "FUNDED")
+            .reduce((sum, m) => sum + (parseFloat(m.amount.replace(/[^0-9.]/g, "")) || 0), 0);
+
+          const nextDue = mappedMilestones.find((m) => m.status !== "RELEASED")?.title || "All milestones completed";
+
+          const formattedProject: ProjectDetailData = {
+            id: live.id,
+            name: live.title || live.name || "Untitled Project",
+            description: live.description || live.detailedRequirements || "",
+            status,
+            statusLabel,
+            statusColor,
+            stageSummary,
+            category: live.category ? (live.subcategory ? `${live.category} · ${live.subcategory}` : live.category) : "Web Development",
+            createdAt: live.createdAt ? new Date(live.createdAt).toLocaleDateString() : "Recent",
+            canonicalHash: live.canonicalHash || `canonical_v1.0_#${(live.id || "consensus").replace(/[^a-zA-Z0-9]/g, "").slice(-8)}`,
+            totalBudget: totalBudgetString,
+            escrowFunded: `$${escrowVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
+            releasedAmount: `$${releasedVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
+            nextMilestoneDue: nextDue,
+            nextAction,
+            freelancer: freelancer
+              ? {
+                  name: freelancer.name,
+                  role: freelancer.freelancerProfile?.title || "Contractor",
+                  avatar: freelancer.preferences?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80",
+                  rating: "5.0",
+                  completedJobs: 14,
+                  hourlyRate: live.budgetType === "HOURLY" ? `$${Math.round(live.budgetCents / 100)}/hr` : "$75/hr",
+                  status: "ACTIVE",
+                }
+              : undefined,
+            briefAndPrd: {
+              version: "v1.0 (Canonical)",
+              overview: live.description || live.detailedRequirements || "Project requirements and technical deliverables spec.",
+              objectives: live.goals
+                ? live.goals.split(",").map((g: string) => g.trim()).filter(Boolean)
+                : (live.scopeOfWork && live.scopeOfWork.length > 0 ? live.scopeOfWork : ["Deliver milestone packages", "Pass automated verification tests"]),
+              technicalArchitecture: (live.requiredSkills && live.requiredSkills.length > 0)
+                ? live.requiredSkills.join(", ")
+                : "Full-stack architecture",
+              functionalRequirements: (live.scopeOfWork && live.scopeOfWork.length > 0)
+                ? live.scopeOfWork
+                : ["Core application development", "API contracts & data model", "Automated test assert suite"],
+              acceptanceCriteria: mappedMilestones.length > 0
+                ? mappedMilestones.map((m) => m.title)
+                : ["Milestone deliverables accepted by client", "Zero fatal errors in test assert logs"],
+              nonFunctionalRequirements: [
+                `Budget Type: ${live.budgetType || "Fixed Price"}`,
+                `Expected Timeline: ${live.timelineDuration || "Sprint-based"}`,
+                `Experience Level: ${live.experienceLevel || "Senior / Verified"}`,
+                `English Proficiency: ${live.englishLevel || "Fluent"}`,
+                `Visibility: ${live.visibility || "Public"}`,
+              ],
+              assumptions: [
+                "All milestone releases protected by bilateral PayPal Sandbox escrow verification",
+                "Automated test coverage assert logs validated before funds release",
+              ],
+              exclusions: [
+                "Unilateral scope deviations without cryptographically signed Section 14 amendment",
+              ],
+            },
+            milestones: mappedMilestones,
+            proposals: (live.proposals || []).map((p: any) => ({
+              id: p.id,
+              freelancerName: p.freelancer?.name || "Candidate",
+              freelancerRole: p.freelancer?.freelancerProfile?.title || "Verified Talent",
+              avatar: p.freelancer?.preferences?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80",
+              rating: "5.0",
+              proposedBudget: `$${((p.amountCents || live.budgetCents || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
+              estimatedTimeline: live.timelineDuration || "Sprint schedule",
+              coverLetter: p.coverLetter || "Experienced developer ready to execute deliverables with automated test assert logs.",
+              status: p.status === "ACCEPTED" ? "ACCEPTED" : "UNDER_REVIEW",
+              submittedDate: "Recent",
+            })),
+            workspaceQuestions: live.workspaceQuestions || [],
+            changes: live.changeRequests || [],
+            payments: live.payments || [],
+            activities: [
+              {
+                id: `act_${live.id}`,
+                timestamp: live.createdAt ? new Date(live.createdAt).toLocaleDateString() : "Recent",
+                actor: user?.name || "Client",
+                role: "CLIENT" as const,
+                action: live.state === "DRAFT" ? "Draft Saved" : "Project Published",
+                detail: live.state === "DRAFT"
+                  ? "Project draft saved to workspace."
+                  : `Scope published with ${mappedMilestones.length} milestone(s). Dual SHA-256 seal initialized.`,
+                hash: `sha256:${(live.id || "init").slice(0, 8)}...${(live.id || "init").slice(-4)}`,
+              },
+            ],
+          };
+
+          setProjectData(formattedProject);
+          setIsLoading(false);
+        } else if (!isStaticMock && isMounted) {
+          setNotFound(true);
+          setIsLoading(false);
+        }
+      } catch {
+        if (!isStaticMock && isMounted) {
+          setNotFound(true);
+          setIsLoading(false);
+        }
+      }
+    }
+    loadLiveProject();
+    return () => {
+      isMounted = false;
+    };
+  }, [projectId, isStaticMock, user?.name]);
 
   // Milestone 2 approval / release simulation state
   const [isCapturing, setIsCapturing] = useState(false);
@@ -92,48 +331,51 @@ function ProjectWorkspaceContent() {
       await res.json().catch(() => ({}));
 
       // Update state locally
-      setProjectData((prev) => ({
-        ...prev,
-        status: "IN_PROGRESS",
-        statusLabel: "In Progress",
-        statusColor: "bg-blue-50 text-blue-700 border-blue-200/80",
-        releasedAmount: "$2,700.00 USD",
-        nextAction: {
-          label: "Track Milestone 3 Development",
-          description: "Milestone 2 captured and released. Milestone 3 execution active.",
-          type: "VIEW",
-          urgent: false,
-        },
-        milestones: prev.milestones.map((m) =>
-          m.id === milestoneId
-            ? {
-                ...m,
-                status: "RELEASED" as const,
-                statusLabel: "Approved & Released",
-                captureId: "CAP_LIVE_SANDBOX_SUCCESS",
-              }
-            : m
-        ),
-        payments: [
-          ...prev.payments.map((p) =>
-            p.orderId === "6DE714998H998261C"
-              ? { ...p, status: "CAPTURED" as const }
-              : p
-          ),
-        ],
-        activities: [
-          {
-            id: `act_${Date.now()}`,
-            timestamp: "Just now",
-            actor: user?.name || "Sambit Kumar",
-            role: "CLIENT" as const,
-            action: "Milestone 2 Accepted & Released",
-            detail: "$1,500.00 USD captured from Sandbox Escrow to Rohan Verma.",
-            hash: "sha256:88fa10...99bb",
+      setProjectData((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          status: "IN_PROGRESS",
+          statusLabel: "In Progress",
+          statusColor: "bg-blue-50 text-blue-700 border-blue-200/80",
+          releasedAmount: "$2,700.00 USD",
+          nextAction: {
+            label: "Track Milestone 3 Development",
+            description: "Milestone 2 captured and released. Milestone 3 execution active.",
+            type: "VIEW",
+            urgent: false,
           },
-          ...prev.activities,
-        ],
-      }));
+          milestones: prev.milestones.map((m) =>
+            m.id === milestoneId
+              ? {
+                  ...m,
+                  status: "RELEASED" as const,
+                  statusLabel: "Approved & Released",
+                  captureId: "CAP_LIVE_SANDBOX_SUCCESS",
+                }
+              : m
+          ),
+          payments: [
+            ...prev.payments.map((p) =>
+              p.orderId === "6DE714998H998261C"
+                ? { ...p, status: "CAPTURED" as const }
+                : p
+            ),
+          ],
+          activities: [
+            {
+              id: `act_${Date.now()}`,
+              timestamp: "Just now",
+              actor: user?.name || "Sambit Kumar",
+              role: "CLIENT" as const,
+              action: "Milestone 2 Accepted & Released",
+              detail: "$1,500.00 USD captured from Sandbox Escrow to Rohan Verma.",
+              hash: "sha256:88fa10...99bb",
+            },
+            ...prev.activities,
+          ],
+        };
+      });
 
       showToast("Milestone 2 accepted! $1,500.00 captured & released to contractor.");
     } catch {
@@ -144,24 +386,27 @@ function ProjectWorkspaceContent() {
   };
 
   const handleApproveScopeDelta = (changeId: string) => {
-    setProjectData((prev) => ({
-      ...prev,
-      changes: prev.changes.map((c) =>
-        c.id === changeId ? { ...c, status: "APPROVED" as const } : c
-      ),
-      activities: [
-        {
-          id: `act_delta_${Date.now()}`,
-          timestamp: "Just now",
-          actor: user?.name || "Sambit Kumar",
-          role: "CLIENT" as const,
-          action: "Scope Change Delta Approved",
-          detail: "Section 14 bilateral agreement amendment cryptographically signed.",
-          hash: "sha256:cc9901...fa44",
-        },
-        ...prev.activities,
-      ],
-    }));
+    setProjectData((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        changes: prev.changes.map((c) =>
+          c.id === changeId ? { ...c, status: "APPROVED" as const } : c
+        ),
+        activities: [
+          {
+            id: `act_delta_${Date.now()}`,
+            timestamp: "Just now",
+            actor: user?.name || "Sambit Kumar",
+            role: "CLIENT" as const,
+            action: "Scope Change Delta Approved",
+            detail: "Section 14 bilateral agreement amendment cryptographically signed.",
+            hash: "sha256:cc9901...fa44",
+          },
+          ...prev.activities,
+        ],
+      };
+    });
     showToast("Scope delta approved! Agreement revision signed under Section 14.");
   };
 
@@ -169,20 +414,23 @@ function ProjectWorkspaceContent() {
     e.preventDefault();
     if (!newQuestionText.trim()) return;
 
-    setProjectData((prev) => ({
-      ...prev,
-      workspaceQuestions: [
-        {
-          id: `q_${Date.now()}`,
-          author: user?.name || "Sambit Kumar",
-          avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80",
-          date: "Just now",
-          question: newQuestionText.trim(),
-          status: "OPEN" as const,
-        },
-        ...prev.workspaceQuestions,
-      ],
-    }));
+    setProjectData((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        workspaceQuestions: [
+          {
+            id: `q_${Date.now()}`,
+            author: user?.name || "Sambit Kumar",
+            avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80",
+            date: "Just now",
+            question: newQuestionText.trim(),
+            status: "OPEN" as const,
+          },
+          ...prev.workspaceQuestions,
+        ],
+      };
+    });
     setNewQuestionText("");
     showToast("Decision prompt posted to bilateral workspace log.");
   };
@@ -190,13 +438,81 @@ function ProjectWorkspaceContent() {
   const tabs: { id: ProjectTab; label: string; icon: React.ElementType; count?: number }[] = [
     { id: "overview", label: "Overview", icon: Layers },
     { id: "brief", label: "Brief & PRD", icon: FileText },
-    { id: "proposals", label: "Proposals", icon: Users, count: projectData.proposals.length },
-    { id: "milestones", label: "Milestones", icon: CheckCircle2, count: projectData.milestones.length },
-    { id: "workspace", label: "Workspace", icon: MessageSquare, count: projectData.workspaceQuestions.length },
-    { id: "changes", label: "Changes", icon: GitPullRequest, count: projectData.changes.filter(c => c.status === "PENDING_CLIENT_APPROVAL").length || undefined },
+    { id: "proposals", label: "Proposals", icon: Users, count: projectData?.proposals?.length || 0 },
+    { id: "milestones", label: "Milestones", icon: CheckCircle2, count: projectData?.milestones?.length || 0 },
+    { id: "workspace", label: "Workspace", icon: MessageSquare, count: projectData?.workspaceQuestions?.length || 0 },
+    { id: "changes", label: "Changes", icon: GitPullRequest, count: projectData?.changes?.filter(c => c.status === "PENDING_CLIENT_APPROVAL").length || undefined },
     { id: "payments", label: "Payments", icon: CreditCard },
     { id: "activity", label: "Activity", icon: Activity },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex font-sans">
+        <DashboardSidebar
+          currentRole="CLIENT"
+          activeTab="projects"
+          onTabChange={(tab) => {
+            router.push(`/client/dashboard?tab=${tab}`);
+          }}
+        />
+        <div className="flex-1 flex flex-col min-w-0">
+          <DashboardTopHeader />
+          <main className="flex-1 px-4 sm:px-8 py-6 max-w-7xl w-full mx-auto space-y-6 animate-pulse">
+            <div className="h-4 w-48 bg-slate-200 rounded-md" />
+            <div className="p-6 rounded-2xl bg-white border border-slate-200 space-y-4">
+              <div className="h-8 w-96 bg-slate-200 rounded-lg" />
+              <div className="h-4 w-full max-w-xl bg-slate-100 rounded-md" />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-slate-100">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="space-y-1">
+                    <div className="h-3 w-20 bg-slate-100 rounded" />
+                    <div className="h-6 w-24 bg-slate-200 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-8 rounded-2xl bg-white border border-slate-200 h-64" />
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  if (notFound || !projectData) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex font-sans selection:bg-[#4f46e5] selection:text-white">
+        <DashboardSidebar
+          currentRole="CLIENT"
+          activeTab="projects"
+          onTabChange={(tab) => {
+            router.push(`/client/dashboard?tab=${tab}`);
+          }}
+        />
+        <div className="flex-1 flex flex-col min-w-0">
+          <DashboardTopHeader />
+          <main className="flex-1 px-4 sm:px-8 py-20 max-w-md w-full mx-auto text-center space-y-4">
+            <div className="w-16 h-16 rounded-3xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+              <FolderKanban className="w-8 h-8" />
+            </div>
+            <h1 className="text-xl font-bold text-slate-900">Project Not Found</h1>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              We couldn&apos;t find a project with ID &ldquo;{projectId}&rdquo;. It may have been deleted or does not exist.
+            </p>
+            <div className="pt-2">
+              <Link
+                href="/client/dashboard?tab=projects"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4f46e5] text-white text-xs font-bold shadow-xs hover:bg-[#4338ca] transition"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to My Projects</span>
+              </Link>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex font-sans selection:bg-[#4f46e5] selection:text-white">
@@ -219,6 +535,39 @@ function ProjectWorkspaceContent() {
             <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700 text-xs font-semibold flex items-center gap-3 animate-in fade-in slide-in-from-bottom-3 duration-200">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               <span>{toastMessage}</span>
+            </div>
+          )}
+
+          {/* Draft Notice Banner */}
+          {projectData.status === "DRAFT" && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-amber-50 border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-900">
+                      Draft Specification
+                    </span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  </div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    Project Draft Not Published Yet
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    This project is saved as a draft in your workspace. Resume editing to finalize requirements and publish to verified talent.
+                  </p>
+                </div>
+              </div>
+
+              <Link
+                href={`/client/post-project?draftId=${projectData.id}`}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition shadow-xs cursor-pointer shrink-0"
+              >
+                <span>Resume & Publish Draft</span>
+                <ArrowLeft className="w-3.5 h-3.5 rotate-180" />
+              </Link>
             </div>
           )}
 
@@ -495,58 +844,67 @@ function ProjectWorkspaceContent() {
                     </div>
 
                     <div className="space-y-3">
-                      {projectData.milestones.map((m) => (
-                        <div
-                          key={m.id}
-                          className="p-3.5 rounded-xl border border-slate-100 hover:border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 font-bold text-xs ${
-                                m.status === "RELEASED"
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : m.status === "IN_REVIEW"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-slate-200 text-slate-700"
-                              }`}
-                            >
-                              M{m.number}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h4 className="text-xs font-bold text-slate-900">{m.title}</h4>
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                    m.status === "RELEASED"
-                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                      : m.status === "IN_REVIEW"
-                                      ? "bg-amber-50 text-amber-800 border border-amber-200"
-                                      : "bg-slate-100 text-slate-600 border border-slate-200"
-                                  }`}
-                                >
-                                  {m.statusLabel}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-500 mt-0.5">
-                                Due: {m.dueDate}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between sm:justify-end gap-3 font-mono text-xs font-bold text-slate-900">
-                            <span>{m.amount}</span>
-                            {m.status === "IN_REVIEW" && (
-                              <button
-                                type="button"
-                                onClick={() => setActiveTab("milestones")}
-                                className="px-2.5 py-1 rounded-lg bg-[#4f46e5] text-white text-[11px] font-bold"
-                              >
-                                Review
-                              </button>
-                            )}
-                          </div>
+                      {projectData.milestones.length === 0 ? (
+                        <div className="p-6 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200">
+                          <p className="text-xs font-semibold text-slate-700">No milestones configured yet</p>
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            Add milestone releases to track deliverables and escrow checkpoints.
+                          </p>
                         </div>
-                      ))}
+                      ) : (
+                        projectData.milestones.map((m) => (
+                          <div
+                            key={m.id}
+                            className="p-3.5 rounded-xl border border-slate-100 hover:border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 font-bold text-xs ${
+                                  m.status === "RELEASED"
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : m.status === "IN_REVIEW"
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-slate-200 text-slate-700"
+                                }`}
+                              >
+                                M{m.number}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="text-xs font-bold text-slate-900">{m.title}</h4>
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                      m.status === "RELEASED"
+                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                        : m.status === "IN_REVIEW"
+                                        ? "bg-amber-50 text-amber-800 border border-amber-200"
+                                        : "bg-slate-100 text-slate-600 border border-slate-200"
+                                    }`}
+                                  >
+                                    {m.statusLabel}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  Due: {m.dueDate}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between sm:justify-end gap-3 font-mono text-xs font-bold text-slate-900">
+                              <span>{m.amount}</span>
+                              {m.status === "IN_REVIEW" && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveTab("milestones")}
+                                  className="px-2.5 py-1 rounded-lg bg-[#4f46e5] text-white text-[11px] font-bold"
+                                >
+                                  Review
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
@@ -673,59 +1031,82 @@ function ProjectWorkspaceContent() {
               </div>
 
               <div className="space-y-3.5">
-                {projectData.proposals.map((prop) => (
-                  <div
-                    key={prop.id}
-                    className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-4"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                      <div className="flex items-start gap-3.5">
-                        <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200">
-                          <Image
-                            src={prop.avatar}
-                            alt={prop.freelancerName}
-                            width={48}
-                            height={48}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-bold text-slate-900">
-                              {prop.freelancerName}
-                            </h3>
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                prop.status === "ACCEPTED"
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-slate-100 text-slate-700 border border-slate-200"
-                              }`}
-                            >
-                              {prop.status}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-500">{prop.freelancerRole}</p>
-                          <div className="text-[11px] text-amber-600 font-semibold mt-0.5">
-                            ★ {prop.rating}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-left sm:text-right font-mono">
-                        <div className="text-base font-extrabold text-slate-900">
-                          {prop.proposedBudget}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          Est. Timeline: {prop.estimatedTimeline}
-                        </div>
-                      </div>
+                {projectData.proposals.length === 0 ? (
+                  <div className="p-10 text-center rounded-2xl bg-white border border-dashed border-slate-200 space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center mx-auto text-[#4f46e5]">
+                      <Users className="w-6 h-6" />
                     </div>
-
-                    <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed">
-                      {prop.coverLetter}
-                    </p>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">Waiting for Proposals</h3>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
+                        Your project has been broadcasted to verified talent. Proposals from qualified contractors will appear here for your review and bilateral agreement.
+                      </p>
+                    </div>
+                    <div className="pt-2">
+                      <Link
+                        href="/client/freelancers"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4f46e5] text-white text-xs font-bold hover:bg-[#4338ca] transition shadow-xs"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Browse & Invite Talent</span>
+                      </Link>
+                    </div>
                   </div>
-                ))}
+                ) : (
+                  projectData.proposals.map((prop) => (
+                    <div
+                      key={prop.id}
+                      className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-4"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                        <div className="flex items-start gap-3.5">
+                          <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200">
+                            <Image
+                              src={prop.avatar}
+                              alt={prop.freelancerName}
+                              width={48}
+                              height={48}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-sm font-bold text-slate-900">
+                                {prop.freelancerName}
+                              </h3>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  prop.status === "ACCEPTED"
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : "bg-slate-100 text-slate-700 border border-slate-200"
+                                }`}
+                              >
+                                {prop.status}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500">{prop.freelancerRole}</p>
+                            <div className="text-[11px] text-amber-600 font-semibold mt-0.5">
+                              ★ {prop.rating}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-left sm:text-right font-mono">
+                          <div className="text-base font-extrabold text-slate-900">
+                            {prop.proposedBudget}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            Est. Timeline: {prop.estimatedTimeline}
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed">
+                        {prop.coverLetter}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -747,129 +1128,143 @@ function ProjectWorkspaceContent() {
               </div>
 
               <div className="space-y-4">
-                {projectData.milestones.map((milestone) => (
-                  <div
-                    key={milestone.id}
-                    className={`p-5 rounded-2xl bg-white border shadow-2xs space-y-4 transition ${
-                      milestone.status === "IN_REVIEW"
-                        ? "border-amber-300 ring-2 ring-amber-100"
-                        : "border-slate-200/90"
-                    }`}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                      <div className="flex items-start gap-3.5">
-                        <div
-                          className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-xs ${
-                            milestone.status === "RELEASED"
-                              ? "bg-emerald-500 text-white shadow-xs"
-                              : milestone.status === "IN_REVIEW"
-                              ? "bg-amber-500 text-white shadow-xs"
-                              : "bg-slate-100 text-slate-700"
-                          }`}
-                        >
-                          M{milestone.number}
+                {projectData.milestones.length === 0 ? (
+                  <div className="p-10 text-center rounded-2xl bg-white border border-dashed border-slate-200 space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center mx-auto text-slate-500">
+                      <CheckCircle2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">No Milestones Defined Yet</h3>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
+                        Milestones establish escrow release checkpoints protected by bilateral PayPal verification consensus. When proposals are accepted or customized, milestone checkpoints will appear here.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  projectData.milestones.map((milestone) => (
+                    <div
+                      key={milestone.id}
+                      className={`p-5 rounded-2xl bg-white border shadow-2xs space-y-4 transition ${
+                        milestone.status === "IN_REVIEW"
+                          ? "border-amber-300 ring-2 ring-amber-100"
+                          : "border-slate-200/90"
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                        <div className="flex items-start gap-3.5">
+                          <div
+                            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-xs ${
+                              milestone.status === "RELEASED"
+                                ? "bg-emerald-500 text-white shadow-xs"
+                                : milestone.status === "IN_REVIEW"
+                                ? "bg-amber-500 text-white shadow-xs"
+                                : "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            M{milestone.number}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-sm font-bold text-slate-900">
+                                {milestone.title}
+                              </h3>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  milestone.status === "RELEASED"
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : milestone.status === "IN_REVIEW"
+                                    ? "bg-amber-50 text-amber-800 border border-amber-200"
+                                    : "bg-slate-100 text-slate-700 border border-slate-200"
+                                }`}
+                              >
+                                {milestone.statusLabel}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Due date: {milestone.dueDate}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-bold text-slate-900">
-                              {milestone.title}
-                            </h3>
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                milestone.status === "RELEASED"
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : milestone.status === "IN_REVIEW"
-                                  ? "bg-amber-50 text-amber-800 border border-amber-200"
-                                  : "bg-slate-100 text-slate-700 border border-slate-200"
-                              }`}
-                            >
-                              {milestone.statusLabel}
+
+                        <div className="text-left sm:text-right font-mono">
+                          <div className="text-base font-extrabold text-slate-900">
+                            {milestone.amount}
+                          </div>
+                          {milestone.paypalOrderId && (
+                            <div className="text-[11px] text-slate-400">
+                              Order #{milestone.paypalOrderId}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Deliverable list */}
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          Agreed Deliverables:
+                        </span>
+                        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
+                          {milestone.deliverables.map((del, i) => (
+                            <li key={i} className="flex items-center gap-2">
+                              <Check className="w-3.5 h-3.5 text-[#4f46e5]" />
+                              <span>{del}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Test report & submission details if submitted */}
+                      {milestone.testReport && (
+                        <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2 text-emerald-800 font-semibold">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>
+                              Automated Tests: {milestone.testReport.passing} of {milestone.testReport.total} passing ({milestone.testReport.coverage} coverage in {milestone.testReport.runtime})
                             </span>
                           </div>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            Due date: {milestone.dueDate}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="text-left sm:text-right font-mono">
-                        <div className="text-base font-extrabold text-slate-900">
-                          {milestone.amount}
-                        </div>
-                        {milestone.paypalOrderId && (
-                          <div className="text-[11px] text-slate-400">
-                            Order #{milestone.paypalOrderId}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Deliverable list */}
-                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                        Agreed Deliverables:
-                      </span>
-                      <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
-                        {milestone.deliverables.map((del, i) => (
-                          <li key={i} className="flex items-center gap-2">
-                            <Check className="w-3.5 h-3.5 text-[#4f46e5]" />
-                            <span>{del}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Test report & submission details if submitted */}
-                    {milestone.testReport && (
-                      <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200/80 flex flex-wrap items-center justify-between gap-3 text-xs">
-                        <div className="flex items-center gap-2 text-emerald-800 font-semibold">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          <span>
-                            Automated Tests: {milestone.testReport.passing} of {milestone.testReport.total} passing ({milestone.testReport.coverage} coverage in {milestone.testReport.runtime})
+                          <span className="font-mono text-[11px] text-emerald-700">
+                            Assert Logs Verified
                           </span>
                         </div>
-                        <span className="font-mono text-[11px] text-emerald-700">
-                          Assert Logs Verified
-                        </span>
-                      </div>
-                    )}
+                      )}
 
-                    {/* Review Actions when IN_REVIEW */}
-                    {milestone.status === "IN_REVIEW" && (
-                      <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100">
-                        <p className="text-xs text-slate-500">
-                          Review deliverables above. Approving will execute PayPal Sandbox capture.
-                        </p>
+                      {/* Review Actions when IN_REVIEW */}
+                      {milestone.status === "IN_REVIEW" && (
+                        <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100">
+                          <p className="text-xs text-slate-500">
+                            Review deliverables above. Approving will execute PayPal Sandbox capture.
+                          </p>
 
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setShowRevisionModal(true)}
-                            className="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition"
-                          >
-                            Request Revision
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowRevisionModal(true)}
+                              className="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition"
+                            >
+                              Request Revision
+                            </button>
 
-                          <button
-                            type="button"
-                            disabled={isCapturing}
-                            onClick={() => handleApproveMilestone(milestone.id)}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-white text-xs font-bold transition shadow-xs disabled:opacity-50"
-                          >
-                            {isCapturing ? (
-                              <span>Capturing Escrow...</span>
-                            ) : (
-                              <>
-                                <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                <span>Approve & Release Funds ({milestone.amount})</span>
-                              </>
-                            )}
-                          </button>
+                            <button
+                              type="button"
+                              disabled={isCapturing}
+                              onClick={() => handleApproveMilestone(milestone.id)}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-white text-xs font-bold transition shadow-xs disabled:opacity-50"
+                            >
+                              {isCapturing ? (
+                                <span>Capturing Escrow...</span>
+                              ) : (
+                                <>
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                  <span>Approve & Release Funds ({milestone.amount})</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -910,34 +1305,44 @@ function ProjectWorkspaceContent() {
 
               {/* Questions list */}
               <div className="space-y-4">
-                {projectData.workspaceQuestions.map((q) => (
-                  <div
-                    key={q.id}
-                    className="p-4 rounded-xl border border-slate-100 bg-slate-50/60 space-y-3"
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900">{q.author}</span>
-                        <span className="text-slate-400">• {q.date}</span>
-                      </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        {q.status}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-slate-700 font-medium">{q.question}</p>
-
-                    {q.answer && (
-                      <div className="p-3 rounded-lg bg-white border border-slate-200 text-xs space-y-1">
-                        <div className="flex items-center justify-between text-[11px] text-slate-500">
-                          <span className="font-bold text-[#4f46e5]">{q.answeredBy}</span>
-                          <span>{q.answeredAt}</span>
-                        </div>
-                        <p className="text-slate-700">{q.answer}</p>
-                      </div>
-                    )}
+                {projectData.workspaceQuestions.length === 0 ? (
+                  <div className="p-8 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 space-y-1">
+                    <MessageSquare className="w-6 h-6 text-slate-400 mx-auto mb-2" />
+                    <p className="text-xs font-semibold text-slate-700">No discussion threads yet</p>
+                    <p className="text-[11px] text-slate-500">
+                      Use the field above to ask your contractor architectural questions or record scope decisions.
+                    </p>
                   </div>
-                ))}
+                ) : (
+                  projectData.workspaceQuestions.map((q) => (
+                    <div
+                      key={q.id}
+                      className="p-4 rounded-xl border border-slate-100 bg-slate-50/60 space-y-3"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900">{q.author}</span>
+                          <span className="text-slate-400">• {q.date}</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {q.status}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-slate-700 font-medium">{q.question}</p>
+
+                      {q.answer && (
+                        <div className="p-3 rounded-lg bg-white border border-slate-200 text-xs space-y-1">
+                          <div className="flex items-center justify-between text-[11px] text-slate-500">
+                            <span className="font-bold text-[#4f46e5]">{q.answeredBy}</span>
+                            <span>{q.answeredAt}</span>
+                          </div>
+                          <p className="text-slate-700">{q.answer}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -1056,45 +1461,55 @@ function ProjectWorkspaceContent() {
               </div>
 
               {/* Transactions Table */}
-              <div className="rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
-                {projectData.payments.map((p) => (
-                  <div
-                    key={p.id}
-                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white hover:bg-slate-50/60 transition"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-900">
-                          {p.milestoneTitle}
-                        </span>
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            p.status === "CAPTURED"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : "bg-amber-50 text-amber-800 border border-amber-200"
-                          }`}
-                        >
-                          {p.status}
-                        </span>
+              {projectData.payments.length === 0 ? (
+                <div className="p-8 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 space-y-1">
+                  <CreditCard className="w-6 h-6 text-slate-400 mx-auto mb-2" />
+                  <p className="text-xs font-semibold text-slate-700">No escrow transactions recorded yet</p>
+                  <p className="text-[11px] text-slate-500">
+                    PayPal Sandbox escrow authorizations and release receipts will appear here as milestones are completed.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
+                  {projectData.payments.map((p) => (
+                    <div
+                      key={p.id}
+                      className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white hover:bg-slate-50/60 transition"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-900">
+                            {p.milestoneTitle}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              p.status === "CAPTURED"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : "bg-amber-50 text-amber-800 border border-amber-200"
+                            }`}
+                          >
+                            {p.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
+                          <span>Order #{p.orderId}</span>
+                          <span>•</span>
+                          <span>{p.date}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
-                        <span>Order #{p.orderId}</span>
-                        <span>•</span>
-                        <span>{p.date}</span>
-                      </div>
-                    </div>
 
-                    <div className="text-left sm:text-right font-mono">
-                      <div className="text-sm font-extrabold text-slate-900">
-                        {p.amount}
-                      </div>
-                      <div className="text-[10px] text-slate-400 truncate max-w-xs">
-                        {p.proofHash}
+                      <div className="text-left sm:text-right font-mono">
+                        <div className="text-sm font-extrabold text-slate-900">
+                          {p.amount}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate max-w-xs">
+                          {p.proofHash}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

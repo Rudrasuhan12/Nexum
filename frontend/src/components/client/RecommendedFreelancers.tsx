@@ -25,7 +25,7 @@ const CANDIDATES: FreelancerCandidate[] = [
     title: "Senior Full-Stack & Payment Rails Engineer",
     hourlyRate: "$65.00/hr",
     location: "Bengaluru, India",
-    fitScore: "98% Fit",
+    fitScore: "98% Match",
     fitReason: "Direct experience with PayPal REST v2 Orders, webhook signature validation, and dual SHA-256 state machines.",
     statusBadge: "ACTIVE_CONTRACTOR",
     skills: ["PayPal v2", "Next.js", "State Machines", "TypeScript", "Node.js", "PostgreSQL"],
@@ -37,7 +37,7 @@ const CANDIDATES: FreelancerCandidate[] = [
     title: "UI/UX & Design Systems Architect",
     hourlyRate: "$55.00/hr",
     location: "Mumbai, India",
-    fitScore: "94% Fit",
+    fitScore: "94% Match",
     fitReason: "Design systems expert crafting high-conversion checkout flows and verifiable milestone prototypes.",
     statusBadge: "AVAILABLE",
     skills: ["Design Systems", "Figma", "TailwindCSS", "Accessibility", "React", "Design Tokens"],
@@ -49,7 +49,7 @@ const CANDIDATES: FreelancerCandidate[] = [
     title: "Cloud Infrastructure & Reliability Engineer",
     hourlyRate: "$75.00/hr",
     location: "Singapore",
-    fitScore: "91% Fit",
+    fitScore: "91% Match",
     fitReason: "DevOps engineer specializing in zero-downtime webhook pipelines and Docker container orchestration.",
     statusBadge: "AVAILABLE",
     skills: ["Docker", "PostgreSQL", "CI/CD", "Prometheus", "Kubernetes", "AWS"],
@@ -111,8 +111,9 @@ export default function RecommendedFreelancers({
                   </span>
                 )}
 
-                <span className="px-2.5 py-0.5 rounded-full font-mono font-bold text-[11px] text-blue-700 bg-blue-50 border border-blue-200">
-                  {c.fitScore}
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border border-emerald-400 bg-emerald-50 text-emerald-900 shadow-xs">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>{c.fitScore}</span>
                 </span>
               </div>
 
@@ -151,9 +152,9 @@ export default function RecommendedFreelancers({
               </p>
 
               {/* 4. Match Rationale Insight */}
-              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/70 text-[11px] text-slate-600 space-y-1 min-h-[58px] flex flex-col justify-center">
-                <div className="flex items-center gap-1.5 font-bold text-slate-800 text-[11px]">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 space-y-1 min-h-[58px] flex flex-col justify-center">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   <span>Match Rationale</span>
                 </div>
                 <p className="line-clamp-2 leading-relaxed text-slate-600 text-[11px]">
@@ -166,14 +167,14 @@ export default function RecommendedFreelancers({
                 {c.skills.slice(0, 4).map((skill) => (
                   <span
                     key={skill}
-                    className="px-2 py-0.5 rounded-md text-[10px] font-mono font-medium text-slate-700 bg-slate-100 border border-slate-200/70"
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-100/80 text-slate-700 border border-slate-200/50"
                   >
                     {skill}
                   </span>
                 ))}
                 {c.skills.length > 4 && (
                   <span
-                    className="px-2 py-0.5 rounded-md text-[10px] font-mono font-medium text-slate-500 bg-slate-50 border border-slate-200"
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-medium text-slate-400 bg-slate-50 border border-slate-200/40"
                     title={c.skills.slice(4).join(", ")}
                   >
                     +{c.skills.length - 4} more
@@ -183,7 +184,7 @@ export default function RecommendedFreelancers({
             </div>
 
             {/* 6. Card Footer: Location & Action */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <div className="pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs">
               <span className="flex items-center gap-1 text-[11px] text-slate-500 truncate max-w-[150px]">
                 <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
                 <span className="truncate">{c.location}</span>

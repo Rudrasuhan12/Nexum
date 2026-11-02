@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -30,6 +30,13 @@ import {
 } from "lucide-react";
 import { DemoUser } from "@/lib/auth-types";
 import { useAuth } from "@/context/AuthContext";
+import {
+  fetchClientSettings,
+  updateClientSettings,
+  changeClientPassword,
+  revokeOtherClientSessions,
+  submitClientSupportTicket,
+} from "@/lib/api-client";
 
 interface ClientSettingsViewProps {
   client?: DemoUser;
@@ -47,21 +54,27 @@ type SettingsSection =
 
 export default function ClientSettingsView({ client: initialClient }: ClientSettingsViewProps) {
   const router = useRouter();
-  const { user, logout, updateAvatar } = useAuth();
+  const { user, logout, updateAvatar, refreshUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const client = initialClient || user || {
     id: "usr_client_alex",
     name: "Alex Rivera",
-    email: "alex.rivera@horizoncommerce.demo",
+    email: "alex.rivera@nexum.demo",
     role: "CLIENT" as const,
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80",
-    companyOrHandle: "Horizon Commerce LLC",
-    location: "San Francisco, CA, USA",
-    timezone: "America/Los_Angeles (UTC-8)",
+    avatar: "",
+    companyOrHandle: "",
+    location: "",
+    timezone: typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC",
   };
+
+  const isAlex = client.id === "usr_client_alex";
 
   const [activeSection, setActiveSection] = useState<SettingsSection>("profile");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isSubmittingSupport, setIsSubmittingSupport] = useState(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -90,6 +103,7 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
       const ok = await updateAvatar(base64Data);
       if (ok) {
         showToast("Profile photo updated successfully across workspace!");
+        await updateClientSettings({ profile: { ...profileForm, avatar: base64Data } }, client.id);
       } else {
         showToast("Failed to save avatar image.");
       }
@@ -98,20 +112,23 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
   };
 
   // --------------------------------------------------------------------------
-  // 1. EDIT PROFILE STATE
+  // 1. EDIT PROFILE STATE (Clean, real-world defaults without fake phone/company)
   // --------------------------------------------------------------------------
   const initialProfile = {
-    name: client.name || "Alex Rivera",
-    email: client.email || "alex.rivera@horizoncommerce.demo",
-    phone: "+1 (415) 892-4100",
-    location: client.location || "San Francisco, CA, USA",
-    company: client.companyOrHandle || "Horizon Commerce LLC",
-    website: "https://horizoncommerce.demo",
-    timezone: client.timezone || "America/Los_Angeles (UTC-8)",
-    bio: "Head of Product & Marketplace Payments at Horizon Commerce LLC. Managing high-integrity e-commerce payment infrastructure with automated milestone release rails.",
+    name: client.name || (isAlex ? "Alex Rivera" : ""),
+    email: client.email || (isAlex ? "alex.rivera@nexum.demo" : ""),
+    phone: isAlex ? "+1 (415) 892-4100" : "",
+    location: client.location || (isAlex ? "San Francisco, CA, USA" : ""),
+    company: client.companyOrHandle || (isAlex ? "Horizon Commerce LLC" : ""),
+    website: isAlex ? "https://horizoncommerce.demo" : "",
+    timezone: client.timezone || (typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC"),
+    bio: isAlex
+      ? "Head of Product & Marketplace Payments at Horizon Commerce LLC. Managing high-integrity e-commerce payment infrastructure with automated milestone release rails."
+      : "",
   };
 
   const [profileForm, setProfileForm] = useState(initialProfile);
+  const [savedProfile, setSavedProfile] = useState(initialProfile);
   const [isProfileDirty, setIsProfileDirty] = useState(false);
 
   const handleProfileChange = (field: keyof typeof initialProfile, val: string) => {
@@ -119,14 +136,37 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
     setIsProfileDirty(true);
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsProfileDirty(false);
-    showToast("Profile details successfully updated and saved to your Nexum workspace.");
+    setIsSaving(true);
+    try {
+      const res = await updateClientSettings(
+        {
+          profile: {
+            ...profileForm,
+            avatar: client.avatar || "",
+          },
+        },
+        client.id
+      );
+      if (res.success && res.data) {
+        setProfileForm(res.data.profile);
+        setSavedProfile(res.data.profile);
+        setIsProfileDirty(false);
+        showToast("Profile details successfully updated and saved to your Nexum workspace.");
+        await refreshUser();
+      } else {
+        showToast(res.error || "Failed to update profile.");
+      }
+    } catch {
+      showToast("Error updating profile.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDiscardProfile = () => {
-    setProfileForm(initialProfile);
+    setProfileForm(savedProfile);
     setIsProfileDirty(false);
     showToast("Profile changes discarded.");
   };
@@ -139,41 +179,117 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showCurrentPass, setShowCurrentPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(true);
-  const [sessions, setSessions] = useState([
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(isAlex);
+  const [passwordLastChanged, setPasswordLastChanged] = useState<string>(
+    isAlex ? "Oct 15, 2026" : "Account initialization"
+  );
+  const [sessions, setSessions] = useState<Array<{
+    id: string;
+    device: string;
+    location: string;
+    ip: string;
+    isCurrent: boolean;
+    lastActive: string;
+  }>>([
     {
-      id: "sess_1",
-      device: "Chrome 131 on macOS (Apple Silicon)",
-      location: "San Francisco, CA, USA",
-      ip: "192.0.2.45",
+      id: "sess_curr",
+      device: typeof navigator !== "undefined"
+        ? `${navigator.userAgent.includes("Mac") ? "Safari / Chrome on macOS" : navigator.userAgent.includes("Windows") ? "Chrome / Edge on Windows" : "Desktop Browser"} (This Device)`
+        : "Current Device Session",
+      location: "Active Connection",
+      ip: "Local Session",
       isCurrent: true,
       lastActive: "Active now",
     },
-    {
-      id: "sess_2",
-      device: "Mobile Safari on iPhone 16 Pro",
-      location: "San Francisco, CA, USA",
-      ip: "198.51.100.12",
-      isCurrent: false,
-      lastActive: "2 hours ago",
-    },
   ]);
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentPassword) {
+      showToast("Please enter your current password.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      showToast("New password must be at least 6 characters.");
+      return;
+    }
     if (newPassword !== confirmPassword) {
       showToast("Error: New passwords do not match.");
       return;
     }
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    showToast("Password successfully updated across all Nexum authentication nodes.");
+
+    setIsChangingPassword(true);
+    try {
+      const res = await changeClientPassword({
+        currentPassword,
+        newPassword,
+        userId: client.id,
+      });
+      if (res.success) {
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setPasswordLastChanged("Just now");
+        showToast("Password successfully updated across all Nexum authentication nodes.");
+      } else {
+        showToast(res.error || "Failed to update password.");
+      }
+    } catch {
+      showToast("Network error changing password.");
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
-  const handleSignOutOtherSessions = () => {
-    setSessions((prev) => prev.filter((s) => s.isCurrent));
-    showToast("Signed out of 1 other active device session.");
+  const handleSignOutOtherSessions = async () => {
+    try {
+      const res = await revokeOtherClientSessions(client.id);
+      if (res.success) {
+        setSessions((prev) => prev.filter((s) => s.isCurrent));
+        showToast("Signed out of all other active device sessions.");
+      } else {
+        showToast("Failed to revoke sessions.");
+      }
+    } catch {
+      showToast("Error revoking sessions.");
+    }
+  };
+
+  const handleDownloadBackupCodes = () => {
+    const codes = Array.from({ length: 10 }, () =>
+      `${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`
+    );
+    const content = `NEXUM PROTOCOL - EMERGENCY TWO-FACTOR BACKUP RECOVERY CODES\nAccount: ${profileForm.email}\nGenerated: ${new Date().toUTCString()}\n\nKeep these codes in a secure, encrypted offline vault. Each code can only be used once.\n\n${codes.map((c, i) => `${i + 1}. ${c}`).join("\n")}\n`;
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `nexum-2fa-backup-codes-${client.id}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast("Downloaded 10 emergency 2FA backup codes.");
+  };
+
+  const handleToggle2FA = async () => {
+    const next = !twoFactorEnabled;
+    setTwoFactorEnabled(next);
+    showToast(next ? "Two-factor authentication enabled." : "Two-factor authentication disabled.");
+    try {
+      await updateClientSettings(
+        {
+          security: {
+            twoFactorEnabled: next,
+            passwordLastChanged,
+            activeSessions: sessions,
+          },
+        },
+        client.id
+      );
+    } catch {
+      // Non-blocking
+    }
   };
 
   // --------------------------------------------------------------------------
@@ -181,7 +297,53 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
   // --------------------------------------------------------------------------
   const [autoFundMilestones, setAutoFundMilestones] = useState(true);
   const [disputeMediationBuffer, setDisputeMediationBuffer] = useState(true);
-  const [paypalSandboxStatus, setPaypalSandboxStatus] = useState<"CONNECTED" | "DISCONNECTED">("CONNECTED");
+  const [paypalSandboxStatus, setPaypalSandboxStatus] = useState<"CONNECTED" | "DISCONNECTED">(
+    isAlex ? "CONNECTED" : "DISCONNECTED"
+  );
+  const [paypalEmail, setPaypalEmail] = useState(isAlex ? "sandbox-merchant@horizoncommerce.demo" : "");
+  const [vatOrTaxId, setVatOrTaxId] = useState(isAlex ? "US-EIN-94-3829104" : "");
+  const [billingReceipts, setBillingReceipts] = useState<Array<{
+    id: string;
+    orderId: string;
+    projectTitle: string;
+    date: string;
+    amount: string;
+    status: string;
+  }>>([]);
+
+  const handleSavePaymentSettings = async (
+    autoFund?: boolean,
+    disputeBuf?: boolean,
+    ppStatus?: "CONNECTED" | "DISCONNECTED"
+  ) => {
+    const nextAuto = autoFund !== undefined ? autoFund : autoFundMilestones;
+    const nextBuf = disputeBuf !== undefined ? disputeBuf : disputeMediationBuffer;
+    const nextPP = ppStatus !== undefined ? ppStatus : paypalSandboxStatus;
+
+    if (autoFund !== undefined) setAutoFundMilestones(autoFund);
+    if (disputeBuf !== undefined) setDisputeMediationBuffer(disputeBuf);
+    if (ppStatus !== undefined) setPaypalSandboxStatus(ppStatus);
+
+    try {
+      await updateClientSettings(
+        {
+          payments: {
+            autoFundMilestones: nextAuto,
+            disputeMediationBuffer: nextBuf,
+            paypalSandboxStatus: nextPP,
+            paypalEmail,
+            defaultCurrency: "USD",
+            vatOrTaxId,
+            billingReceipts,
+          },
+        },
+        client.id
+      );
+      showToast("Payment rails and escrow preferences updated.");
+    } catch {
+      // Non-blocking
+    }
+  };
 
   // --------------------------------------------------------------------------
   // 4. NOTIFICATIONS STATE
@@ -201,12 +363,15 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
     deadlinesInApp: true,
   });
 
-  const toggleNotification = (key: keyof typeof notifications) => {
-    setNotifications((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      return next;
-    });
+  const toggleNotification = async (key: keyof typeof notifications) => {
+    const next = { ...notifications, [key]: !notifications[key] };
+    setNotifications(next);
     showToast("Notification preferences updated.");
+    try {
+      await updateClientSettings({ notifications: next }, client.id);
+    } catch {
+      // Non-blocking
+    }
   };
 
   // --------------------------------------------------------------------------
@@ -236,11 +401,74 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
     setPreferredSkills((prev) => prev.filter((s) => s !== skill));
   };
 
+  const handleSaveHiringPreferences = async () => {
+    setIsSaving(true);
+    try {
+      const res = await updateClientSettings(
+        {
+          hiring: {
+            budgetMin: hiringBudgetMin,
+            budgetMax: hiringBudgetMax,
+            preferredExpLevel: preferredExpLevel as any,
+            preferredSkills,
+            autoMatchThreshold: 90,
+          },
+        },
+        client.id
+      );
+      if (res.success) {
+        showToast("Hiring and matching criteria saved successfully.");
+      } else {
+        showToast("Failed to save hiring preferences.");
+      }
+    } catch {
+      showToast("Error saving hiring preferences.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // --------------------------------------------------------------------------
   // 6. PRIVACY & DATA STATE
   // --------------------------------------------------------------------------
   const [profileVisibility, setProfileVisibility] = useState<"PUBLIC" | "VERIFIED_ONLY" | "PRIVATE">("VERIFIED_ONLY");
   const [shareAuditTelemetry, setShareAuditTelemetry] = useState(true);
+
+  const handleSavePrivacySettings = async (
+    visibility?: "PUBLIC" | "VERIFIED_ONLY" | "PRIVATE",
+    telemetry?: boolean
+  ) => {
+    const nextVis = visibility !== undefined ? visibility : profileVisibility;
+    const nextTelem = telemetry !== undefined ? telemetry : shareAuditTelemetry;
+
+    if (visibility !== undefined) setProfileVisibility(visibility);
+    if (telemetry !== undefined) setShareAuditTelemetry(telemetry);
+
+    try {
+      await updateClientSettings(
+        {
+          privacy: {
+            profileVisibility: nextVis,
+            shareAuditTelemetry: nextTelem,
+          },
+        },
+        client.id
+      );
+      showToast("Privacy and consensus ledger preferences updated.");
+    } catch {
+      // Non-blocking
+    }
+  };
+
+  const handleDownloadExport = () => {
+    showToast("Generating comprehensive GDPR workspace export package...");
+    const link = document.createElement("a");
+    link.href = `/api/client/settings/export?userId=${client.id}`;
+    link.download = `nexum-export-${client.id}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // --------------------------------------------------------------------------
   // 7. HELP & SUPPORT MODAL
@@ -249,11 +477,31 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
   const [supportIssue, setSupportIssue] = useState("");
   const [supportCategory, setSupportCategory] = useState("Milestone Mediation");
 
-  const handleSubmitSupport = (e: React.FormEvent) => {
+  const handleSubmitSupport = async (e: React.FormEvent) => {
     e.preventDefault();
-    setShowSupportModal(false);
-    setSupportIssue("");
-    showToast("Support ticket submitted. A Nexum mediation specialist will respond within 4 hours.");
+    if (!supportIssue.trim()) {
+      showToast("Please describe your request before submitting.");
+      return;
+    }
+    setIsSubmittingSupport(true);
+    try {
+      const res = await submitClientSupportTicket({
+        category: supportCategory,
+        issue: supportIssue,
+        userId: client.id,
+      });
+      if (res.success) {
+        showToast(res.message || "Support ticket created. Our team will review shortly.");
+        setSupportIssue("");
+        setShowSupportModal(false);
+      } else {
+        showToast(res.error || "Failed to submit ticket.");
+      }
+    } catch {
+      showToast("Error submitting ticket.");
+    } finally {
+      setIsSubmittingSupport(false);
+    }
   };
 
   // --------------------------------------------------------------------------
@@ -276,6 +524,74 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
     await logout();
     router.push("/login");
   };
+
+  // Hydrate settings on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function loadSettings() {
+      try {
+        const res = await fetchClientSettings(client.id);
+        if (isMounted && res.success && res.data) {
+          const s = res.data;
+          if (s.profile) {
+            const p = {
+              name: s.profile.name || client.name || (isAlex ? "Alex Rivera" : ""),
+              email: s.profile.email || client.email || (isAlex ? "alex.rivera@nexum.demo" : ""),
+              phone: s.profile.phone || (isAlex ? "+1 (415) 892-4100" : ""),
+              location: s.profile.location || client.location || (isAlex ? "San Francisco, CA, USA" : ""),
+              company: s.profile.company || client.companyOrHandle || (isAlex ? "Horizon Commerce LLC" : ""),
+              website: s.profile.website || (isAlex ? "https://horizoncommerce.demo" : ""),
+              timezone: s.profile.timezone || client.timezone || (typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC"),
+              bio: s.profile.bio || (isAlex ? "Head of Product & Marketplace Payments at Horizon Commerce LLC." : ""),
+            };
+            setProfileForm(p);
+            setSavedProfile(p);
+          }
+          if (s.security) {
+            setTwoFactorEnabled(s.security.twoFactorEnabled ?? isAlex);
+            if (s.security.passwordLastChanged) {
+              setPasswordLastChanged(s.security.passwordLastChanged);
+            }
+            if (Array.isArray(s.security.activeSessions) && s.security.activeSessions.length > 0) {
+              setSessions(s.security.activeSessions);
+            }
+          }
+          if (s.payments) {
+            setAutoFundMilestones(s.payments.autoFundMilestones ?? true);
+            setDisputeMediationBuffer(s.payments.disputeMediationBuffer ?? true);
+            setPaypalSandboxStatus(s.payments.paypalSandboxStatus || (isAlex ? "CONNECTED" : "DISCONNECTED"));
+            if (s.payments.paypalEmail) setPaypalEmail(s.payments.paypalEmail);
+            if (s.payments.vatOrTaxId) setVatOrTaxId(s.payments.vatOrTaxId);
+            if (Array.isArray(s.payments.billingReceipts)) {
+              setBillingReceipts(s.payments.billingReceipts);
+            }
+          }
+          if (s.notifications) {
+            setNotifications((prev) => ({ ...prev, ...s.notifications }));
+          }
+          if (s.hiring) {
+            if (s.hiring.budgetMin) setHiringBudgetMin(s.hiring.budgetMin);
+            if (s.hiring.budgetMax) setHiringBudgetMax(s.hiring.budgetMax);
+            if (s.hiring.preferredExpLevel) setPreferredExpLevel(s.hiring.preferredExpLevel);
+            if (Array.isArray(s.hiring.preferredSkills)) setPreferredSkills(s.hiring.preferredSkills);
+          }
+          if (s.privacy) {
+            if (s.privacy.profileVisibility) setProfileVisibility(s.privacy.profileVisibility);
+            if (s.privacy.shareAuditTelemetry !== undefined) setShareAuditTelemetry(s.privacy.shareAuditTelemetry);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading settings:", err);
+      } finally {
+        if (isMounted) setIsLoadingSettings(false);
+      }
+    }
+
+    loadSettings();
+    return () => {
+      isMounted = false;
+    };
+  }, [client.id, client.name, client.email, client.companyOrHandle, client.location, client.timezone]);
 
   // Navigation Items (Optimized for sleek top horizontal segmented bar)
   const navTabs = [
@@ -495,10 +811,15 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl text-xs font-bold bg-[#4f46e5] hover:bg-[#4338ca] text-white shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                    disabled={isSaving || !isProfileDirty}
+                    className={`px-5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs ${
+                      isProfileDirty
+                        ? "bg-[#4f46e5] hover:bg-[#4338ca] text-white cursor-pointer"
+                        : "bg-slate-200 text-slate-400 cursor-not-allowed opacity-60"
+                    }`}
                   >
                     <Save className="w-3.5 h-3.5" />
-                    <span>Save Profile</span>
+                    <span>{isSaving ? "Saving Profile..." : "Save Profile"}</span>
                   </button>
                 </div>
               </form>
@@ -584,9 +905,10 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-xs cursor-pointer"
+                      disabled={isChangingPassword}
+                      className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-xs cursor-pointer disabled:opacity-50"
                     >
-                      Update Password
+                      {isChangingPassword ? "Updating Password..." : "Update Password"}
                     </button>
                   </div>
                 </form>
@@ -603,10 +925,7 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setTwoFactorEnabled(!twoFactorEnabled);
-                      showToast(twoFactorEnabled ? "2FA disabled." : "2FA enabled with authenticator app.");
-                    }}
+                    onClick={handleToggle2FA}
                     className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${twoFactorEnabled ? "bg-[#4f46e5]" : "bg-slate-200"
                       }`}
                   >
@@ -626,7 +945,7 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                   {twoFactorEnabled && (
                     <button
                       type="button"
-                      onClick={() => showToast("Downloaded 10 emergency 2FA backup codes.")}
+                      onClick={handleDownloadBackupCodes}
                       className="text-[11px] font-bold text-[#4f46e5] hover:underline cursor-pointer"
                     >
                       Download Backup Codes
@@ -726,14 +1045,14 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
                   <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">Connected Account</span>
-                    <span className="font-extrabold text-slate-900 text-xs mt-1 block">
-                      sb-client-alex@nexum.demo
+                    <span className="font-extrabold text-slate-900 text-xs mt-1 block truncate">
+                      {paypalEmail || (isAlex ? "sb-client-alex@nexum.demo" : "Unconnected (Connect in Sandbox)")}
                     </span>
                   </div>
                   <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">Sandbox Client ID</span>
-                    <span className="font-extrabold text-slate-900 text-xs mt-1 block">
-                      sb-client-***261C (REST v2)
+                    <span className="font-extrabold text-slate-900 text-xs mt-1 block truncate">
+                      {isAlex ? "sb-client-***261C (REST v2)" : (paypalSandboxStatus === "CONNECTED" ? "sandbox-client-live-ready" : "Not configured")}
                     </span>
                   </div>
                 </div>
@@ -749,8 +1068,7 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                       type="checkbox"
                       checked={autoFundMilestones}
                       onChange={(e) => {
-                        setAutoFundMilestones(e.target.checked);
-                        showToast("Escrow funding preferences updated.");
+                        handleSavePaymentSettings(e.target.checked, undefined, undefined);
                       }}
                       className="mt-0.5 accent-[#4f46e5]"
                     />
@@ -769,8 +1087,7 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                       type="checkbox"
                       checked={disputeMediationBuffer}
                       onChange={(e) => {
-                        setDisputeMediationBuffer(e.target.checked);
-                        showToast("Mediation buffer preference saved.");
+                        handleSavePaymentSettings(undefined, e.target.checked, undefined);
                       }}
                       className="mt-0.5 accent-[#4f46e5]"
                     />
@@ -805,41 +1122,40 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                   </button>
                 </div>
 
-                <div className="divide-y divide-slate-100">
-                  <div className="py-3 flex items-center justify-between text-xs font-mono">
-                    <div>
-                      <div className="font-bold text-slate-900">Order #6DE714998H998261C</div>
-                      <div className="text-slate-500 text-[11px]">Bilateral E-Commerce Payment Rails &bull; Oct 24, 2026</div>
+                {billingReceipts.length === 0 ? (
+                  <div className="py-8 text-center space-y-2">
+                    <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                      <FileText className="w-5 h-5" />
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className="font-extrabold text-slate-900">$1,500.00 USD</span>
-                      <button
-                        type="button"
-                        onClick={() => showToast("Downloaded invoice receipt for Order #6DE714998H998261C.")}
-                        className="text-xs text-[#4f46e5] font-bold hover:underline cursor-pointer"
-                      >
-                        Receipt PDF
-                      </button>
-                    </div>
+                    <h4 className="text-xs font-bold text-slate-800">No Billing Receipts Yet</h4>
+                    <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                      Once milestone escrow payments are captured through PayPal, verified transaction receipts and settlement records will appear here.
+                    </p>
                   </div>
-
-                  <div className="py-3 flex items-center justify-between text-xs font-mono">
-                    <div>
-                      <div className="font-bold text-slate-900">Order #4AB912389K112233D</div>
-                      <div className="text-slate-500 text-[11px]">Milestone 1 Core Architecture &bull; Oct 16, 2026</div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="font-extrabold text-slate-900">$1,200.00 USD</span>
-                      <button
-                        type="button"
-                        onClick={() => showToast("Downloaded invoice receipt for Order #4AB912389K112233D.")}
-                        className="text-xs text-[#4f46e5] font-bold hover:underline cursor-pointer"
-                      >
-                        Receipt PDF
-                      </button>
-                    </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {billingReceipts.map((rec) => (
+                      <div key={rec.id} className="py-3 flex items-center justify-between text-xs font-mono">
+                        <div>
+                          <div className="font-bold text-slate-900">{rec.orderId}</div>
+                          <div className="text-slate-500 text-[11px]">
+                            {rec.projectTitle} &bull; {rec.date}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="font-extrabold text-slate-900">{rec.amount}</span>
+                          <button
+                            type="button"
+                            onClick={() => showToast(`Downloaded invoice receipt for ${rec.orderId}.`)}
+                            className="text-xs text-[#4f46e5] font-bold hover:underline cursor-pointer"
+                          >
+                            Receipt PDF
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
+                )}
               </div>
             </div>
           )}
@@ -1121,10 +1437,11 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
               <div className="pt-2">
                 <button
                   type="button"
-                  onClick={() => showToast("Hiring preferences updated. Recommendations re-indexed.")}
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-[#4f46e5] hover:bg-[#4338ca] text-white shadow-xs cursor-pointer"
+                  disabled={isSaving}
+                  onClick={handleSaveHiringPreferences}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-[#4f46e5] hover:bg-[#4338ca] text-white shadow-xs cursor-pointer disabled:opacity-50"
                 >
-                  Save Hiring Preferences
+                  {isSaving ? "Saving Preferences..." : "Save Hiring Preferences"}
                 </button>
               </div>
             </div>
@@ -1151,10 +1468,7 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                       type="radio"
                       name="visibility"
                       checked={profileVisibility === "PUBLIC"}
-                      onChange={() => {
-                        setProfileVisibility("PUBLIC");
-                        showToast("Profile visibility set to Public.");
-                      }}
+                      onChange={() => handleSavePrivacySettings("PUBLIC")}
                       className="mt-0.5 accent-[#4f46e5]"
                     />
                     <div>
@@ -1170,10 +1484,7 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                       type="radio"
                       name="visibility"
                       checked={profileVisibility === "VERIFIED_ONLY"}
-                      onChange={() => {
-                        setProfileVisibility("VERIFIED_ONLY");
-                        showToast("Profile visibility set to Verified Freelancers Only.");
-                      }}
+                      onChange={() => handleSavePrivacySettings("VERIFIED_ONLY")}
                       className="mt-0.5 accent-[#4f46e5]"
                     />
                     <div>
@@ -1189,10 +1500,7 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                       type="radio"
                       name="visibility"
                       checked={profileVisibility === "PRIVATE"}
-                      onChange={() => {
-                        setProfileVisibility("PRIVATE");
-                        showToast("Profile visibility set to Private.");
-                      }}
+                      onChange={() => handleSavePrivacySettings("PRIVATE")}
                       className="mt-0.5 accent-[#4f46e5]"
                     />
                     <div>
@@ -1208,18 +1516,18 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
               {/* Data Export */}
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                 <div>
-                  <h3 className="text-xs font-bold text-slate-900">Request Data Archive Export</h3>
+                  <h3 className="text-xs font-bold text-slate-900">Download Account Data Package (JSON)</h3>
                   <p className="text-[11px] text-slate-500 mt-0.5">
                     Download an immutable JSON bundle of all your signed agreements, audit hashes, and milestone receipts.
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => showToast("Data export initiated. Download link will be emailed to " + profileForm.email)}
+                  onClick={handleDownloadExport}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Request Export</span>
+                  <span>Download JSON</span>
                 </button>
               </div>
             </div>
@@ -1404,9 +1712,10 @@ export default function ClientSettingsView({ client: initialClient }: ClientSett
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-[#4f46e5] hover:bg-[#4338ca] text-white shadow-xs cursor-pointer"
+                  disabled={isSubmittingSupport}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-[#4f46e5] hover:bg-[#4338ca] text-white shadow-xs cursor-pointer disabled:opacity-50"
                 >
-                  Submit Ticket
+                  {isSubmittingSupport ? "Submitting Ticket..." : "Submit Ticket"}
                 </button>
               </div>
             </form>

@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
-import { fetchFreelancerDashboard, fetchProjectTasks } from "@/lib/api-client";
+import { fetchFreelancerDashboard, fetchProjectTasks, fetchClientMilestones } from "@/lib/api-client";
 
 export interface NavItemConfig {
   id: string;
@@ -49,19 +49,29 @@ export default function DashboardSidebar({
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useAuth();
+
+  // --- Freelancer badge state ---
   const [proposalsBadge, setProposalsBadge] = useState<number | undefined>(undefined);
   const [projectsBadge, setProjectsBadge] = useState<number | undefined>(undefined);
   const [tasksBadge, setTasksBadge] = useState<number | undefined>(undefined);
+
+  // --- Client badge state ---
+  const [milestonesBadge, setMilestonesBadge] = useState<number | undefined>(undefined);
 
   const isFreelancer =
     currentRole === "FREELANCER" ||
     (user?.role === "FREELANCER" && !pathname?.startsWith("/client")) ||
     pathname?.startsWith("/freelancer");
 
+  const isClient =
+    currentRole === "CLIENT" ||
+    user?.role === "CLIENT" ||
+    pathname?.startsWith("/client");
+
+  // Freelancer-only: fetch badge counts for proposals, projects, tasks
   useEffect(() => {
     let mounted = true;
 
-    // Do not call Freelancer-only APIs for Client accounts
     if (!isFreelancer || !user?.id) {
       setProposalsBadge(undefined);
       setProjectsBadge(undefined);
@@ -107,6 +117,37 @@ export default function DashboardSidebar({
     };
   }, [isFreelancer, user?.id]);
 
+  // Client-only: fetch milestones awaiting review badge count
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchBadge = async () => {
+      if (!isClient || !user?.id) return;
+      try {
+        const res = await fetchClientMilestones(user?.id);
+        if (isMounted && res.success && res.stats) {
+          // Badge denotes items requiring client action/review
+          const count = res.stats.awaitingReviewCount || 0;
+          setMilestonesBadge(count > 0 ? count : undefined);
+        }
+      } catch {
+        // Keep quiet on background badge fetch fail
+      }
+    };
+
+    fetchBadge();
+
+    const handleUpdate = () => {
+      fetchBadge();
+    };
+
+    window.addEventListener("nexum:milestones-updated", handleUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener("nexum:milestones-updated", handleUpdate);
+    };
+  }, [isClient, user?.id]);
+
   const handleLogout = async () => {
     await logout();
     router.push("/login");
@@ -130,7 +171,8 @@ export default function DashboardSidebar({
       id: "milestones",
       label: "Milestones",
       icon: Layers,
-      href: "/client/dashboard?tab=milestones",
+      badge: milestonesBadge,
+      href: "/client/milestones",
     },
     {
       id: "freelancers",
@@ -231,6 +273,12 @@ export default function DashboardSidebar({
         return;
       }
       if (
+        item.id === "milestones" &&
+        pathname === "/client/milestones"
+      ) {
+        return;
+      }
+      if (
         (item.id === "overview" || item.id === "dashboard") &&
         (pathname === "/client/dashboard" || pathname === "/freelancer/dashboard") &&
         !window.location.search
@@ -253,6 +301,7 @@ export default function DashboardSidebar({
     const Icon = item.icon;
     const isActive =
       activeTab === item.id ||
+      (item.id === "milestones" && pathname === "/client/milestones") ||
       (item.id === "dashboard" && (activeTab === "overview" || !activeTab)) ||
       (item.id === "overview" && (activeTab === "dashboard" || !activeTab)) ||
       (item.id === "projects" && activeTab === "milestones" && isFreelancer);
@@ -276,8 +325,8 @@ export default function DashboardSidebar({
         />
         <span className="flex-1 truncate">{item.label}</span>
 
-        {/* Circular Pill Badge */}
-        {item.badge !== undefined && (
+        {/* Circular Pill Badge (render only if numeric count > 0) */}
+        {item.badge !== undefined && Number(item.badge) > 0 && (
           <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#ef4444] text-white text-[11px] font-bold flex items-center justify-center shrink-0 shadow-xs">
             {item.badge}
           </span>
