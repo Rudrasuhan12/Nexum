@@ -46,8 +46,8 @@ export default function FreelancerWorkspaceNexumAIMode({
   const { user } = useAuth();
 
   // Chat History State
-  const [chatHistory, setChatHistory] = useState<PrivateAIChatEntry[]>(INITIAL_FREELANCER_AI_CHAT_HISTORY);
-  const [selectedChatId, setSelectedChatId] = useState<string>("fchat_scope_cr2");
+  const [chatHistory, setChatHistory] = useState<PrivateAIChatEntry[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Projects & Scope State
@@ -103,10 +103,31 @@ export default function FreelancerWorkspaceNexumAIMode({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleSelectChat = (id: string) => {
+  const handleSelectChat = async (id: string) => {
     setSelectedChatId(id);
-    if (!id || id.startsWith("fchat_")) {
+    if (!id || id.startsWith("chat_")) {
       setLiveMessages([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/assistant/conversations/${encodeURIComponent(id)}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        const conv = data.conversation;
+        if (conv?.messages && Array.isArray(conv.messages)) {
+          setLiveMessages(
+            conv.messages.map((m: any) => ({
+              id: m.id || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              role: m.role,
+              content: m.content,
+              createdAt: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Just now",
+              model: m.model || "Gemini 2.5",
+            }))
+          );
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch conversation detail:", err);
     }
   };
 

@@ -1880,7 +1880,7 @@ export class ClientOverviewService {
       const dbUsers = await prisma.user.findMany({
         where: { role: "FREELANCER" },
         include: { freelancerProfile: true },
-        take: 6,
+        take: 4,
       }).catch(() => null);
 
       if (dbUsers && dbUsers.length > 0) {
@@ -1908,7 +1908,7 @@ export class ClientOverviewService {
     }
 
     if (realFreelancers.length === 0) {
-      realFreelancers = DEFAULT_RECOMMENDED_FREELANCERS;
+      realFreelancers = [];
     }
 
     // Query real audit ledger events from database
@@ -1965,7 +1965,8 @@ export class ClientOverviewService {
 
     // 4. Aggregate live projects into overview structure
     const aggregated = this.aggregateFromProjects(projects, targetClient);
-    aggregated.recommendedFreelancers = realFreelancers;
+    aggregated.upcomingMilestones = aggregated.upcomingMilestones.slice(0, 4);
+    aggregated.recommendedFreelancers = realFreelancers.slice(0, 4);
     aggregated.recentActivities = allAudits;
     return aggregated;
   }

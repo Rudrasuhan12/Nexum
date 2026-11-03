@@ -1844,7 +1844,7 @@ export default function WorkspaceChatsMode({
                   Active Baseline: {agreementHash}
                 </div>
                 <div className="text-[10px] text-slate-500">
-                  Parent Root: 0x{agreementHash.slice(2, 18)}8e7d...{selectedProject.id.slice(-6)}
+                  Parent Root: 0x{selectedProject.id.replace(/[^a-f0-9]/gi, "").padEnd(16, "0").slice(0, 16)}...{agreementHash.replace(/[^a-f0-9]/gi, "").slice(-8) || "8e7d"}
                 </div>
               </div>
 
@@ -2074,21 +2074,30 @@ export default function WorkspaceChatsMode({
             </h3>
 
             <div className="space-y-2.5 text-xs">
-              {selectedProject.milestones.map((m) => (
-                <div key={m.id} className="flex items-center justify-between py-1 border-b border-slate-50 last:border-b-0">
-                  <div>
-                    <div className="font-bold text-slate-900">
-                      {m.number}. {m.title}
+              {selectedProject.milestones && selectedProject.milestones.length > 0 ? (
+                <div className="space-y-2.5 text-xs">
+                  {selectedProject.milestones.map((m) => (
+                    <div key={m.id} className="flex items-center justify-between py-1 border-b border-slate-50 last:border-b-0">
+                      <div>
+                        <div className="font-bold text-slate-900">
+                          {m.number}. {m.title}
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          {m.amount} · {m.dueDate}
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${m.statusColor}`}>
+                        {m.status}
+                      </span>
                     </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">
-                      {m.amount} · {m.dueDate}
-                    </div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${m.statusColor}`}>
-                    {m.status}
-                  </span>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="py-3 px-2 text-center rounded-xl bg-slate-50/70 border border-dashed border-slate-200">
+                  <p className="text-[11px] text-slate-500 font-medium">No milestones scheduled yet</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Milestones will appear when agreement terms are approved.</p>
+                </div>
+              )}
             </div>
 
             {selectedProject.paymentNote && (
