@@ -244,6 +244,9 @@ model User {
   email        String   @unique
   name         String
   passwordHash String?
+  googleId     String?  @unique
+  avatarUrl    String?
+  microsoftId  String?  @unique
   preferences  Json?
   locale       String   @default("en-US")
   timezone     String   @default("UTC")

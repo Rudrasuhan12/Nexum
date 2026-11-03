@@ -19,6 +19,21 @@ const nextConfig: NextConfig = {
         hostname: "images.unsplash.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "*.googleusercontent.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "*.microsoft.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "*.microsoftonline.com",
+        pathname: "/**",
+      },
     ],
   },
   async rewrites() {

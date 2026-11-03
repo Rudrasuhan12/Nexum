@@ -22,6 +22,12 @@ const envSchema = z.object({
   EMAILJS_TEMPLATE_ID: z.string().optional().default(""),
   EMAILJS_PUBLIC_KEY: z.string().optional().default(""),
   EMAILJS_PRIVATE_KEY: z.string().optional().default(""),
+  GOOGLE_CLIENT_ID: z.string().optional().default(""),
+  GOOGLE_CLIENT_SECRET: z.string().optional().default(""),
+  GOOGLE_CALLBACK_URL: z.string().optional().default("http://localhost:3000/api/auth/google/callback"),
+  MICROSOFT_CLIENT_ID: z.string().optional().default(""),
+  MICROSOFT_CLIENT_SECRET: z.string().optional().default(""),
+  MICROSOFT_CALLBACK_URL: z.string().optional().default("http://localhost:3000/api/auth/microsoft/callback"),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
@@ -38,4 +44,3 @@ export function validateEnv(customEnv?: Record<string, string | undefined>): Env
 }
 
 export const env = validateEnv();
-
