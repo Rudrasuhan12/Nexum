@@ -16,6 +16,12 @@ const envSchema = z.object({
   ENABLE_FAULT_INJECTOR: z.string().optional().default("false"),
   AI_DAILY_BUDGET: z.string().optional().default("50"),
   GEMINI_API_KEY: z.string().optional().default(""),
+  TELEGRAM_BOT_TOKEN: z.string().optional().default(""),
+  GROQ_API_KEY: z.string().optional().default(""),
+  EMAILJS_SERVICE_ID: z.string().optional().default(""),
+  EMAILJS_TEMPLATE_ID: z.string().optional().default(""),
+  EMAILJS_PUBLIC_KEY: z.string().optional().default(""),
+  EMAILJS_PRIVATE_KEY: z.string().optional().default(""),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

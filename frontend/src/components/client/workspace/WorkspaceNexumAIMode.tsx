@@ -14,6 +14,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   MessageSquare,
+  Trash2,
 } from "lucide-react";
 import {
   PrivateAIChatEntry,
@@ -218,6 +219,32 @@ export default function WorkspaceNexumAIMode({
     );
   };
 
+  
+  const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await fetch(`/api/assistant/conversations/${encodeURIComponent(chatId)}`, {
+        method: "DELETE",
+      });
+      setChatHistory((prev) => prev.filter((c) => c.id !== chatId));
+      if (selectedChatId === chatId) {
+        setChatHistory((prev) => {
+          const remaining = prev.filter((c) => c.id !== chatId);
+          if (remaining.length > 0) {
+            handleSelectChat(remaining[0].id);
+          } else {
+            setSelectedChatId("");
+            setLiveMessages([]);
+          }
+          return remaining;
+        });
+      }
+      showToast("Conversation deleted.");
+    } catch {
+      showToast("Failed to delete conversation.");
+    }
+  };
+
   const handleNewChat = async () => {
     try {
       const res = await fetch("/api/assistant/conversations", {
@@ -414,14 +441,24 @@ export default function WorkspaceNexumAIMode({
                       <div
                         key={c.id}
                         onClick={() => handleSelectChat(c.id)}
-                        className={`p-2.5 rounded-xl transition cursor-pointer text-left border ${
+                        className={`group p-2.5 rounded-xl transition cursor-pointer text-left border relative ${
                           isSelected
                             ? "bg-indigo-50/70 border-indigo-200/90 text-indigo-900 font-semibold shadow-2xs"
                             : "bg-white hover:bg-slate-50 border-transparent text-slate-700"
                         }`}
                       >
-                        <div className="text-xs font-bold truncate leading-snug">
-                          {c.title}
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className="text-xs font-bold truncate leading-snug flex-1">
+                            {c.title}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteChat(c.id, e)}
+                            title="Delete chat"
+                            className={`p-1 rounded-lg transition shrink-0 cursor-pointer ${isSelected ? "text-slate-400 hover:text-rose-600 hover:bg-rose-50" : "opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 hover:bg-rose-50"}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                         <div className="text-[10px] text-slate-400 truncate mt-0.5">
                           {c.projectTag}
@@ -444,14 +481,24 @@ export default function WorkspaceNexumAIMode({
                       <div
                         key={c.id}
                         onClick={() => handleSelectChat(c.id)}
-                        className={`p-2.5 rounded-xl transition cursor-pointer text-left border ${
+                        className={`group p-2.5 rounded-xl transition cursor-pointer text-left border relative ${
                           isSelected
                             ? "bg-indigo-50/70 border-indigo-200/90 text-indigo-900 font-semibold shadow-2xs"
                             : "bg-white hover:bg-slate-50 border-transparent text-slate-700"
                         }`}
                       >
-                        <div className="text-xs font-bold truncate leading-snug">
-                          {c.title}
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className="text-xs font-bold truncate leading-snug flex-1">
+                            {c.title}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteChat(c.id, e)}
+                            title="Delete chat"
+                            className={`p-1 rounded-lg transition shrink-0 cursor-pointer ${isSelected ? "text-slate-400 hover:text-rose-600 hover:bg-rose-50" : "opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 hover:bg-rose-50"}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                         <div className="text-[10px] text-slate-400 truncate mt-0.5">
                           {c.projectTag}
@@ -523,6 +570,18 @@ export default function WorkspaceNexumAIMode({
               </button>
             );
           })}
+
+          {selectedChatId && (
+            <button
+              type="button"
+              onClick={(e) => handleDeleteChat(selectedChatId, e)}
+              className="ml-auto py-1 px-2.5 rounded-full text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 transition shrink-0 flex items-center gap-1.5 cursor-pointer"
+              title="Delete current conversation"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-600" />
+              <span className="hidden sm:inline">Delete chat</span>
+            </button>
+          )}
         </div>
 
         {/* Scrollable Response Cards Stream */}

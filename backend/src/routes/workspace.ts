@@ -29,10 +29,15 @@ router.get("/projects", async (req: Request, res: Response) => {
                 { agreement: { freelancerId: userId } },
                 { proposals: { some: { freelancerId: userId } } },
                 { opportunities: { some: { freelancerId: userId } } },
+                { agreement: { freelancer: { email: userId } } },
+                { proposals: { some: { freelancer: { email: userId } } } },
               ],
             }
           : {
-              clientId: userId,
+              OR: [
+                { clientId: userId },
+                { client: { email: userId } },
+              ],
             },
       include: {
         client: { select: { id: true, name: true, email: true } },
