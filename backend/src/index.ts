@@ -47,6 +47,7 @@ import freelancerSettingsRouter from "./routes/freelancer/settings.js";
 import freelancerAssistantRouter from "./routes/freelancer/assistant.js";
 import workspaceRouter from "./routes/workspace.js";
 import telegramRouter from "./routes/telegram.js";
+import clientPaymentsRouter from "./routes/clientPayments.js";
 
 // Load environment variables
 dotenv.config();
@@ -154,7 +155,8 @@ app.use("/api/webhooks/paypal", paypalWebhooksRouter);
 // Dev-Only Payments Stand-in Routes
 app.use("/api/dev/payments", devPaymentsRouter);
 
-// Client Overview Routes
+// Client Overview & Payments Routes
+app.use("/api/client/payments", clientPaymentsRouter);
 app.use("/api/client", clientRouter);
 app.use("/api/workspace", workspaceRouter);
 app.use("/api/telegram", telegramRouter);

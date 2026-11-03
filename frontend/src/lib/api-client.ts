@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Nexum API Client
  * Provides typed connectivity between the Next.js frontend and the Express/Prisma backend.
  */
@@ -4556,6 +4556,163 @@ export async function disconnectTelegram(userId = "usr_client_alex"): Promise<{
     return await res.json();
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to disconnect Telegram";
+    return { success: false, error: msg };
+  }
+}
+
+
+// ============================================================================
+// Phase 7: Client Financial Ledger & PayPal Orders REST v2
+// ============================================================================
+
+/**
+ * Fetch client payments & financial escrow summary.
+ */
+export async function fetchClientPaymentsSummary(clientId?: string): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const q = clientId ? `?clientId=${encodeURIComponent(clientId)}` : "";
+    const res = await fetch(`${BACKEND_URL}/api/client/payments/summary${q}`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to load payment summary";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Fetch client transaction history with cryptographic evidence.
+ */
+export async function fetchClientTransactions(
+  clientId?: string,
+  filter?: { status?: string; search?: string }
+): Promise<{
+  success: boolean;
+  data?: any[];
+  count?: number;
+  error?: string;
+}> {
+  try {
+    const params = new URLSearchParams();
+    if (clientId) params.append("clientId", clientId);
+    if (filter?.status && filter.status !== "ALL") params.append("status", filter.status);
+    if (filter?.search) params.append("search", filter.search);
+
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const res = await fetch(`${BACKEND_URL}/api/client/payments/transactions${qs}`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to load transactions";
+    return { success: false, data: [], error: msg };
+  }
+}
+
+/**
+ * Fetch client cash flow points for spline chart.
+ */
+export async function fetchClientCashFlow(
+  clientId?: string,
+  timeframe = "1M"
+): Promise<{
+  success: boolean;
+  data?: any[];
+  error?: string;
+}> {
+  try {
+    const params = new URLSearchParams();
+    if (clientId) params.append("clientId", clientId);
+    if (timeframe) params.append("timeframe", timeframe);
+
+    const res = await fetch(`${BACKEND_URL}/api/client/payments/cash-flow?${params.toString()}`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to load cash flow";
+    return { success: false, data: [], error: msg };
+  }
+}
+
+/**
+ * Fetch urgent client action items (milestone deliverables submitted).
+ */
+export async function fetchClientActionRequired(clientId?: string): Promise<{
+  success: boolean;
+  data?: any | null;
+  error?: string;
+}> {
+  try {
+    const q = clientId ? `?clientId=${encodeURIComponent(clientId)}` : "";
+    const res = await fetch(`${BACKEND_URL}/api/client/payments/action-required${q}`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    return { success: false, data: null };
+  }
+}
+
+/**
+ * Fetch upcoming scheduled deliverable for client.
+ */
+export async function fetchClientUpcomingDeliverable(clientId?: string): Promise<{
+  success: boolean;
+  data?: any | null;
+  error?: string;
+}> {
+  try {
+    const q = clientId ? `?clientId=${encodeURIComponent(clientId)}` : "";
+    const res = await fetch(`${BACKEND_URL}/api/client/payments/upcoming${q}`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err: unknown) {
+    return { success: false, data: null };
+  }
+}
+
+/**
+ * Authorize and Release milestone escrow funds to freelancer.
+ */
+export async function authorizeClientMilestoneRelease(
+  milestoneId: string,
+  clientId?: string
+): Promise<{
+  success: boolean;
+  receiptNumber?: string;
+  proofHash?: string;
+  amountReleased?: string;
+  freelancerName?: string;
+  error?: string;
+}> {
+  try {
+    const q = clientId ? `?clientId=${encodeURIComponent(clientId)}` : "";
+    const res = await fetch(`${BACKEND_URL}/api/client/payments/release${q}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ milestoneId }),
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to release milestone escrow";
     return { success: false, error: msg };
   }
 }
