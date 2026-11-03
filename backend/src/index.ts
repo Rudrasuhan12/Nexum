@@ -47,6 +47,7 @@ import freelancerSettingsRouter from "./routes/freelancer/settings.js";
 import freelancerAssistantRouter from "./routes/freelancer/assistant.js";
 import workspaceRouter from "./routes/workspace.js";
 import telegramRouter from "./routes/telegram.js";
+import { telegramService } from "./services/telegramService.js";
 import clientPaymentsRouter from "./routes/clientPayments.js";
 
 // Load environment variables
@@ -195,6 +196,11 @@ if (env.NODE_ENV !== "test") {
   if (process.env.DISABLE_BACKGROUND_WORKER !== "true") {
     backgroundWorker.start(2000);
     console.log("⚙️  PostgreSQL background worker started (polling interval: 2000ms)");
+  }
+
+  // Start automated Telegram Mobile Gateway polling
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    telegramService.startPolling();
   }
 }
 

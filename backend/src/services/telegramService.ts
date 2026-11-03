@@ -93,6 +93,63 @@ export class TelegramService {
   private pendingAuth: Map<string, PendingTelegramAuth> = new Map();
   // Set of chatIds waiting for email input
   private awaitingEmail: Set<string> = new Set();
+  private isPolling: boolean = false;
+  private pollingOffset: number = 0;
+
+  /**
+   * Automatically start Telegram long-polling (handles incoming messages in real-time)
+   */
+  public async startPolling() {
+    if (this.isPolling || !this.botToken) return;
+
+    // Check if webhook is already set
+    try {
+      const infoRes = await fetch(`https://api.telegram.org/bot${this.botToken}/getWebhookInfo`);
+      if (infoRes.ok) {
+        const info = (await infoRes.json()) as any;
+        if (info.ok && info.result?.url) {
+          console.log(`[TelegramService] Webhook is active at: ${info.result.url}. Skipping local polling.`);
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    this.isPolling = true;
+    console.log("[TelegramService] 🚀 Starting automated long-polling for @NexumDev_Bot...");
+
+    const pollLoop = async () => {
+      while (this.isPolling) {
+        try {
+          const res = await fetch(
+            `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${this.pollingOffset}&timeout=15`
+          );
+          if (res.ok) {
+            const data = (await res.json()) as any;
+            if (data.ok && Array.isArray(data.result) && data.result.length > 0) {
+              for (const update of data.result) {
+                this.pollingOffset = update.update_id + 1;
+                this.handleWebhookUpdate(update).catch((err) =>
+                  console.error("[TelegramService] Error handling update:", err)
+                );
+              }
+            }
+          } else {
+            await new Promise((r) => setTimeout(r, 3000));
+          }
+        } catch {
+          await new Promise((r) => setTimeout(r, 4000));
+        }
+      }
+    };
+
+    pollLoop();
+  }
+
+  public stopPolling() {
+    this.isPolling = false;
+  }
 
   constructor() {
     this.botToken = process.env.TELEGRAM_BOT_TOKEN;
