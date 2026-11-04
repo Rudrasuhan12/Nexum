@@ -44,6 +44,14 @@ const roleSchema = z.object({
   role: z.enum(["CLIENT", "FREELANCER"], {
     errorMap: () => ({ message: "Role must be CLIENT or FREELANCER" }),
   }),
+  companyName: z.string().optional(),
+  interests: z.array(z.string()).optional(),
+  budget: z.string().optional(),
+  title: z.string().optional(),
+  skills: z.array(z.string()).optional(),
+  profileType: z.string().optional(),
+  workExperience: z.string().optional(),
+  hourlyRate: z.number().optional(),
 });
 
 function setSessionCookie(res: Response, rawToken: string, expiresAt: Date) {
@@ -101,7 +109,7 @@ router.post(
                     bio: "Independent specialist on the Nexum protocol.",
                     skills: [],
                     onboardingStatus: "NOT_STARTED",
-                    availability: "AVAILABLE",
+                    availabilityStatus: "AVAILABLE",
                   },
                 },
               }
@@ -311,21 +319,37 @@ router.post(
           });
         }
 
+        const pType = parsed.data.profileType;
+        const expLevel = pType === "Experienced / Senior" ? "SENIOR" : pType === "Student / Beginner" ? "BEGINNER" : "MID";
         return await tx.user.update({
           where: { id: user.id },
           data: {
             role: parsed.data.role,
+            preferences: {
+              ...(parsed.data.companyName ? { companyName: parsed.data.companyName } : {}),
+              ...(parsed.data.interests ? { interests: parsed.data.interests } : {}),
+              ...(parsed.data.budget ? { budget: parsed.data.budget } : {}),
+            },
             ...(parsed.data.role === "FREELANCER"
               ? {
                   freelancerProfile: {
                     upsert: {
                       create: {
-                        title: "Freelancer Specialist",
-                        bio: "Independent specialist on the Nexum protocol.",
-                        skills: [],
-                        onboardingStatus: "NOT_STARTED",
+                        title: parsed.data.title?.trim() || "Freelancer Specialist",
+                        bio: parsed.data.workExperience?.trim() || "Independent specialist on the Nexum protocol.",
+                        skills: parsed.data.skills || [],
+                        experienceLevel: expLevel,
+                        onboardingStatus: parsed.data.skills && parsed.data.skills.length > 0 ? "COMPLETED" : "NOT_STARTED",
+                        rateHourlyMinor: parsed.data.hourlyRate ? parsed.data.hourlyRate * 100 : 5000,
+                        availability: "AVAILABLE",
                       },
-                      update: {},
+                      update: {
+                        title: parsed.data.title?.trim() || undefined,
+                        bio: parsed.data.workExperience?.trim() || undefined,
+                        skills: parsed.data.skills || undefined,
+                        experienceLevel: expLevel,
+                        onboardingStatus: parsed.data.skills && parsed.data.skills.length > 0 ? "COMPLETED" : undefined,
+                      },
                     },
                   },
                 }
