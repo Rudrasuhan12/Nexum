@@ -362,43 +362,33 @@ export interface CreateProjectInput {
 
 const DEFAULT_RECOMMENDED_FREELANCERS: RecommendedFreelancerItem[] = [
   {
-    id: "usr_freelancer_marcus",
-    name: "Marcus Chen",
-    role: "Cloud Reliability & DevOps Engineer",
-    skills: ["Kubernetes", "AWS", "CI/CD", "Terraform"],
-    rate: "$75/hr",
-    rating: "5.0 (28 jobs)",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=128&q=80",
-    availability: "Available now",
-  },
-  {
-    id: "usr_freelancer_priya",
-    name: "Priya Sharma",
-    role: "UI/UX & Design Systems Architect",
-    skills: ["Figma", "Design Systems", "Next.js", "Tailwind"],
-    rate: "$55/hr",
-    rating: "4.9 (34 jobs)",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=128&q=80",
-    availability: "10 hrs/week",
-  },
-  {
-    id: "usr_freelancer_elena",
-    name: "Elena Rostova",
-    role: "Full-Stack & Payment Rails Architect",
+    id: "usr_freelancer_rohan",
+    name: "Rohan Verma",
+    role: "Senior Full-Stack & Payment Rails Engineer",
     skills: ["PayPal Orders v2", "Next.js", "PostgreSQL", "State Machines"],
-    rate: "$95/hr",
-    rating: "5.0 (34 jobs)",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=128&q=80",
+    rate: "$65/hr",
+    rating: "5.0 (28 jobs)",
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&q=80",
     availability: "Available now",
   },
   {
-    id: "usr_freelancer_david",
-    name: "David K.",
-    role: "Solidity & Smart Contract Auditor",
-    skills: ["Solidity", "Rust", "Web3.js", "Security"],
-    rate: "$90/hr",
-    rating: "5.0 (19 jobs)",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=128&q=80",
+    id: "cmvuanz4u0000vgtkuq294rn2",
+    name: "Sambit Kumar Mohanty",
+    role: "Full-Stack Specialist & Escrow Engineer",
+    skills: ["Next.js", "React", "TypeScript", "Tailwind CSS"],
+    rate: "$60/hr",
+    rating: "5.0 (15 jobs)",
+    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80",
+    availability: "Available now",
+  },
+  {
+    id: "cmw0u242a0003fb2d7z55d4zv",
+    name: "Chandrasekhar",
+    role: "Freelancer Specialist",
+    skills: ["Web development", "Backend / API development", "TypeScript"],
+    rate: "$60/hr",
+    rating: "5.0 (12 jobs)",
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&q=80",
     availability: "Available now",
   },
 ];
@@ -2931,7 +2921,8 @@ export class ClientOverviewService {
       }
     } catch {}
 
-    // Query DB for any newly registered freelancers with role: "FREELANCER"
+    // Build fresh roster from defaults and current DB records per request
+    const currentRoster: FreelancerProfile[] = JSON.parse(JSON.stringify(DEFAULT_FREELANCERS));
     try {
       const dbFreelancers = await prisma.user.findMany({
         where: { role: "FREELANCER" },
@@ -2939,12 +2930,12 @@ export class ClientOverviewService {
       });
 
       for (const dbUser of dbFreelancers) {
-        if (!this.freelancerRoster.some((f) => f.id === dbUser.id || f.id === `usr_${dbUser.id}`)) {
+        if (!currentRoster.some((f) => f.id === dbUser.id || f.id === `usr_${dbUser.id}`)) {
           const profile = dbUser.freelancerProfile;
           const skills = Array.isArray(profile?.skills) ? (profile.skills as string[]) : ["TypeScript", "Next.js", "Full-Stack"];
           const ratePrefs = (profile?.ratePreferences as Record<string, unknown>) || {};
           const parsedRate = typeof ratePrefs?.hourlyRateCents === "number" ? ratePrefs.hourlyRateCents : 6000;
-          this.freelancerRoster.push({
+          currentRoster.push({
             id: dbUser.id,
             name: dbUser.name,
             avatar: ((dbUser.preferences as Record<string, unknown>)?.avatar as string) || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80",
@@ -2980,6 +2971,8 @@ export class ClientOverviewService {
     } catch {
       // Non-blocking if DB is not reachable
     }
+
+    this.freelancerRoster = currentRoster;
 
     // Filter roster according to query parameters
     let filtered = this.freelancerRoster.map((f) => {
