@@ -1673,7 +1673,7 @@ export class ClientOverviewService {
         orderIndex: idx + 1,
         title: m.title || `Milestone ${idx + 1}`,
         amountCents: amountVal,
-        state: isDraft ? "NOT_STARTED" : idx === 0 ? "APPROVED" : "NOT_STARTED",
+        state: "NOT_STARTED",
         deadline: m.deadline ? new Date(m.deadline) : new Date(now.getTime() + (idx + 1) * 7 * 86400000),
         deliverables: m.deliverables || ["Deliverable package"],
         days: m.days ? String(m.days) : undefined,
@@ -1702,26 +1702,7 @@ export class ClientOverviewService {
       visibility: input.visibility || "PUBLIC",
       createdAt: existingIndex >= 0 ? currentList[existingIndex].createdAt : now,
       updatedAt: now,
-      proposals: isDraft
-        ? []
-        : [
-            {
-              id: `prop_${projectId}`,
-              projectId,
-              freelancerId: "usr_freelancer_elena",
-              freelancer: {
-                id: "usr_freelancer_elena",
-                name: "Elena Rostova",
-                email: "elena.rostova@nexum.demo",
-                freelancerProfile: {
-                  title: "Full-Stack AI Architect",
-                },
-              },
-              status: "ACCEPTED",
-              amountCents: input.budgetCents || 0,
-              milestones: formattedMilestones,
-            },
-          ],
+      proposals: [],
       changeRequests: existingIndex >= 0 ? currentList[existingIndex].changeRequests || [] : [],
     };
 
@@ -1773,6 +1754,8 @@ export class ClientOverviewService {
           deadline: input.deadline,
           category: input.category || "Web Development",
           skills: input.requiredSkills || input.skills || [],
+          visibility: input.visibility || "PUBLIC",
+          budgetType: input.budgetType === "HOURLY" ? "HOURLY" : "FIXED_PRICE",
           ...(expLevel ? { experienceLevel: expLevel } : {}),
         },
         create: {
@@ -1787,6 +1770,8 @@ export class ClientOverviewService {
           deadline: input.deadline,
           category: input.category || "Web Development",
           skills: input.requiredSkills || input.skills || [],
+          visibility: input.visibility || "PUBLIC",
+          budgetType: input.budgetType === "HOURLY" ? "HOURLY" : "FIXED_PRICE",
           ...(expLevel ? { experienceLevel: expLevel } : {}),
         },
       }).catch(() => {});
@@ -2239,12 +2224,7 @@ export class ClientOverviewService {
    * Get project or draft by ID
    */
   public async getProjectById(id: string, clientId?: string): Promise<any | null> {
-    const targetClient = clientId || "usr_client_alex";
-    const sessionProjects = this.ensureClientProjects(targetClient);
-    const inMem = sessionProjects.find((p) => p.id === id);
-    if (inMem) return inMem;
-
-    // Check DB
+    // Check DB first for authoritative state
     try {
       const dbProj = await prisma.project.findUnique({
         where: { id },
@@ -2252,18 +2232,77 @@ export class ClientOverviewService {
           client: true,
           briefVersions: { orderBy: { version: "desc" }, take: 1 },
           projectMilestones: { orderBy: { orderIndex: "asc" } },
-          proposals: {
+          projectProposals: {
             include: {
-              freelancer: { include: { freelancerProfile: true } },
-              milestones: true,
+              freelancer: {
+                include: {
+                  freelancerProfile: true,
+                },
+              },
+              versions: {
+                orderBy: { version: "desc" },
+                take: 1,
+              },
             },
           },
           changeRequests: true,
+          agreement: {
+            include: {
+              freelancer: {
+                include: {
+                  freelancerProfile: true,
+                },
+              },
+            },
+          },
         },
-      }).catch(() => null);
+      });
 
       if (dbProj) {
         const brief = (dbProj.briefVersions?.[0]?.structuredBrief as any) || {};
+
+        const mappedProposals = (dbProj.projectProposals || []).map((prop) => {
+          const latestVersion = prop.versions?.[0];
+          return {
+            id: prop.id,
+            projectId: prop.projectId,
+            freelancerId: prop.freelancerId,
+            freelancer: {
+              id: prop.freelancer.id,
+              name: prop.freelancer.name,
+              email: prop.freelancer.email,
+              freelancerProfile: prop.freelancer.freelancerProfile
+                ? {
+                    title:
+                      prop.freelancer.freelancerProfile.title ||
+                      prop.freelancer.freelancerProfile.professionalTitle ||
+                      "Verified Talent",
+                  }
+                : undefined,
+            },
+            status: prop.status,
+            amountCents: latestVersion?.amountCents || latestVersion?.totalAmountMinor || dbProj.budgetCents || 0,
+            coverLetter:
+              latestVersion?.coverLetter ||
+              "Experienced developer ready to execute deliverables with automated test assert logs.",
+            milestones: dbProj.projectMilestones,
+          };
+        });
+
+        const acceptedProposal = mappedProposals.find((p) => p.status === "ACCEPTED");
+        const contractor = dbProj.agreement?.freelancer || (acceptedProposal ? acceptedProposal.freelancer : null);
+
+        const mappedMilestones = (dbProj.projectMilestones || []).map((m, idx) => ({
+          id: m.id,
+          orderIndex: m.orderIndex || idx + 1,
+          title: m.title,
+          amountCents: m.amountCents || m.amountMinor || 0,
+          state: m.state,
+          workStatus: m.workStatus,
+          deliverables: Array.isArray(m.deliverables) ? m.deliverables : ["Deliverable package"],
+          deadline: m.deadline || m.dueDate,
+        }));
+
         return {
           ...dbProj,
           category: dbProj.category || brief.category || dbProj.goals || "Web Development",
@@ -2276,12 +2315,19 @@ export class ClientOverviewService {
           experienceLevel: dbProj.experienceLevel || brief.experienceLevel || "EXPERT",
           englishLevel: brief.englishLevel || "FLUENT",
           visibility: brief.visibility || dbProj.visibility || "PUBLIC",
-          milestones: brief.milestones || dbProj.projectMilestones || [],
+          milestones: mappedMilestones.length > 0 ? mappedMilestones : (brief.milestones || []),
+          proposals: mappedProposals,
+          contractor,
         };
       }
     } catch {
-      // Ignore
+      // Fall through to in-memory check
     }
+
+    const targetClient = clientId || "usr_client_alex";
+    const sessionProjects = this.ensureClientProjects(targetClient);
+    const inMem = sessionProjects.find((p) => p.id === id);
+    if (inMem) return inMem;
 
     return null;
   }
@@ -2690,20 +2736,93 @@ export class ClientOverviewService {
 
     // Try DB update
     try {
+      const msRecord = await prisma.milestone.findUnique({
+        where: { id: milestoneId },
+        select: { id: true, title: true, projectId: true, amountCents: true, amountMinor: true },
+      });
+
       await prisma.milestone.updateMany({
         where: { id: milestoneId },
         data: { state: "CAPTURED", workStatus: "ACCEPTED", acceptedAt: new Date() },
       });
+
+      await prisma.milestoneSubmission.updateMany({
+        where: { milestoneId, status: "SUBMITTED" },
+        data: { status: "ACCEPTED", reviewedAt: new Date() },
+      });
+
+      const amt = msRecord?.amountMinor || msRecord?.amountCents || target?.amountMinor || 0;
+      if (msRecord && amt > 0 && msRecord.amountMinor !== amt) {
+        await prisma.milestone.update({
+          where: { id: milestoneId },
+          data: { amountMinor: amt },
+        }).catch(() => {});
+      }
+
+      if (msRecord?.projectId) {
+        const agreement = await prisma.agreement.findFirst({
+          where: { projectId: msRecord.projectId },
+          select: { id: true, freelancerId: true },
+        });
+
+        if (agreement) {
+          const existingLedger = await prisma.ledgerEntry.findFirst({
+            where: { milestoneId, kind: "RELEASED" },
+          });
+
+          if (!existingLedger) {
+            await prisma.ledgerEntry.create({
+              data: {
+                userId: agreement.freelancerId,
+                projectId: msRecord.projectId,
+                milestoneId,
+                kind: "RELEASED",
+                amountMinor: amt,
+                currency: "USD",
+              },
+            }).catch(() => {});
+          }
+
+          const remainingUnaccepted = await prisma.milestone.count({
+            where: {
+              projectId: msRecord.projectId,
+              removedAt: null,
+              id: { not: milestoneId },
+              workStatus: { not: "ACCEPTED" },
+            },
+          });
+
+          if (remainingUnaccepted === 0) {
+            await prisma.project.update({
+              where: { id: msRecord.projectId },
+              data: { state: "COMPLETED" },
+            }).catch(() => {});
+
+            await prisma.agreement.update({
+              where: { id: agreement.id },
+              data: { status: "COMPLETED" },
+            }).catch(() => {});
+          }
+        }
+      }
+
       await prisma.auditEvent.create({
         data: {
           actorId: clientId,
           action: "MILESTONE_ACCEPTED",
           objectType: "MILESTONE",
           objectId: milestoneId,
-          metadata: { amount: target?.amount, timestamp: new Date().toISOString() },
+          metadata: {
+            title: msRecord?.title || target?.title || "Milestone Deliverable",
+            projectId: msRecord?.projectId,
+            amountMinor: amt,
+            timestamp: new Date().toISOString(),
+          },
         },
       });
-    } catch {}
+    } catch (dbErr) {
+      console.warn("Could not persist milestone DB acceptance:", dbErr);
+    }
 
     const activities = this.auditActivities.get(clientId) || [];
     activities.unshift({

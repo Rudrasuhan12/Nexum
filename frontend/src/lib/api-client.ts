@@ -2669,6 +2669,7 @@ export async function createProjectTask(
     dueDate?: string;
     visibility?: string;
     milestoneId?: string;
+    priority?: "LOW" | "MEDIUM" | "HIGH" | string;
   }
 ): Promise<{
   success: boolean;
@@ -4823,6 +4824,55 @@ export async function respondToWorkspaceMilestonePostpone(
     return await res.json();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to respond to milestone postponement";
+    return { success: false, error: msg };
+  }
+}
+
+
+/**
+ * Accept a freelancer proposal as client and initialize bilateral agreement
+ */
+export async function acceptClientProposal(proposalId: string, payload?: any): Promise<{
+  success: boolean;
+  message?: string;
+  proposalId?: string;
+  status?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/client/proposals/${proposalId}/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload || {}),
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to accept proposal";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Decline a freelancer proposal as client
+ */
+export async function rejectClientProposal(proposalId: string, feedback?: string): Promise<{
+  success: boolean;
+  message?: string;
+  proposalId?: string;
+  status?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/client/proposals/${proposalId}/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ feedback }),
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to decline proposal";
     return { success: false, error: msg };
   }
 }

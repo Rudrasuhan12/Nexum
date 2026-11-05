@@ -637,7 +637,29 @@ router.get("/active", async (req: Request, res: Response, next: NextFunction): P
     const results = [];
 
     for (const agr of agreements) {
-      const derivedStatus = deriveProjectStatus(agr.milestones);
+      let milestones = agr.milestones;
+      if (milestones.length === 0) {
+        const projMilestones = await prisma.milestone.findMany({
+          where: { projectId: agr.projectId, removedAt: null },
+          include: {
+            submissions: {
+              orderBy: { submittedAt: "desc" },
+              take: 1,
+            },
+          },
+          orderBy: { orderIndex: "asc" },
+        });
+
+        if (projMilestones.length > 0) {
+          await prisma.milestone.updateMany({
+            where: { projectId: agr.projectId, agreementId: null },
+            data: { agreementId: agr.id },
+          }).catch(() => {});
+          milestones = projMilestones;
+        }
+      }
+
+      const derivedStatus = deriveProjectStatus(milestones);
 
       // Filter by status if requested
       if (status && typeof status === "string" && status.toUpperCase() !== "ALL") {
@@ -658,11 +680,11 @@ router.get("/active", async (req: Request, res: Response, next: NextFunction): P
 
       const activeVer = agr.versions[0];
       const terms = activeVer?.terms as any;
-      const totalMilestones = agr.milestones.length;
-      const completedMilestones = agr.milestones.filter(
+      const totalMilestones = milestones.length;
+      const completedMilestones = milestones.filter(
         (m) => m.workStatus === "ACCEPTED"
       ).length;
-      const inProgressMilestones = agr.milestones.filter(
+      const inProgressMilestones = milestones.filter(
         (m) =>
           m.workStatus === "IN_PROGRESS" ||
           m.workStatus === "READY_TO_SUBMIT" ||
@@ -671,7 +693,7 @@ router.get("/active", async (req: Request, res: Response, next: NextFunction): P
       ).length;
 
       // Find current active milestone (first non-accepted)
-      const currentMilestone = agr.milestones.find((m) => m.workStatus !== "ACCEPTED") || null;
+      const currentMilestone = milestones.find((m) => m.workStatus !== "ACCEPTED") || null;
 
       results.push({
         id: agr.project.id,
@@ -692,16 +714,18 @@ router.get("/active", async (req: Request, res: Response, next: NextFunction): P
               title: currentMilestone.title,
               workStatus: currentMilestone.workStatus,
               dueDate: currentMilestone.dueDate ? currentMilestone.dueDate.toISOString() : null,
-              amountMinor: currentMilestone.amountMinor,
+              amountMinor: currentMilestone.amountMinor || currentMilestone.amountCents || 0,
             }
           : null,
-        milestones: agr.milestones.map((m: any, idx: number) => {
+        milestones: milestones.map((m: any, idx: number) => {
           let payStatus = "SANDBOX_CAPTURE_CONFIRMED";
           if (m.workStatus === "ACCEPTED") {
             payStatus = "PAYOUT_COMPLETED";
           } else if (m.workStatus === "UPCOMING") {
             payStatus = "FUNDING_PENDING";
           }
+
+          const mAmount = m.amountMinor || m.amountCents || 0;
 
           return {
             id: m.id,
@@ -710,8 +734,8 @@ router.get("/active", async (req: Request, res: Response, next: NextFunction): P
             description: m.description || "",
             deliverablesSummary: typeof m.deliverables === "string" ? m.deliverables : "Verified milestone deliverables",
             acceptanceCriteria: Array.isArray(m.criteria) ? m.criteria : [],
-            amountCents: m.amountMinor,
-            amountDisplay: `$${(m.amountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 0 })} USD`,
+            amountCents: mAmount,
+            amountDisplay: `$${(mAmount / 100).toLocaleString("en-US", { minimumFractionDigits: 0 })} USD`,
             currency: m.currency || "USD",
             dueDate: m.dueDate ? new Date(m.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "No deadline",
             submittedAt: m.submissions && m.submissions.length > 0 ? new Date(m.submissions[0].submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : undefined,
@@ -724,8 +748,8 @@ router.get("/active", async (req: Request, res: Response, next: NextFunction): P
         }),
         totalAmountMinor:
           terms?.totalAmountMinor ??
-          (agr.milestones.length > 0
-            ? agr.milestones.reduce((acc, m) => acc + m.amountMinor, 0)
+          (milestones.length > 0
+            ? milestones.reduce((acc, m) => acc + (m.amountMinor || m.amountCents || 0), 0)
             : (agr.project.budgetCents || 0)),
         currency: terms?.currency ?? "USD",
         activeVersionNumber: activeVer?.versionNumber ?? 1,

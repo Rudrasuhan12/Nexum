@@ -37,7 +37,7 @@ import DashboardSidebar from "@/components/DashboardSidebar";
 import DashboardTopHeader from "@/components/DashboardTopHeader";
 import { useAuth } from "@/context/AuthContext";
 import { getProjectById, ProjectDetailData, MOCK_PROJECTS, ProjectLifecycleStatus, MilestoneItem } from "@/lib/mock-projects";
-import { fetchProjectById } from "@/lib/api-client";
+import { fetchProjectById, acceptClientProposal, rejectClientProposal, approveClientMilestone } from "@/lib/api-client";
 
 type ProjectTab =
   | "overview"
@@ -75,11 +75,11 @@ function ProjectWorkspaceContent() {
         const live = await fetchProjectById(projectId);
         if (live && isMounted) {
           setIsLiveLoaded(true);
-          const proposal = live.proposals?.[0];
-          const freelancer = proposal?.freelancer;
+          const acceptedProposal = live.proposals?.find((p: any) => p.status === "ACCEPTED");
+          const freelancer = live.contractor || acceptedProposal?.freelancer;
           const rawMilestones = (live.milestones && live.milestones.length > 0)
             ? live.milestones
-            : (proposal?.milestones || []);
+            : (acceptedProposal?.milestones || []);
 
           // Status & lifecycle derivation
           let status: ProjectLifecycleStatus = "IN_PROGRESS";
@@ -165,7 +165,13 @@ function ProjectWorkspaceContent() {
           const mappedMilestones: MilestoneItem[] = rawMilestones.map((m: any, idx: number) => {
             const amountVal = m.amountCents ? m.amountCents / 100 : (parseFloat(m.amount) || 0);
             const isReleased = m.state === "CAPTURED" || m.status === "RELEASED";
-            const isInReview = m.state === "APPROVED" || m.state === "SUBMITTED" || m.status === "IN_REVIEW";
+            const isInReview = Boolean(
+              freelancer && (
+                m.workStatus === "AWAITING_CLIENT_REVIEW" ||
+                m.workStatus === "SUBMITTED" ||
+                m.status === "IN_REVIEW"
+              )
+            );
             return {
               id: m.id || `ms_${idx + 1}`,
               number: idx + 1,
@@ -188,7 +194,7 @@ function ProjectWorkspaceContent() {
             .filter((m) => m.status === "RELEASED")
             .reduce((sum, m) => sum + (parseFloat(m.amount.replace(/[^0-9.]/g, "")) || 0), 0);
           const escrowVal = mappedMilestones
-            .filter((m) => m.status === "IN_REVIEW" || m.status === "FUNDED")
+            .filter((m) => (m.status === "IN_REVIEW" || m.status === "FUNDED") && freelancer)
             .reduce((sum, m) => sum + (parseFloat(m.amount.replace(/[^0-9.]/g, "")) || 0), 0);
 
           const nextDue = mappedMilestones.find((m) => m.status !== "RELEASED")?.title || "All milestones completed";
@@ -201,7 +207,7 @@ function ProjectWorkspaceContent() {
             statusLabel,
             statusColor,
             stageSummary,
-            category: live.category ? (live.subcategory ? `${live.category} · ${live.subcategory}` : live.category) : "Web Development",
+            category: live.category ? (live.subcategory ? `${live.category} Â· ${live.subcategory}` : live.category) : "Web Development",
             createdAt: live.createdAt ? new Date(live.createdAt).toLocaleDateString() : "Recent",
             canonicalHash: live.canonicalHash || `canonical_v1.0_#${(live.id || "consensus").replace(/[^a-zA-Z0-9]/g, "").slice(-8)}`,
             totalBudget: totalBudgetString,
@@ -260,7 +266,7 @@ function ProjectWorkspaceContent() {
               proposedBudget: `$${((p.amountCents || live.budgetCents || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
               estimatedTimeline: live.timelineDuration || "Sprint schedule",
               coverLetter: p.coverLetter || "Experienced developer ready to execute deliverables with automated test assert logs.",
-              status: p.status === "ACCEPTED" ? "ACCEPTED" : "UNDER_REVIEW",
+              status: p.status === "ACCEPTED" ? "ACCEPTED" : (p.status === "REJECTED" || p.status === "DECLINED") ? "DECLINED" : "UNDER_REVIEW",
               submittedDate: "Recent",
             })),
             workspaceQuestions: live.workspaceQuestions || [],
@@ -314,72 +320,132 @@ function ProjectWorkspaceContent() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handleApproveMilestone = async (milestoneId: string) => {
-    setIsCapturing(true);
-    showToast("Dual SHA-256 Consensus: Initiating PayPal Sandbox Escrow Capture...");
+  const [actionLoadingProposalId, setActionLoadingProposalId] = useState<string | null>(null);
+
+  const handleAcceptProposal = async (proposalId: string) => {
+    setActionLoadingProposalId(proposalId);
+    showToast("Processing proposal acceptance and initializing bilateral agreement...");
 
     try {
-      const res = await fetch("/api/paypal/capture-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: "6DE714998H998261C",
-          milestoneId,
-        }),
+      const res = await acceptClientProposal(proposalId, { clientId: user?.id });
+      if (res.success) {
+        setProjectData((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            status: "IN_PROGRESS" as ProjectLifecycleStatus,
+            statusLabel: "In Progress",
+            statusColor: "bg-blue-50 text-blue-700 border-blue-200/80",
+            proposals: prev.proposals.map((p) =>
+              p.id === proposalId ? { ...p, status: "ACCEPTED" } : p
+            ),
+          };
+        });
+        showToast("Proposal approved and bilateral agreement initialized!");
+      } else {
+        showToast(res.error || "Failed to accept proposal.");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to accept proposal";
+      showToast(msg);
+    } finally {
+      setActionLoadingProposalId(null);
+    }
+  };
+
+  const handleRejectProposal = async (proposalId: string) => {
+    setActionLoadingProposalId(proposalId);
+    showToast("Declining proposal...");
+
+    try {
+      const res = await rejectClientProposal(proposalId, "Declined by client");
+      if (res.success) {
+        setProjectData((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            proposals: prev.proposals.map((p) =>
+              p.id === proposalId ? { ...p, status: "DECLINED" as const } : p
+            ),
+          };
+        });
+        showToast("Proposal declined.");
+      } else {
+        showToast(res.error || "Failed to decline proposal.");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to decline proposal";
+      showToast(msg);
+    } finally {
+      setActionLoadingProposalId(null);
+    }
+  };
+
+  const handleApproveMilestone = async (milestoneId: string) => {
+    setIsCapturing(true);
+    showToast("Dual SHA-256 Consensus: Initiating PayPal Sandbox Escrow Capture & Approval...");
+
+    try {
+      const res = await approveClientMilestone(milestoneId, {
+        clientId: user?.id,
       });
 
-      await res.json().catch(() => ({}));
+      if (!res.success) {
+        showToast(res.error || "Failed to approve milestone deliverable.");
+        setIsCapturing(false);
+        return;
+      }
 
       // Update state locally
       setProjectData((prev) => {
         if (!prev) return null;
+        const updatedMilestones = prev.milestones.map((m) =>
+          m.id === milestoneId
+            ? {
+                ...m,
+                status: "RELEASED" as const,
+                statusLabel: "Approved & Released",
+                captureId: "CAP_LIVE_SANDBOX_SUCCESS",
+              }
+            : m
+        );
+
+        const newReleased = updatedMilestones
+          .filter((m) => m.status === "RELEASED")
+          .reduce((sum, m) => sum + (parseFloat(m.amount.replace(/[^0-9.]/g, "")) || 0), 0);
+
         return {
           ...prev,
           status: "IN_PROGRESS",
           statusLabel: "In Progress",
           statusColor: "bg-blue-50 text-blue-700 border-blue-200/80",
-          releasedAmount: "$2,700.00 USD",
+          releasedAmount: `$${newReleased.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
           nextAction: {
-            label: "Track Milestone 3 Development",
-            description: "Milestone 2 captured and released. Milestone 3 execution active.",
+            label: "Track Subsequent Milestone Development",
+            description: "Milestone deliverable accepted and funds released from Sandbox Escrow.",
             type: "VIEW",
             urgent: false,
           },
-          milestones: prev.milestones.map((m) =>
-            m.id === milestoneId
-              ? {
-                  ...m,
-                  status: "RELEASED" as const,
-                  statusLabel: "Approved & Released",
-                  captureId: "CAP_LIVE_SANDBOX_SUCCESS",
-                }
-              : m
-          ),
-          payments: [
-            ...prev.payments.map((p) =>
-              p.orderId === "6DE714998H998261C"
-                ? { ...p, status: "CAPTURED" as const }
-                : p
-            ),
-          ],
+          milestones: updatedMilestones,
           activities: [
             {
               id: `act_${Date.now()}`,
               timestamp: "Just now",
-              actor: user?.name || "Sambit Kumar",
+              actor: user?.name || "Client",
               role: "CLIENT" as const,
-              action: "Milestone 2 Accepted & Released",
-              detail: "$1,500.00 USD captured from Sandbox Escrow to Rohan Verma.",
-              hash: "sha256:88fa10...99bb",
+              action: "Milestone Deliverables Accepted & Released",
+              detail: "Deliverable criteria accepted. PayPal sandbox escrow capture confirmed.",
+              hash: `sha256:cap_${Date.now()}`,
             },
             ...prev.activities,
           ],
         };
       });
 
-      showToast("Milestone 2 accepted! $1,500.00 captured & released to contractor.");
-    } catch {
-      showToast("Ledger updated: Milestone 2 released via Sandbox consensus.");
+      showToast("Milestone deliverables approved! PayPal funds released to contractor.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to approve milestone";
+      showToast(msg);
     } finally {
       setIsCapturing(false);
     }
@@ -767,8 +833,8 @@ function ProjectWorkspaceContent() {
                             {projectData.freelancer.role}
                           </p>
                           <div className="flex items-center gap-2 text-[11px] text-slate-600 mt-1">
-                            <span className="font-semibold text-amber-600">★ {projectData.freelancer.rating}</span>
-                            <span>•</span>
+                            <span className="font-semibold text-amber-600">â˜… {projectData.freelancer.rating}</span>
+                            <span>â€¢</span>
                             <span>{projectData.freelancer.completedJobs} projects</span>
                           </div>
                         </div>
@@ -839,7 +905,7 @@ function ProjectWorkspaceContent() {
                         onClick={() => setActiveTab("milestones")}
                         className="text-xs font-semibold text-[#4f46e5] hover:underline"
                       >
-                        Manage Milestones →
+                        Manage Milestones â†’
                       </button>
                     </div>
 
@@ -1078,7 +1144,9 @@ function ProjectWorkspaceContent() {
                                 className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                   prop.status === "ACCEPTED"
                                     ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                    : "bg-slate-100 text-slate-700 border border-slate-200"
+                                    : prop.status === "DECLINED"
+                                    ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                    : "bg-blue-50 text-blue-700 border border-blue-200"
                                 }`}
                               >
                                 {prop.status}
@@ -1086,7 +1154,7 @@ function ProjectWorkspaceContent() {
                             </div>
                             <p className="text-xs text-slate-500">{prop.freelancerRole}</p>
                             <div className="text-[11px] text-amber-600 font-semibold mt-0.5">
-                              ★ {prop.rating}
+                              â˜… {prop.rating}
                             </div>
                           </div>
                         </div>
@@ -1104,6 +1172,48 @@ function ProjectWorkspaceContent() {
                       <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed">
                         {prop.coverLetter}
                       </p>
+
+                      {/* Proposal Action Controls for Client */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                        <div className="text-[11.5px] text-slate-500">
+                          {prop.status === "ACCEPTED" ? (
+                            <span className="text-emerald-700 font-bold flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Agreement initialized and active in workspace.
+                            </span>
+                          ) : prop.status === "DECLINED" ? (
+                            <span className="text-rose-600 font-medium">
+                              Proposal was declined.
+                            </span>
+                          ) : (
+                            <span className="text-slate-500">
+                              Review candidate terms & approve to enter bilateral agreement.
+                            </span>
+                          )}
+                        </div>
+
+                        {prop.status !== "ACCEPTED" && prop.status !== "DECLINED" && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleRejectProposal(prop.id)}
+                              disabled={actionLoadingProposalId === prop.id}
+                              className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition disabled:opacity-50 cursor-pointer"
+                            >
+                              Decline
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAcceptProposal(prop.id)}
+                              disabled={actionLoadingProposalId === prop.id}
+                              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs disabled:opacity-50 cursor-pointer"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{actionLoadingProposalId === prop.id ? "Processing..." : "Approve & Accept Proposal"}</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))
                 )}
@@ -1322,7 +1432,7 @@ function ProjectWorkspaceContent() {
                       <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-slate-900">{q.author}</span>
-                          <span className="text-slate-400">• {q.date}</span>
+                          <span className="text-slate-400">â€¢ {q.date}</span>
                         </div>
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           {q.status}
@@ -1389,7 +1499,7 @@ function ProjectWorkspaceContent() {
                             </span>
                           </div>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            Requested by {change.requestedByName} · {change.date}
+                            Requested by {change.requestedByName} Â· {change.date}
                           </p>
                         </div>
 
@@ -1493,7 +1603,7 @@ function ProjectWorkspaceContent() {
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
                           <span>Order #{p.orderId}</span>
-                          <span>•</span>
+                          <span>â€¢</span>
                           <span>{p.date}</span>
                         </div>
                       </div>
