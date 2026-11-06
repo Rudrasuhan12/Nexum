@@ -10,9 +10,9 @@ export async function GET(request: NextRequest) {
     const backendRes = await fetch(`${BACKEND_URL}/api/auth/google/url`, {
       method: "GET",
       cache: "no-store",
-    });
+    }).catch(() => null);
 
-    if (!backendRes.ok) {
+    if (!backendRes || !backendRes.ok) {
       return NextResponse.redirect(
         new URL("/login?error=google_service_unavailable", request.nextUrl.origin)
       );

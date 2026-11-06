@@ -16,8 +16,11 @@ const envSchema = z.object({
   ENABLE_FAULT_INJECTOR: z.string().optional().default("false"),
   AI_DAILY_BUDGET: z.string().optional().default("50"),
   GEMINI_API_KEY: z.string().optional().default(""),
+  GEMINI_PRIMARY_MODEL: z.string().optional().default("gemini-2.0-flash"),
+  GEMINI_FALLBACK_MODEL: z.string().optional().default("gemini-1.5-flash"),
   TELEGRAM_BOT_TOKEN: z.string().optional().default(""),
   GROQ_API_KEY: z.string().optional().default(""),
+  GROQ_MODEL: z.string().optional().default("llama-3.3-70b-versatile"),
   DEEPSEEK_API_KEY: z.string().optional().default(""),
   OPENROUTER_API_KEY: z.string().optional().default(""),
   HUGGINGFACE_API_KEY: z.string().optional().default(""),
@@ -35,6 +38,11 @@ const envSchema = z.object({
   GITHUB_CLIENT_ID: z.string().optional().default(""),
   GITHUB_CLIENT_SECRET: z.string().optional().default(""),
   GITHUB_CALLBACK_URL: z.string().optional().default("http://localhost:3000/api/auth/github/callback"),
+  AWS_ENDPOINT_URL_S3: z.string().optional().default(""),
+  AWS_ACCESS_KEY_ID: z.string().optional().default(""),
+  AWS_SECRET_ACCESS_KEY: z.string().optional().default(""),
+  AWS_REGION: z.string().optional().default("ap-southeast-1"),
+  AWS_S3_BUCKET: z.string().optional().default("nexum"),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

@@ -38,6 +38,7 @@ import DashboardTopHeader from "@/components/DashboardTopHeader";
 import { useAuth } from "@/context/AuthContext";
 import { getProjectById, ProjectDetailData, MOCK_PROJECTS, ProjectLifecycleStatus, MilestoneItem } from "@/lib/mock-projects";
 import { fetchProjectById, acceptClientProposal, rejectClientProposal, approveClientMilestone } from "@/lib/api-client";
+import MilestoneAutomatedChecksCard from "@/components/MilestoneAutomatedChecksCard";
 
 type ProjectTab =
   | "overview"
@@ -207,7 +208,7 @@ function ProjectWorkspaceContent() {
             statusLabel,
             statusColor,
             stageSummary,
-            category: live.category ? (live.subcategory ? `${live.category} Â· ${live.subcategory}` : live.category) : "Web Development",
+            category: live.category ? (live.subcategory ? `${live.category} · ${live.subcategory}` : live.category) : "Web Development",
             createdAt: live.createdAt ? new Date(live.createdAt).toLocaleDateString() : "Recent",
             canonicalHash: live.canonicalHash || `canonical_v1.0_#${(live.id || "consensus").replace(/[^a-zA-Z0-9]/g, "").slice(-8)}`,
             totalBudget: totalBudgetString,
@@ -1154,7 +1155,7 @@ function ProjectWorkspaceContent() {
                             </div>
                             <p className="text-xs text-slate-500">{prop.freelancerRole}</p>
                             <div className="text-[11px] text-amber-600 font-semibold mt-0.5">
-                              â˜… {prop.rating}
+                              ★ {prop.rating}
                             </div>
                           </div>
                         </div>
@@ -1323,18 +1324,15 @@ function ProjectWorkspaceContent() {
                         </ul>
                       </div>
 
-                      {/* Test report & submission details if submitted */}
-                      {milestone.testReport && (
-                        <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200/80 flex flex-wrap items-center justify-between gap-3 text-xs">
-                          <div className="flex items-center gap-2 text-emerald-800 font-semibold">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                            <span>
-                              Automated Tests: {milestone.testReport.passing} of {milestone.testReport.total} passing ({milestone.testReport.coverage} coverage in {milestone.testReport.runtime})
-                            </span>
-                          </div>
-                          <span className="font-mono text-[11px] text-emerald-700">
-                            Assert Logs Verified
-                          </span>
+                      {/* Autonomous Proof-of-Execution Deliverable Verifier with GitHub-Style Checks & Version History */}
+                      {(milestone.status === "IN_REVIEW" || milestone.status === "RELEASED" || milestone.testReport) && (
+                        <div className="pt-1">
+                          <MilestoneAutomatedChecksCard
+                            milestoneId={milestone.id}
+                            milestoneTitle={milestone.title}
+                            projectId={projectId}
+                            acceptanceCriteria={milestone.deliverables}
+                          />
                         </div>
                       )}
 
@@ -1432,7 +1430,7 @@ function ProjectWorkspaceContent() {
                       <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-slate-900">{q.author}</span>
-                          <span className="text-slate-400">â€¢ {q.date}</span>
+                          <span className="text-slate-400">• {q.date}</span>
                         </div>
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           {q.status}
@@ -1499,7 +1497,7 @@ function ProjectWorkspaceContent() {
                             </span>
                           </div>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            Requested by {change.requestedByName} Â· {change.date}
+                            Requested by {change.requestedByName} · {change.date}
                           </p>
                         </div>
 
@@ -1603,7 +1601,7 @@ function ProjectWorkspaceContent() {
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
                           <span>Order #{p.orderId}</span>
-                          <span>â€¢</span>
+                          <span>•</span>
                           <span>{p.date}</span>
                         </div>
                       </div>

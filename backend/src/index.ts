@@ -49,6 +49,7 @@ import workspaceRouter from "./routes/workspace.js";
 import telegramRouter from "./routes/telegram.js";
 import { telegramService } from "./services/telegramService.js";
 import clientPaymentsRouter from "./routes/clientPayments.js";
+import milestonesVerifierRouter from "./routes/milestonesVerifier.js";
 
 // Load environment variables
 dotenv.config();
@@ -159,6 +160,7 @@ app.use("/api/dev/payments", devPaymentsRouter);
 // Client Overview & Payments Routes
 app.use("/api/client/payments", clientPaymentsRouter);
 app.use("/api/client", clientRouter);
+app.use("/api/milestones", milestonesVerifierRouter);
 app.use("/api/workspace", workspaceRouter);
 app.use("/api/telegram", telegramRouter);
 

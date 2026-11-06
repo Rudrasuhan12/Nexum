@@ -15,6 +15,7 @@ import {
   getWorkStatusConfig,
   getPaymentStatusConfig,
 } from "@/lib/freelancer-projects-data";
+import MilestoneAutomatedChecksCard from "@/components/MilestoneAutomatedChecksCard";
 
 interface MilestoneDetailsModalProps {
   milestone: ProjectMilestone;
@@ -160,6 +161,13 @@ export default function MilestoneDetailsModal({
                 </div>
               )}
             </div>
+
+            {/* Autonomous Proof-of-Execution Checks & Seal */}
+            <MilestoneAutomatedChecksCard
+              milestoneId={milestone.id}
+              milestoneTitle={milestone.title}
+              acceptanceCriteria={milestone.acceptanceCriteria}
+            />
           </div>
         )}
 

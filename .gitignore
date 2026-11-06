@@ -50,3 +50,9 @@ public/uploads/
 *.tmp*
 .backup_phase1/
 .phase2_safe_stash/
+
+# Large downloads & archive deliverables (>100MB)
+*.zip
+*.tar.gz
+public/downloads/
+frontend/public/downloads/

@@ -9,6 +9,7 @@ import { Role, MilestoneWorkStatus,
 import { transitionMilestone } from "../../domain/milestones/stateMachine.js";
 import { isOverdue } from "../../domain/milestones/isOverdue.js";
 import { deriveProjectStatus } from "../../domain/milestones/projectStatus.js";
+import { autonomousVerifierService } from "../../services/autonomousVerifierService.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -586,10 +587,28 @@ router.post("/:id/submissions", async (req: Request, res: Response, next: NextFu
       metadata: { revisionNumber: nextRevNum, fileIdsCount: fileIds.length, linksCount: links.length },
     });
 
+    // Automatically trigger the 3-Tier Multi-Model Verification Pipeline
+    let auditRecord = null;
+    try {
+      auditRecord = await autonomousVerifierService.runAutomatedChecks({
+        milestoneId: milestone.id,
+        projectId: milestone.projectId || "",
+        acceptanceCriteria: Array.isArray(milestone.criteria) ? (milestone.criteria as string[]) : undefined,
+        deliverablesList: Array.isArray(milestone.deliverables) ? (milestone.deliverables as string[]) : undefined,
+        completionNote,
+        githubPrUrl: links.find((l) => l.url.includes("github.com"))?.url,
+        demoUrl: links.find((l) => !l.url.includes("github.com"))?.url,
+        freelancerId,
+      });
+    } catch (auditErr) {
+      console.warn("[Milestones] Automated verification pipeline notice:", auditErr);
+    }
+
     res.status(200).json({
       success: true,
       submission,
       milestone: updatedMilestone,
+      audit: auditRecord,
     });
   } catch (err) {
     next(err);

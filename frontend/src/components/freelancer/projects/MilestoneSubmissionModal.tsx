@@ -37,6 +37,9 @@ export default function MilestoneSubmissionModal({
     "https://github.com/shopkart/storefront/pull/15"
   );
   const [demoUrl, setDemoUrl] = useState("https://staging.shopkart.nexum.dev");
+  const [demoCredentialsText, setDemoCredentialsText] = useState(
+    "Client: demo@shopkart.com / DemoPass2026!\nAdmin: admin@shopkart.com / AdminSecure99#"
+  );
   const [attachmentName, setAttachmentName] = useState("deliverables-package.zip");
   const [attachmentSize, setAttachmentSize] = useState("4.8 MB");
   const [checkedCriteria, setCheckedCriteria] = useState<string[]>(
@@ -98,6 +101,7 @@ export default function MilestoneSubmissionModal({
       deliverableDescription,
       githubPrUrl: githubPrUrl.trim() || undefined,
       demoUrl: demoUrl.trim() || undefined,
+      demoCredentialsText: demoCredentialsText.trim() || undefined,
       attachmentName: attachmentName.trim() || undefined,
       attachmentSize: attachmentSize || "3.2 MB",
       criteriaChecked: checkedCriteria,
@@ -191,6 +195,28 @@ export default function MilestoneSubmissionModal({
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5]"
               />
             </div>
+          </div>
+
+          {/* Demo Access Credentials & Entity Logins (Flexible Single Field) */}
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-800">
+                Demo Credentials & Entity Logins <span className="text-slate-400 font-normal">(Optional)</span>
+              </label>
+              <span className="text-[10px] text-[#4f46e5] font-bold px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-100">
+                AI Visual Inspector
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-normal">
+              If accessing the deliverable requires authentication, write all test logins here (e.g., Client, Admin, User). Nexum AI will parse them, log in, verify the UI structure, and take an authenticated visual proof screenshot.
+            </p>
+            <textarea
+              rows={2}
+              value={demoCredentialsText}
+              onChange={(e) => setDemoCredentialsText(e.target.value)}
+              placeholder="e.g.&#10;Client: demo@shopkart.com / DemoPass2026!&#10;Admin: admin@shopkart.com / AdminSecure99#&#10;Or: login as manager with email mgr@test.com password pass123"
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 outline-hidden focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5] font-mono bg-white resize-none"
+            />
           </div>
 
           {/* File Attachment Upload */}

@@ -76,6 +76,7 @@ export interface MilestoneSubmission {
   deliverableDescription: string;
   githubPrUrl?: string;
   demoUrl?: string;
+  demoCredentialsText?: string;
   attachmentName?: string;
   attachmentSize?: string;
   criteriaChecked: string[];
