@@ -20,6 +20,11 @@ import {
   AlertCircle,
   Upload,
   Loader2,
+  Clock,
+  Wand2,
+  RefreshCw,
+  Layers,
+  Scale,
 } from "lucide-react";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import DashboardTopHeader from "@/components/DashboardTopHeader";
@@ -164,6 +169,235 @@ function PostNewProjectContent() {
   const [milestones, setMilestones] = useState([
     { title: "", amount: "", days: "14" },
   ]);
+
+  // Gemini AI Scope & Schedule Balancer State
+  const [isAiBalancingSchedule, setIsAiBalancingSchedule] = useState(false);
+  const [aiAdjustmentMessage, setAiAdjustmentMessage] = useState<string | null>(null);
+  const [addonInputText, setAddonInputText] = useState("");
+  const [isAddonModalOpen, setIsAddonModalOpen] = useState(false);
+  const [previousScheduleSnapshot, setPreviousScheduleSnapshot] = useState<{
+    milestones: Array<{ title: string; amount: string; days: string }>;
+    budgetAmount: string;
+    timelineDuration: string;
+  } | null>(null);
+
+  // --- Budget and Timeline Calculations & Synchronization ---
+  const totalBudget = parseFloat(budgetAmount) || 0;
+  const allocatedBudget = milestones.reduce((sum, m) => sum + (parseFloat(m.amount) || 0), 0);
+  const remainingBudget = Math.round((totalBudget - allocatedBudget) * 100) / 100;
+
+  const totalMilestoneDays = milestones.reduce((sum, m) => sum + (parseInt(m.days, 10) || 0), 0);
+
+  const getTimelineTargetDays = (duration: string): { targetDays: number; label: string } => {
+    const str = (duration || "").trim().toLowerCase();
+    if (str === "< 1 month") return { targetDays: 30, label: "< 1 month (~30 days)" };
+    if (str === "1 - 2 months") return { targetDays: 60, label: "1 - 2 months (~60 days)" };
+    if (str === "3 - 6 months") return { targetDays: 90, label: "3 - 6 months (~90 - 180 days)" };
+    if (str === "6+ months") return { targetDays: 180, label: "6+ months (~180+ days)" };
+
+    const mMatch = str.match(/(\d+)\s*(?:-|to)?\s*(\d+)?\s*month/);
+    if (mMatch) {
+      const m = parseInt(mMatch[1], 10);
+      return { targetDays: m * 30, label: `${m} months (~${m * 30} days)` };
+    }
+    const wMatch = str.match(/(\d+)\s*(?:-|to)?\s*(\d+)?\s*week/);
+    if (wMatch) {
+      const w = parseInt(wMatch[1], 10);
+      return { targetDays: w * 7, label: `${w} weeks (~${w * 7} days)` };
+    }
+    const dMatch = str.match(/(\d+)\s*day/);
+    if (dMatch) {
+      const d = parseInt(dMatch[1], 10);
+      return { targetDays: d, label: `${d} days` };
+    }
+    return { targetDays: 60, label: duration || "60 days" };
+  };
+
+  const timelineInfo = getTimelineTargetDays(timelineDuration);
+  const targetTimelineDays = timelineInfo.targetDays;
+  const isTimelineExceeded = totalMilestoneDays > targetTimelineDays && targetTimelineDays > 0;
+  const overTimelineDays = isTimelineExceeded ? totalMilestoneDays - targetTimelineDays : 0;
+  const unallocatedDays = !isTimelineExceeded && targetTimelineDays > 0 ? targetTimelineDays - totalMilestoneDays : 0;
+
+  // Auto-balance budget evenly across milestones
+  const handleAutoBalanceBudget = () => {
+    if (milestones.length === 0 || totalBudget <= 0) return;
+    const count = milestones.length;
+    const baseAmount = Math.floor(totalBudget / count);
+    const updated = milestones.map((m, idx) => {
+      const isLast = idx === count - 1;
+      const amt = isLast ? totalBudget - baseAmount * (count - 1) : baseAmount;
+      return { ...m, amount: String(Math.max(amt, 0)) };
+    });
+    setMilestones(updated);
+    showToast(`Milestone budget balanced to equal $${totalBudget}!`);
+  };
+
+  // Fill remaining budget into a specific milestone index or last milestone
+  const handleFillRemainingBudget = (targetIdx?: number) => {
+    if (remainingBudget <= 0 || milestones.length === 0) return;
+    const idx = targetIdx !== undefined ? targetIdx : milestones.length - 1;
+    const currentVal = parseFloat(milestones[idx].amount) || 0;
+    const updated = [...milestones];
+    updated[idx].amount = String(currentVal + remainingBudget);
+    setMilestones(updated);
+    showToast(`Allocated remaining $${remainingBudget} into Milestone ${idx + 1}!`);
+  };
+
+  // Auto-expand total budget to match milestones if over-budget
+  const handleAutoExpandBudget = () => {
+    if (allocatedBudget <= 0) return;
+    setBudgetAmount(String(allocatedBudget));
+    showToast(`Project budget adjusted to $${allocatedBudget} to match milestones!`);
+  };
+
+  // Distribute timeline target days evenly across milestones
+  const handleAutoDistributeTimelineDays = () => {
+    if (milestones.length === 0 || targetTimelineDays <= 0) return;
+    const count = milestones.length;
+    const baseDays = Math.floor(targetTimelineDays / count);
+    const updated = milestones.map((m, idx) => {
+      const isLast = idx === count - 1;
+      const days = isLast ? targetTimelineDays - baseDays * (count - 1) : baseDays;
+      return { ...m, days: String(Math.max(days, 1)) };
+    });
+    setMilestones(updated);
+    showToast(`Milestone days distributed to match ${targetTimelineDays} days timeline!`);
+  };
+
+  // Auto-extend project timeline to match total milestone days
+  const handleKeepExtendedTimeline = () => {
+    if (totalMilestoneDays <= 0) return;
+    let label = `${totalMilestoneDays} days`;
+    if (totalMilestoneDays > 180) label = "6+ months";
+    else if (totalMilestoneDays > 60) label = "3 - 6 months";
+    else if (totalMilestoneDays > 30) label = "1 - 2 months";
+    else label = "< 1 month";
+    setTimelineDuration(label);
+    showToast(`Project timeline updated to ${label} (${totalMilestoneDays} days total)!`);
+  };
+
+  // Scale down milestone days to fit original timeline
+  const handleCompressMilestonesToFitTimeline = () => {
+    if (milestones.length === 0 || targetTimelineDays <= 0) return;
+    const count = milestones.length;
+    const ratio = targetTimelineDays / totalMilestoneDays;
+    let accumulated = 0;
+    const updated = milestones.map((m, idx) => {
+      const isLast = idx === count - 1;
+      if (isLast) {
+        const remaining = Math.max(targetTimelineDays - accumulated, 1);
+        return { ...m, days: String(remaining) };
+      }
+      const raw = parseInt(m.days, 10) || 14;
+      const scaled = Math.max(Math.round(raw * ratio), 1);
+      accumulated += scaled;
+      return { ...m, days: String(scaled) };
+    });
+    setMilestones(updated);
+    showToast(`Milestones compressed to fit within ${targetTimelineDays} days!`);
+  };
+
+  // Gemini AI Auto-Sync Schedule & Budget
+  const handleAiAutoSyncSchedule = async () => {
+    setIsAiBalancingSchedule(true);
+    setPreviousScheduleSnapshot({
+      milestones: JSON.parse(JSON.stringify(milestones)),
+      budgetAmount,
+      timelineDuration,
+    });
+    try {
+      const res = await fetch("/api/client/projects/ai/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "AUTO_SYNC_SCHEDULE",
+          title,
+          overview,
+          budgetAmount,
+          timelineDuration,
+          milestones,
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        if (Array.isArray(json.data.updatedMilestones)) {
+          setMilestones(json.data.updatedMilestones);
+        }
+        if (json.data.adjustedBudget) {
+          setBudgetAmount(json.data.adjustedBudget);
+        }
+        if (json.data.adjustedTimeline) {
+          setTimelineDuration(json.data.adjustedTimeline);
+        }
+        setAiAdjustmentMessage(json.data.explanation || "Schedule & budget synchronized by Gemini AI.");
+        showToast("Gemini AI balanced milestone schedule & budget!");
+      }
+    } catch {
+      showToast("AI Auto-Sync unavailable. You can adjust values manually.");
+    } finally {
+      setIsAiBalancingSchedule(false);
+    }
+  };
+
+  // Gemini AI Evaluate and Add Scope Add-on
+  const handleAiEvaluateAddon = async (customText?: string) => {
+    const textToEvaluate = customText || addonInputText.trim();
+    if (!textToEvaluate) return;
+
+    setIsAiBalancingSchedule(true);
+    setPreviousScheduleSnapshot({
+      milestones: JSON.parse(JSON.stringify(milestones)),
+      budgetAmount,
+      timelineDuration,
+    });
+    try {
+      const res = await fetch("/api/client/projects/ai/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "EVALUATE_ADDON_OR_SCOPE",
+          title,
+          overview,
+          budgetAmount,
+          timelineDuration,
+          milestones,
+          addonDescription: textToEvaluate,
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        if (Array.isArray(json.data.updatedMilestones)) {
+          setMilestones(json.data.updatedMilestones);
+        }
+        if (json.data.adjustedBudget) {
+          setBudgetAmount(json.data.adjustedBudget);
+        }
+        if (json.data.adjustedTimeline) {
+          setTimelineDuration(json.data.adjustedTimeline);
+        }
+        setAiAdjustmentMessage(json.data.explanation || `Scope add-on '${textToEvaluate}' incorporated by Gemini AI.`);
+        setAddonInputText("");
+        setIsAddonModalOpen(false);
+        showToast("Scope add-on incorporated & schedule auto-adjusted by Gemini AI!");
+      }
+    } catch {
+      showToast("AI Scope Evaluation offline. Added milestone manually.");
+    } finally {
+      setIsAiBalancingSchedule(false);
+    }
+  };
+
+  // Undo AI Auto-Adjustment
+  const handleUndoAiAdjustment = () => {
+    if (!previousScheduleSnapshot) return;
+    setMilestones(previousScheduleSnapshot.milestones);
+    setBudgetAmount(previousScheduleSnapshot.budgetAmount);
+    setTimelineDuration(previousScheduleSnapshot.timelineDuration);
+    setPreviousScheduleSnapshot(null);
+    setAiAdjustmentMessage(null);
+    showToast("Reverted schedule and budget to previous state.");
+  };
 
   // Step 4: Hiring Preferences (Clean un-mocked baseline - no automatic preselection)
   const [experienceLevel, setExperienceLevel] = useState<"ENTRY" | "INTERMEDIATE" | "EXPERT" | null>(null);
@@ -1577,23 +1811,289 @@ function PostNewProjectContent() {
                     </div>
                   </div>
 
+                  {/* Gemini AI Auto-Adjustment Callout Banner */}
+                  {aiAdjustmentMessage && (
+                    <div className="p-3.5 rounded-xl bg-gradient-to-r from-indigo-50/90 via-purple-50/80 to-blue-50/90 border border-indigo-200/80 text-xs text-indigo-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 animate-in fade-in duration-200 shadow-2xs">
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <Sparkles className="w-4 h-4 text-[#4f46e5] shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-[#4f46e5] mr-1.5">✨ Gemini AI Auto-Adjustment:</span>
+                          <span className="text-slate-700 leading-relaxed">{aiAdjustmentMessage}</span>
+                        </div>
+                      </div>
+                      {previousScheduleSnapshot && (
+                        <button
+                          type="button"
+                          onClick={handleUndoAiAdjustment}
+                          className="px-2.5 py-1 rounded-lg bg-white border border-indigo-200 hover:border-indigo-400 text-[11px] font-bold text-indigo-700 shadow-2xs transition shrink-0 cursor-pointer"
+                        >
+                          Undo AI Adjustment
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Budget & Timeline Health Synchronization Widget */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3.5 rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                    {/* Column 1: Budget Balance Counter */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                          <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Budget Allocation</span>
+                        </span>
+                        <span className="font-mono text-[11px] text-slate-500">
+                          Allocated: <strong className="text-slate-900">${allocatedBudget}</strong> / ${totalBudget}
+                        </span>
+                      </div>
+
+                      {/* Budget Health Pill & Actions */}
+                      {remainingBudget === 0 ? (
+                        <div className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-50 border border-emerald-200/70 text-emerald-800 text-[11px] font-medium">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>✓ 100% Balanced — Milestone sum matches project budget perfectly.</span>
+                        </div>
+                      ) : remainingBudget > 0 ? (
+                        <div className="p-2 rounded-lg bg-amber-50/80 border border-amber-200/80 text-amber-900 text-[11px] space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-amber-800 flex items-center gap-1">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                              <span>${remainingBudget} unallocated remaining</span>
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => handleFillRemainingBudget()}
+                              className="px-2 py-0.5 rounded bg-white border border-amber-300 hover:border-amber-400 text-amber-900 font-bold text-[10px] shadow-2xs transition cursor-pointer"
+                            >
+                              Fill into Milestone {milestones.length}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleAutoBalanceBudget}
+                              className="px-2 py-0.5 rounded bg-white border border-amber-300 hover:border-amber-400 text-amber-900 font-bold text-[10px] shadow-2xs transition cursor-pointer"
+                            >
+                              Auto-balance all milestones
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-2 rounded-lg bg-rose-50 border border-rose-200/80 text-rose-900 text-[11px] space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-rose-800 flex items-center gap-1">
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Over budget by ${Math.abs(remainingBudget)} (${allocatedBudget} vs ${totalBudget})</span>
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={handleAutoExpandBudget}
+                              className="px-2 py-0.5 rounded bg-white border border-rose-300 hover:border-rose-400 text-rose-900 font-bold text-[10px] shadow-2xs transition cursor-pointer"
+                            >
+                              Expand project budget to ${allocatedBudget}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleAutoBalanceBudget}
+                              className="px-2 py-0.5 rounded bg-white border border-rose-300 hover:border-rose-400 text-rose-900 font-bold text-[10px] shadow-2xs transition cursor-pointer"
+                            >
+                              Scale down milestones to ${totalBudget}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Column 2: Timeline Duration & Schedule Synchronization */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-[#4f46e5]" />
+                          <span>Schedule & Duration Sync</span>
+                        </span>
+                        <span className="font-mono text-[11px] text-slate-500">
+                          Total Days: <strong className="text-slate-900">{totalMilestoneDays} days</strong>
+                          {targetTimelineDays > 0 && ` (~${targetTimelineDays} target)`}
+                        </span>
+                      </div>
+
+                      {/* Schedule Health Pill & Actions */}
+                      {isTimelineExceeded ? (
+                        <div className="p-2 rounded-lg bg-amber-50/80 border border-amber-200/80 text-amber-900 text-[11px] space-y-1.5">
+                          <div className="flex items-start gap-1">
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                            <span>
+                              <strong>Schedule extended:</strong> Milestones total {totalMilestoneDays} days ({overTimelineDays} days beyond original {targetTimelineDays}-day timeline).
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={handleKeepExtendedTimeline}
+                              className="px-2 py-0.5 rounded bg-white border border-amber-300 hover:border-amber-400 text-amber-900 font-bold text-[10px] shadow-2xs transition cursor-pointer"
+                            >
+                              Auto-extend timeline ({totalMilestoneDays} days)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCompressMilestonesToFitTimeline}
+                              className="px-2 py-0.5 rounded bg-white border border-amber-300 hover:border-amber-400 text-amber-900 font-bold text-[10px] shadow-2xs transition cursor-pointer"
+                            >
+                              Compress milestones to fit {targetTimelineDays} days
+                            </button>
+                          </div>
+                        </div>
+                      ) : unallocatedDays > 0 ? (
+                        <div className="p-2 rounded-lg bg-indigo-50/70 border border-indigo-200/70 text-indigo-950 text-[11px] space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>{totalMilestoneDays} of {targetTimelineDays} days scheduled ({unallocatedDays} days unallocated)</span>
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleAutoDistributeTimelineDays}
+                            className="px-2 py-0.5 rounded bg-white border border-indigo-300 hover:border-indigo-400 text-indigo-900 font-bold text-[10px] shadow-2xs transition cursor-pointer"
+                          >
+                            Auto-distribute {targetTimelineDays} days across milestones
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-50 border border-emerald-200/70 text-emerald-800 text-[11px] font-medium">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>✓ Timeline Synced — Milestone schedule matches expected project duration.</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Scope Add-on Interactive Drawer */}
+                  {isAddonModalOpen && (
+                    <div className="p-4 rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/60 space-y-3 animate-in fade-in duration-200 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4 text-[#4f46e5]" />
+                          <span>Propose Scope Add-on or New Requirement (Gemini 2.5 Flash)</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddonModalOpen(false)}
+                          className="text-[11px] font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          ✕ Close
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={addonInputText}
+                          onChange={(e) => setAddonInputText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAiEvaluateAddon();
+                            }
+                          }}
+                          placeholder="e.g. Integrate Apple Pay checkout, Add automated reporting dashboard, Multi-tenant permissions"
+                          className="flex-1 h-9 px-3 text-xs rounded-lg border border-slate-200 bg-white text-slate-900 focus:outline-none focus:border-[#4f46e5]"
+                        />
+                        <button
+                          type="button"
+                          disabled={isAiBalancingSchedule || !addonInputText.trim()}
+                          onClick={() => handleAiEvaluateAddon()}
+                          className="h-9 px-3 rounded-lg bg-[#4f46e5] hover:bg-[#4338ca] text-white text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          {isAiBalancingSchedule ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Wand2 className="w-3.5 h-3.5" />
+                          )}
+                          <span>Auto-Adjust Schedule</span>
+                        </button>
+                      </div>
+
+                      {/* Quick preset suggestions */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        <span className="text-[10px] font-bold text-slate-400">Quick scope add-ons:</span>
+                        {[
+                          "Apple Pay & Google Pay checkout",
+                          "Multi-language localization (i18n)",
+                          "Automated daily audit export & PDF reports",
+                          "Real-time WebSocket presence & notifications",
+                        ].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => handleAiEvaluateAddon(preset)}
+                            className="text-[10.5px] px-2 py-0.5 rounded-md bg-white border border-indigo-200 hover:border-indigo-400 text-indigo-700 hover:bg-indigo-50/50 transition cursor-pointer shadow-2xs"
+                          >
+                            + {preset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Milestone Breakdown Table */}
                   <div className="space-y-2 pt-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800">Milestone Schedule Breakdown</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMilestones([
-                            ...milestones,
-                            { title: `Milestone ${milestones.length + 1}`, amount: "1000", days: "14" },
-                          ])
-                        }
-                        className="text-xs font-bold text-[#4f46e5] hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add Milestone</span>
-                      </button>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800">Milestone Schedule Breakdown</span>
+                        <span className="text-[11px] text-slate-400 ml-2 font-mono">
+                          ({milestones.length} milestones, ${allocatedBudget} allocated)
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Scope Add-on Button */}
+                        <button
+                          type="button"
+                          onClick={() => setIsAddonModalOpen(!isAddonModalOpen)}
+                          className="text-xs font-bold text-[#4f46e5] hover:text-[#4338ca] bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/80 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+                        >
+                          <Sparkles className="w-3 h-3 text-[#4f46e5]" />
+                          <span>Scope Add-on (AI)</span>
+                        </button>
+
+                        {/* AI Auto-Sync Button */}
+                        <button
+                          type="button"
+                          disabled={isAiBalancingSchedule}
+                          onClick={handleAiAutoSyncSchedule}
+                          className="text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition disabled:opacity-50"
+                          title="Auto-distribute budget and schedule to 100% match project timeline"
+                        >
+                          {isAiBalancingSchedule ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-3 h-3 text-slate-600" />
+                          )}
+                          <span>Auto-Sync</span>
+                        </button>
+
+                        {/* Add Milestone Button */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setMilestones([
+                              ...milestones,
+                              {
+                                title: `Milestone ${milestones.length + 1}`,
+                                amount: remainingBudget > 0 ? String(remainingBudget) : "1000",
+                                days: unallocatedDays > 0 ? String(unallocatedDays) : "14",
+                              },
+                            ])
+                          }
+                          className="text-xs font-bold text-white bg-[#4f46e5] hover:bg-[#4338ca] px-3 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Milestone</span>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-2">
@@ -1609,6 +2109,7 @@ function PostNewProjectContent() {
                             <input
                               type="text"
                               value={ms.title}
+                              placeholder={`Milestone ${idx + 1} title`}
                               onChange={(e) => {
                                 const updated = [...milestones];
                                 updated[idx].title = e.target.value;
@@ -1618,12 +2119,14 @@ function PostNewProjectContent() {
                             />
                           </div>
 
-                          <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex items-center gap-2.5 shrink-0">
+                            {/* Milestone Amount Input with remaining budget helper */}
                             <div className="flex items-center gap-1">
                               <span className="text-slate-400 font-mono">$</span>
                               <input
                                 type="number"
                                 value={ms.amount}
+                                placeholder="0"
                                 onChange={(e) => {
                                   const updated = [...milestones];
                                   updated[idx].amount = e.target.value;
@@ -1631,8 +2134,19 @@ function PostNewProjectContent() {
                                 }}
                                 className="w-20 px-2 py-1 bg-white border border-slate-200 rounded font-mono font-bold text-slate-900"
                               />
+                              {(!ms.amount || parseFloat(ms.amount) === 0) && remainingBudget > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleFillRemainingBudget(idx)}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold hover:bg-emerald-100 transition cursor-pointer"
+                                  title={`Fill remaining $${remainingBudget}`}
+                                >
+                                  +Fill ${remainingBudget}
+                                </button>
+                              )}
                             </div>
 
+                            {/* Milestone Days Input */}
                             <div className="flex items-center gap-1">
                               <input
                                 type="number"
@@ -1652,6 +2166,7 @@ function PostNewProjectContent() {
                                 type="button"
                                 onClick={() => setMilestones(milestones.filter((_, i) => i !== idx))}
                                 className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                                title="Delete milestone"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1901,6 +2416,11 @@ function PostNewProjectContent() {
                         <Edit2 className="w-3 h-3" />
                         <span>Edit</span>
                       </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-500 pb-1">
+                      <span>Total: <strong className="text-slate-900">${allocatedBudget}.00 USD</strong> ({remainingBudget === 0 ? "100% Balanced" : `$${remainingBudget} unallocated`})</span>
+                      <span>Schedule: <strong className="text-slate-900">{totalMilestoneDays} days</strong> ({timelineDuration})</span>
                     </div>
 
                     <div className="space-y-2">
@@ -2251,21 +2771,56 @@ function PostNewProjectContent() {
 
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-slate-400">Budget:</span>
-                    <span className="font-mono font-bold text-slate-900 text-right">
-                      ${budgetAmount}.00 USD ({budgetType === "FIXED" ? "Fixed" : "Hourly"})
-                    </span>
+                    <div className="text-right font-mono">
+                      <span className="font-bold text-slate-900">
+                        ${budgetAmount || "0"}.00 USD
+                      </span>
+                      <div className="text-[10px]">
+                        {remainingBudget === 0 ? (
+                          <span className="text-emerald-600 font-semibold">✓ 100% Balanced</span>
+                        ) : remainingBudget > 0 ? (
+                          <span className="text-amber-600 font-semibold">${remainingBudget} unallocated</span>
+                        ) : (
+                          <span className="text-rose-600 font-semibold">Over budget (${Math.abs(remainingBudget)})</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-slate-400">Timeline:</span>
-                    <span className="font-semibold text-slate-900 text-right">{timelineDuration}</span>
+                    <div className="text-right">
+                      <span className="font-semibold text-slate-900">{timelineDuration || "Not set"}</span>
+                      {totalMilestoneDays > 0 && (
+                        <div className="text-[10px] font-mono">
+                          {isTimelineExceeded ? (
+                            <span className="text-amber-600 font-bold">
+                              {totalMilestoneDays} days (+{overTimelineDays}d extended)
+                            </span>
+                          ) : unallocatedDays > 0 ? (
+                            <span className="text-slate-500">
+                              {totalMilestoneDays} of {targetTimelineDays} days
+                            </span>
+                          ) : (
+                            <span className="text-emerald-600 font-semibold">
+                              {totalMilestoneDays} days (Synced)
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-slate-400">Milestones:</span>
-                    <span className="font-semibold text-slate-900 text-right">
-                      {milestones.length} Milestones
-                    </span>
+                    <div className="text-right">
+                      <span className="font-semibold text-slate-900">
+                        {milestones.length} Milestones
+                      </span>
+                      <div className="text-[10px] text-slate-500 font-mono">
+                        {totalMilestoneDays} days scheduled (${allocatedBudget})
+                      </div>
+                    </div>
                   </div>
                 </div>
 

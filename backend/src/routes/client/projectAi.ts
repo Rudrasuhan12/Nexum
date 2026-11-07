@@ -3,6 +3,7 @@ import multer from "multer";
 import { z } from "zod";
 import { openSourceAiService, stripMarkdownStars } from "../../services/openSourceAiService.js";
 import { extractTextFromDocx } from "../../lib/docxParser.js";
+import { geminiService } from "../../services/geminiService.js";
 
 const router = Router();
 const upload = multer({
@@ -11,12 +12,23 @@ const upload = multer({
 });
 
 const assistSchema = z.object({
-  action: z.enum(["IMPROVE_OVERVIEW", "SUGGEST_SKILLS", "GENERATE_REQUIREMENTS", "REFINE_REQUIREMENTS"]),
+  action: z.enum([
+    "IMPROVE_OVERVIEW",
+    "SUGGEST_SKILLS",
+    "GENERATE_REQUIREMENTS",
+    "REFINE_REQUIREMENTS",
+    "EVALUATE_ADDON_OR_SCOPE",
+    "AUTO_SYNC_SCHEDULE",
+  ]),
   title: z.string().optional(),
   overview: z.string().optional(),
   category: z.string().optional(),
   existingSkills: z.array(z.string()).optional(),
   existingRequirements: z.string().optional(),
+  budgetAmount: z.string().optional(),
+  timelineDuration: z.string().optional(),
+  milestones: z.array(z.any()).optional(),
+  addonDescription: z.string().optional(),
 });
 
 /**
@@ -138,6 +150,112 @@ router.post("/projects/ai/assist", async (req: Request, res: Response) => {
         existingRequirements,
       });
       return res.json({ success: true, data: result });
+    }
+
+    if (action === "EVALUATE_ADDON_OR_SCOPE") {
+      const currentList = Array.isArray(req.body.milestones) ? req.body.milestones : [];
+      const currentBudget = parseFloat(req.body.budgetAmount || "0") || 0;
+      const currentTimeline = req.body.timelineDuration || "< 1 month";
+      const addonText = req.body.addonDescription || "Additional Scope Feature";
+
+      const formattedMilestones = currentList.map((m: any, idx: number) => ({
+        id: `ms_${idx + 1}`,
+        title: m.title || `Milestone ${idx + 1}`,
+        amountCents: Math.round((parseFloat(m.amount) || 1000) * 100),
+        workStatus: "UPCOMING",
+        dueDate: null,
+      }));
+
+      const evaluation = await geminiService.evaluateScopeAddon({
+        projectTitle: title || "Project Deliverable",
+        projectDescription: overview || "Full-stack application deliverable",
+        currentMilestones: formattedMilestones,
+        addonDescription: addonText,
+        requestedByRole: "CLIENT",
+      });
+
+      const addonPrice = Math.round(evaluation.suggestedPriceCents / 100);
+      const addonDays = evaluation.suggestedTimelineDays;
+
+      const newMilestone = {
+        title: evaluation.targetMilestoneTitle,
+        amount: String(addonPrice),
+        days: String(addonDays),
+      };
+
+      const updatedMilestones = [...currentList, newMilestone];
+      const newBudget = currentBudget + addonPrice;
+
+      // Calculate total milestone days
+      const totalDays = updatedMilestones.reduce((acc, m) => acc + (parseInt(m.days, 10) || 14), 0);
+      let updatedTimeline = currentTimeline;
+      if (totalDays > 180) updatedTimeline = "6+ months";
+      else if (totalDays > 60) updatedTimeline = "3 - 6 months";
+      else if (totalDays > 30) updatedTimeline = "1 - 2 months";
+      else updatedTimeline = "< 1 month";
+
+      const explanation = `Adjusted by Gemini AI: Added scope '${evaluation.targetMilestoneTitle}' (+${addonDays} days, +$${addonPrice}). Timeline auto-extended to ${totalDays} days (${updatedTimeline}) due to: ${evaluation.justification}`;
+
+      return res.json({
+        success: true,
+        data: {
+          addonEvaluation: evaluation,
+          addedMilestone: newMilestone,
+          updatedMilestones,
+          adjustedBudget: String(newBudget),
+          adjustedTimeline: updatedTimeline,
+          totalMilestoneDays: totalDays,
+          timelineDeltaDays: addonDays,
+          budgetDeltaDollars: addonPrice,
+          explanation,
+        },
+      });
+    }
+
+    if (action === "AUTO_SYNC_SCHEDULE") {
+      const currentList = Array.isArray(req.body.milestones) ? req.body.milestones : [];
+      const currentBudget = parseFloat(req.body.budgetAmount || "0") || 0;
+      const currentTimeline = req.body.timelineDuration || "1 - 2 months";
+
+      // Target days mapping
+      let targetDays = 60;
+      if (currentTimeline.includes("3 - 6")) targetDays = 90;
+      else if (currentTimeline.includes("6+")) targetDays = 180;
+      else if (currentTimeline.includes("< 1")) targetDays = 30;
+
+      const count = Math.max(currentList.length, 1);
+      const daysPerMilestone = Math.max(Math.round(targetDays / count), 7);
+      const amountPerMilestone = Math.max(Math.round(currentBudget / count), 100);
+
+      const balancedMilestones = currentList.map((m: any, idx: number) => {
+        // distribute remainder into last milestone so sum matches exactly
+        const isLast = idx === count - 1;
+        const assignedAmount = isLast
+          ? currentBudget - amountPerMilestone * (count - 1)
+          : amountPerMilestone;
+        const assignedDays = isLast
+          ? targetDays - daysPerMilestone * (count - 1)
+          : daysPerMilestone;
+
+        return {
+          ...m,
+          amount: String(Math.max(assignedAmount, 50)),
+          days: String(Math.max(assignedDays, 7)),
+        };
+      });
+
+      const explanation = `Adjusted by Gemini AI: Synchronized ${count} milestones to equal total budget ($${currentBudget}) and evenly distributed schedule across ${targetDays} days (${currentTimeline}).`;
+
+      return res.json({
+        success: true,
+        data: {
+          updatedMilestones: balancedMilestones,
+          adjustedBudget: String(currentBudget),
+          adjustedTimeline: currentTimeline,
+          totalMilestoneDays: targetDays,
+          explanation,
+        },
+      });
     }
 
     return res.status(400).json({
