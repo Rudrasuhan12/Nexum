@@ -276,11 +276,16 @@ router.patch("/:userId/avatar", async (req: Request, res: Response) => {
 
   try {
     const existing = await prisma.user.findUnique({ where: { id: userId } });
-    const currentPreferences = (existing?.preferences as Record<string, unknown>) || {};
-    await prisma.user.update({
-      where: { id: userId },
-      data: { preferences: { ...currentPreferences, avatar } },
-    });
+    if (existing) {
+      const currentPreferences = (existing.preferences as Record<string, unknown>) || {};
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          avatarUrl: avatar.length <= 2048 ? avatar : undefined,
+          preferences: { ...currentPreferences, avatar: avatar.length <= 50000 ? avatar : undefined },
+        },
+      });
+    }
   } catch {
     // Non-blocking in dev / mock session
   }

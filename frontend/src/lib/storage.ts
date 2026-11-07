@@ -46,13 +46,36 @@ export interface UploadResult {
 /**
  * Upload an image or file buffer to Neon Object Storage (or local disk in dev)
  */
-export async function uploadObject(params: {
-  buffer: Buffer;
-  fileName: string;
-  mimeType: string;
-  folder?: string;
-}): Promise<UploadResult> {
-  const { buffer, fileName, mimeType, folder = "avatars" } = params;
+export async function uploadObject(
+  paramsOrFolder:
+    | {
+        buffer: Buffer;
+        fileName: string;
+        mimeType: string;
+        folder?: string;
+      }
+    | string,
+  fileNameArg?: string,
+  bufferArg?: Buffer,
+  mimeTypeArg?: string
+): Promise<UploadResult> {
+  let buffer: Buffer;
+  let fileName: string;
+  let mimeType: string;
+  let folder: string;
+
+  if (typeof paramsOrFolder === "string") {
+    folder = paramsOrFolder || "avatars";
+    fileName = fileNameArg || `file-${Date.now()}`;
+    buffer = bufferArg || Buffer.from("");
+    mimeType = mimeTypeArg || "application/octet-stream";
+  } else {
+    buffer = paramsOrFolder.buffer || Buffer.from("");
+    fileName = paramsOrFolder.fileName || `file-${Date.now()}`;
+    mimeType = paramsOrFolder.mimeType || "application/octet-stream";
+    folder = paramsOrFolder.folder || "avatars";
+  }
+
   const key = `${folder}/${fileName}`;
 
   // 1. Try uploading to Neon S3 Object Storage if configured
@@ -80,16 +103,27 @@ export async function uploadObject(params: {
   }
 
   // 2. Fallback to local disk storage
-  const localDir = getLocalUploadDir(folder);
-  const filePath = path.join(localDir, fileName);
-  fs.writeFileSync(filePath, buffer);
+  try {
+    const localDir = getLocalUploadDir(folder);
+    const filePath = path.join(localDir, fileName);
+    fs.writeFileSync(filePath, buffer);
 
-  return {
-    url: `/uploads/${folder}/${fileName}`,
-    key,
-    storage: "local_disk",
-    size: buffer.length,
-  };
+    return {
+      url: `/uploads/${folder}/${fileName}`,
+      key,
+      storage: "local_disk",
+      size: buffer.length,
+    };
+  } catch (fsErr) {
+    console.warn("Local disk write failed (serverless/read-only environment), falling back to data URL:", fsErr);
+    // 3. Resilient fallback: return data URL so upload NEVER crashes with 500 in production
+    return {
+      url: `data:${mimeType};base64,${buffer.toString("base64")}`,
+      key,
+      storage: "local_disk",
+      size: buffer.length,
+    };
+  }
 }
 
 /**
