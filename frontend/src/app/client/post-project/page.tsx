@@ -528,13 +528,21 @@ function PostNewProjectContent() {
           if (draft.goals) {
             setKeyGoals(draft.goals.split(",").map((g: string) => g.trim()).filter(Boolean));
           }
-          if (draft.requiredSkills && draft.requiredSkills.length > 0) {
-            setRequiredSkills(draft.requiredSkills);
+          const loadedSkills = draft.requiredSkills?.length ? draft.requiredSkills : draft.skills;
+          if (loadedSkills && loadedSkills.length > 0) {
+            setRequiredSkills(loadedSkills);
           }
           if (draft.detailedRequirements) setDetailedRequirements(draft.detailedRequirements);
           if (draft.scopeOfWork && draft.scopeOfWork.length > 0) setScopeOfWork(draft.scopeOfWork);
           if (draft.budgetType) setBudgetType(draft.budgetType);
-          if (draft.budgetCents) setBudgetAmount(String(Math.round(draft.budgetCents / 100)));
+          if (draft.budgetCents) {
+            setBudgetAmount(String(Math.round(draft.budgetCents / 100)));
+          } else if (draft.budgetAmount) {
+            setBudgetAmount(String(draft.budgetAmount));
+          } else if (draft.totalBudget) {
+            const parsedNum = String(draft.totalBudget).replace(/[^0-9.]/g, "");
+            if (parsedNum) setBudgetAmount(parsedNum);
+          }
           if (draft.timelineDuration) setTimelineDuration(draft.timelineDuration);
           if (draft.milestones && draft.milestones.length > 0) {
             setMilestones(
