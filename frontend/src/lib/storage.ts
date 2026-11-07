@@ -1,6 +1,17 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import fs from "fs";
 import path from "path";
+import os from "os";
+
+interface MemoryStoredFile {
+  buffer: Buffer;
+  contentType: string;
+  size: number;
+  updatedAt: number;
+}
+
+// In-memory global store preserved within the server runtime
+const globalMemoryStore = new Map<string, MemoryStoredFile>();
 
 // Initialize S3 client for Neon Object Storage if environment variables are set
 const isS3Configured = Boolean(
@@ -78,7 +89,15 @@ export async function uploadObject(
 
   const key = `${folder}/${fileName}`;
 
-  // 1. Try uploading to Neon S3 Object Storage if configured
+  // 1. Retain in server memory cache
+  globalMemoryStore.set(key, {
+    buffer,
+    contentType: mimeType,
+    size: buffer.length,
+    updatedAt: Date.now(),
+  });
+
+  // 2. Try uploading to Neon S3 Object Storage if configured
   if (s3Client) {
     try {
       await s3Client.send(
@@ -102,39 +121,56 @@ export async function uploadObject(
     }
   }
 
-  // 2. Fallback to local disk storage
+  // 3. Fallback to local disk storage
+  let savedToPublic = false;
   try {
     const localDir = getLocalUploadDir(folder);
     const filePath = path.join(localDir, fileName);
     fs.writeFileSync(filePath, buffer);
-
-    return {
-      url: `/uploads/${folder}/${fileName}`,
-      key,
-      storage: "local_disk",
-      size: buffer.length,
-    };
-  } catch (fsErr) {
-    console.warn("Local disk write failed (serverless/read-only environment), falling back to data URL:", fsErr);
-    // 3. Resilient fallback: return data URL so upload NEVER crashes with 500 in production
-    return {
-      url: `data:${mimeType};base64,${buffer.toString("base64")}`,
-      key,
-      storage: "local_disk",
-      size: buffer.length,
-    };
+    savedToPublic = true;
+  } catch {
+    // If public directory is read-only (serverless/container), try os.tmpdir()
+    try {
+      const tmpDir = path.join(os.tmpdir(), "nexum_uploads", folder);
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(tmpDir, fileName), buffer);
+    } catch {
+      // In-memory fallback is active
+    }
   }
+
+  // A stable, short URL that fits in cookies and database fields without truncating or overflowing
+  const publicUrl = savedToPublic ? `/uploads/${folder}/${fileName}` : `/api/storage/${key}`;
+
+  return {
+    url: publicUrl,
+    key,
+    storage: "local_disk",
+    size: buffer.length,
+  };
 }
 
 /**
- * Download / stream an object from Neon S3 or local disk
+ * Download / stream an object from memory, Neon S3, local disk, or os.tmpdir
  */
 export async function getObjectStream(key: string): Promise<{
   stream: ReadableStream | NodeJS.ReadableStream | Buffer;
   contentType: string;
   contentLength?: number;
 } | null> {
-  // 1. Try Neon S3
+  // 1. Check in-memory store
+  const inMemory = globalMemoryStore.get(key);
+  if (inMemory) {
+    return {
+      stream: inMemory.buffer,
+      contentType: inMemory.contentType,
+      contentLength: inMemory.size,
+    };
+  }
+
+  // 2. Try Neon S3
   if (s3Client) {
     try {
       const res = await s3Client.send(
@@ -155,7 +191,7 @@ export async function getObjectStream(key: string): Promise<{
     }
   }
 
-  // 2. Check local disk
+  // 3. Check local public disk
   const cwd = process.cwd();
   let localPath = path.join(cwd, "public", "uploads", key);
   if (!fs.existsSync(localPath) && fs.existsSync(path.join(cwd, "frontend", "public", "uploads", key))) {
@@ -180,6 +216,33 @@ export async function getObjectStream(key: string): Promise<{
       contentLength: buffer.length,
     };
   }
+
+  // 4. Check os.tmpdir() fallback
+  try {
+    const tmpPath = path.join(os.tmpdir(), "nexum_uploads", key);
+    if (fs.existsSync(tmpPath)) {
+      const buffer = fs.readFileSync(tmpPath);
+      const ext = path.extname(tmpPath).toLowerCase();
+      const contentType =
+        ext === ".png"
+          ? "image/png"
+          : ext === ".webp"
+          ? "image/webp"
+          : ext === ".gif"
+          ? "image/gif"
+          : "image/jpeg";
+
+      return {
+        stream: buffer,
+        contentType,
+        contentLength: buffer.length,
+      };
+    }
+  } catch {
+    // Ignore tmp read errors
+  }
+
+  return null;
 
   return null;
 }

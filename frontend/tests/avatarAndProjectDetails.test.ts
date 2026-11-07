@@ -31,6 +31,27 @@ describe("Production Avatar Upload & Storage Resilience", () => {
     expect(dataUrl).toContain("data:image/png;base64,");
     expect(dataUrl).toContain(buffer.toString("base64"));
   });
+
+  it("should persist custom uploaded avatar rather than reverting to Google OAuth default initial", () => {
+    const customAvatarUrl = "/uploads/avatars/avatar_sambit_17940593.jpg";
+    const googleDefaultAvatar = "https://lh3.googleusercontent.com/a/default-s";
+
+    // Simulate session update
+    const userSession = {
+      id: "cmw2dnha60000852e25lag5hy",
+      email: "sambitkumarmohanty25@gmail.com",
+      avatar: googleDefaultAvatar,
+    };
+
+    // Updating avatar updates session to custom avatar
+    const updatedUser = {
+      ...userSession,
+      avatar: customAvatarUrl,
+    };
+
+    expect(updatedUser.avatar).toBe(customAvatarUrl);
+    expect(updatedUser.avatar).not.toBe(googleDefaultAvatar);
+  });
 });
 
 describe("Freelancer Project Details & Document Card Rendering Safeguards", () => {

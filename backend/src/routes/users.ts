@@ -275,19 +275,26 @@ router.patch("/:userId/avatar", async (req: Request, res: Response) => {
   }
 
   try {
-    const existing = await prisma.user.findUnique({ where: { id: userId } });
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: userId },
+          { email: userId },
+        ],
+      },
+    });
     if (existing) {
       const currentPreferences = (existing.preferences as Record<string, unknown>) || {};
       await prisma.user.update({
-        where: { id: userId },
+        where: { id: existing.id },
         data: {
           avatarUrl: avatar.length <= 2048 ? avatar : undefined,
-          preferences: { ...currentPreferences, avatar: avatar.length <= 50000 ? avatar : undefined },
+          preferences: { ...currentPreferences, avatar },
         },
       });
     }
-  } catch {
-    // Non-blocking in dev / mock session
+  } catch (err) {
+    console.warn("User avatar update in DB non-blocking warning:", err);
   }
 
   res.json({ success: true, userId, avatar });
