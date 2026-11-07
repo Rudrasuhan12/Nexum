@@ -39,7 +39,30 @@ export function csrfProtection(
   // 5. Origin / Referer validation for cookie-authenticated mutations
   const origin = req.headers.origin;
   const referer = req.headers.referer;
-  const candidateHeader = origin || (referer ? new URL(referer).origin : undefined);
+  let candidateHeader = origin;
+
+  if (!candidateHeader && referer) {
+    try {
+      candidateHeader = new URL(referer).origin;
+    } catch {
+      // Invalid URL format
+    }
+  }
+
+  // Internal loopback proxy exemption (e.g. Next.js server route handler proxying to localhost Express)
+  if (!candidateHeader) {
+    const isLoopback =
+      req.ip === "127.0.0.1" ||
+      req.ip === "::1" ||
+      req.ip === "::ffff:127.0.0.1" ||
+      req.socket.remoteAddress === "127.0.0.1" ||
+      req.socket.remoteAddress === "::1" ||
+      req.socket.remoteAddress === "::ffff:127.0.0.1";
+
+    if (isLoopback) {
+      candidateHeader = "http://localhost:3000";
+    }
+  }
 
   if (!candidateHeader) {
     return next(

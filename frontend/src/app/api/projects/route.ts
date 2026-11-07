@@ -26,6 +26,7 @@ export async function GET(request: Request) {
     const cookieHeader = request.headers.get("cookie") || "";
     const res = await fetch(`${BACKEND_URL}/api/projects?${query.toString()}`, {
       headers: {
+        "x-user-id": clientId,
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       },
       cache: "no-store",
@@ -74,7 +75,8 @@ export async function POST(request: Request) {
     const user = await getCurrentUser();
     const body = await request.json();
 
-    const clientId = body.clientId || user?.id || "usr_client_alex";
+    // Prioritize authenticated session user ID over body to enforce ownership
+    const clientId = user?.id || body.clientId || "usr_client_alex";
     const payload = {
       ...body,
       clientId,
@@ -84,6 +86,7 @@ export async function POST(request: Request) {
     const saved = saveProjectToStore(payload, clientId);
 
     const cookieHeader = request.headers.get("cookie") || "";
+    const originHeader = request.headers.get("origin") || request.headers.get("referer") || "http://localhost:3000";
 
     // Forward to Express backend if online
     try {
@@ -91,6 +94,8 @@ export async function POST(request: Request) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-user-id": clientId,
+          "Origin": originHeader,
           ...(cookieHeader ? { Cookie: cookieHeader } : {}),
         },
         body: JSON.stringify(payload),

@@ -2140,8 +2140,9 @@ export class ClientOverviewService {
 
       return {
         id: p.id,
-        name: p.title,
-        description: p.description,
+        name: p.title || p.name || "Untitled Project",
+        title: p.title || p.name || "Untitled Project",
+        description: p.description || "",
         status: cardStatus,
         statusLabel,
         statusColor,

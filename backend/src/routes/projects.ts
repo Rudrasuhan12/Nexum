@@ -9,6 +9,11 @@ async function resolveClientId(req: Request): Promise<string> {
   const reqUser = (req as any).user;
   if (reqUser?.id) return reqUser.id;
 
+  const headerUserId = req.headers["x-user-id"];
+  if (typeof headerUserId === "string" && headerUserId.trim().length > 0) {
+    return headerUserId.trim();
+  }
+
   const cookieToken = req.cookies?.[SESSION_COOKIE_NAME];
   if (cookieToken) {
     try {
