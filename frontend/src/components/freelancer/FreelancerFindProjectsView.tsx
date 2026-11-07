@@ -260,34 +260,38 @@ export default function FreelancerFindProjectsView({
       .then((res) => {
         if (!isCurrent) return;
         if (res.success && res.projects) {
-          const mapped: ProjectOpportunity[] = res.projects.map((p) => ({
-            id: p.id,
-            title: p.title,
-            clientName: p.client.name,
-            clientCompany: p.client.company,
-            location: p.location,
-            experienceLevel: (p.experienceLevel === "EXPERT"
-              ? "Expert"
-              : p.experienceLevel === "MID"
-              ? "Intermediate"
-              : "Entry Level") as any,
-            category: p.category as any,
-            budget:
-              p.budgetType === "Hourly"
-                ? `$${(p.budgetCents / 100).toFixed(2)}/hour`
-                : `$${(p.budgetCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} fixed`,
-            budgetAmount: p.budgetAmount,
-            budgetType: p.budgetType,
-            proposalsCount: p.proposalsCount,
-            hiringState:
-              p.proposalsCount > 10 ? "Urgent Need" : p.proposalsCount > 5 ? "1 Interviewing" : "Still Selecting",
-            postedTime: p.postedAt ? new Date(p.postedAt).toLocaleDateString() : "Recently",
-            matchScore: 92,
-            description: p.description,
-            skills: p.skills,
-            isVerified: p.client.isVerified,
-            escrowStatus: p.client.isVerified ? "Pre-Funded in Escrow" : "Verified Payment Method",
-          }));
+          const mapped: ProjectOpportunity[] = res.projects.map((p) => {
+            const hasCents = typeof p.budgetCents === "number" && !isNaN(p.budgetCents);
+            const budgetAmt = p.budgetAmount ?? (hasCents ? p.budgetCents / 100 : 0);
+            return {
+              id: p.id,
+              title: p.title || "Untitled Project",
+              clientName: p.client?.name || "Client",
+              clientCompany: p.client?.company || (p.client?.name ? `${p.client.name} Team` : "Client Team"),
+              location: p.location || "Remote",
+              experienceLevel: (p.experienceLevel === "EXPERT"
+                ? "Expert"
+                : p.experienceLevel === "MID"
+                ? "Intermediate"
+                : "Entry Level") as any,
+              category: p.category as any,
+              budget:
+                p.budgetType === "Hourly"
+                  ? `$${budgetAmt.toFixed(2)}/hour`
+                  : `$${budgetAmt.toLocaleString("en-US", { minimumFractionDigits: 2 })} fixed`,
+              budgetAmount: budgetAmt,
+              budgetType: p.budgetType === "Hourly" ? "Hourly" : "Fixed Price",
+              proposalsCount: p.proposalsCount || 0,
+              hiringState:
+                (p.proposalsCount || 0) > 10 ? "Urgent Need" : (p.proposalsCount || 0) > 5 ? "1 Interviewing" : "Still Selecting",
+              postedTime: p.postedAt ? new Date(p.postedAt).toLocaleDateString() : "Recently",
+              matchScore: 92,
+              description: p.description || "",
+              skills: Array.isArray(p.skills) ? p.skills : [],
+              isVerified: Boolean(p.client?.isVerified),
+              escrowStatus: p.client?.isVerified ? "Pre-Funded in Escrow" : "Verified Payment Method",
+            };
+          });
           setBackendProjects(mapped);
           setSavedProjectIds(res.projects.filter((p) => p.isSaved).map((p) => p.id));
         } else {
@@ -362,8 +366,15 @@ export default function FreelancerFindProjectsView({
       const matchesLocation = !loc || opp.location.toLowerCase().includes(loc);
 
       // 3. Category Filter
+      const catLower = (opp.category || "").toLowerCase();
+      const selCatLower = selectedCategory.toLowerCase();
       const matchesCategory =
-        selectedCategory === "All Categories" || opp.category === selectedCategory;
+        selectedCategory === "All Categories" ||
+        opp.category === selectedCategory ||
+        (selCatLower.includes("web") && (catLower.includes("web") || catLower.includes("development"))) ||
+        (selCatLower.includes("full stack") && (catLower.includes("development") || catLower.includes("web"))) ||
+        (selCatLower.includes("ai") && catLower.includes("ai")) ||
+        (selCatLower.includes("contract") && catLower.includes("smart"));
 
       // 4. Experience Level Filter
       const matchesExperience =

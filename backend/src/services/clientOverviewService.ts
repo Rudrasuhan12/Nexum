@@ -1748,7 +1748,7 @@ export class ClientOverviewService {
         update: {
           title: input.title,
           description: input.description,
-          budgetCents: input.budgetCents,
+          budgetCents: input.budgetCents ?? 0,
           currency: input.currency || "USD",
           state: (input.state as any) || (isDraft ? "DRAFT" : "ACTIVE"),
           goals: input.goals || "",
@@ -1764,7 +1764,7 @@ export class ClientOverviewService {
           clientId: targetClient,
           title: input.title,
           description: input.description,
-          budgetCents: input.budgetCents,
+          budgetCents: input.budgetCents ?? 0,
           currency: input.currency || "USD",
           state: (input.state as any) || (isDraft ? "DRAFT" : "ACTIVE"),
           goals: input.goals || "",
@@ -1775,7 +1775,9 @@ export class ClientOverviewService {
           budgetType: input.budgetType === "HOURLY" ? "HOURLY" : "FIXED_PRICE",
           ...(expLevel ? { experienceLevel: expLevel } : {}),
         },
-      }).catch(() => {});
+      }).catch((err) => {
+        console.error(`[ClientOverviewService] Failed to upsert project ${projectId} in database:`, err);
+      });
 
       const briefData = {
         category: input.category,
