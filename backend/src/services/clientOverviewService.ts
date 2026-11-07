@@ -1608,7 +1608,7 @@ export class ClientOverviewService {
           type: "CONSENSUS",
           title: a.action,
           detail: `Cryptographic audit verified for ${a.objectType} #${a.objectId}`,
-          timestamp: new Date(a.timestamp).toLocaleTimeString(),
+          timestamp: a.timestamp instanceof Date ? a.timestamp.toISOString() : new Date(a.timestamp).toISOString(),
         }));
       }
     } catch {
