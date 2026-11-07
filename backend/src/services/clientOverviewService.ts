@@ -124,7 +124,7 @@ export interface ActiveProjectItem {
   id: string;
   name: string;
   stage: string;
-  status: "IN_PROGRESS" | "IN_REVIEW" | "PROPOSAL" | "COMPLETED";
+  status: "IN_PROGRESS" | "IN_REVIEW" | "PROPOSAL" | "COMPLETED" | "DRAFT";
   freelancer: string;
   avatar: string;
   progress: number;
@@ -1703,6 +1703,7 @@ export class ClientOverviewService {
       createdAt: existingIndex >= 0 ? currentList[existingIndex].createdAt : now,
       updatedAt: now,
       proposals: [],
+      milestones: formattedMilestones,
       changeRequests: existingIndex >= 0 ? currentList[existingIndex].changeRequests || [] : [],
     };
 
@@ -2008,7 +2009,7 @@ export class ClientOverviewService {
         ? proposal.milestones
         : (p.projectMilestones && p.projectMilestones.length > 0)
         ? p.projectMilestones
-        : brief.milestones || [];
+        : brief.milestones || p.milestones || [];
       const hasPendingChange = (p.changeRequests || []).some((cr: any) => cr.status === "PROPOSED");
       const hasReviewMilestone = milestones.some(
         (m: any) => m.state === "APPROVED" || m.state === "SUBMITTED" || m.state === "CAPTURE_PENDING"
@@ -2409,7 +2410,7 @@ export class ClientOverviewService {
         ? activeProposal.milestones
         : (p.projectMilestones && p.projectMilestones.length > 0)
         ? p.projectMilestones
-        : (p.briefVersions?.[0]?.structuredBrief as any)?.milestones || [];
+        : (p.briefVersions?.[0]?.structuredBrief as any)?.milestones || p.milestones || [];
       totalMilestonesCount += milestones.length;
 
       let projectCompletedCount = 0;
@@ -2481,17 +2482,20 @@ export class ClientOverviewService {
         ? Math.round((projectCompletedCount / milestones.length) * 100)
         : 0;
 
+      const isDraft = p.state === "DRAFT";
       activeProjectItems.push({
         id: p.id,
         name: p.title,
-        stage: `Milestone ${projectCompletedCount + 1} of ${Math.max(milestones.length, 1)}`,
-        status: p.state === "ACTIVE" ? "IN_PROGRESS" : "PROPOSAL",
-        freelancer: freelancerName,
+        stage: isDraft
+          ? "Draft spec saved · Ready to publish"
+          : `Milestone ${projectCompletedCount + 1} of ${Math.max(milestones.length, 1)}`,
+        status: isDraft ? "DRAFT" : p.state === "ACTIVE" ? "IN_PROGRESS" : "PROPOSAL",
+        freelancer: isDraft ? "Draft spec (no contractor)" : freelancerName,
         avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80",
-        progress,
+        progress: isDraft ? 0 : progress,
         budget: `$${((p.budgetCents || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         nextDeadline: p.deadline ? new Date(p.deadline).toLocaleDateString() : "Nov 04, 2026",
-        actionUrl: `/client/workspace`,
+        actionUrl: isDraft ? `/client/post-project?draftId=${p.id}` : `/client/workspace`,
       });
     }
 

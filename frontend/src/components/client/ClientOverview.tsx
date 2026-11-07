@@ -509,16 +509,22 @@ export default function ClientOverview({
                     <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
                       <span>{proj.stage}</span>
                       <span>·</span>
-                      <span className="flex items-center gap-1">
-                        <Image
-                          src={proj.avatar}
-                          alt={proj.freelancer}
-                          width={16}
-                          height={16}
-                          className="w-4 h-4 rounded-full object-cover"
-                        />
-                        <span>{proj.freelancer}</span>
-                      </span>
+                      {proj.status === "DRAFT" ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          Draft Spec
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <Image
+                            src={proj.avatar}
+                            alt={proj.freelancer}
+                            width={16}
+                            height={16}
+                            className="w-4 h-4 rounded-full object-cover"
+                          />
+                          <span>{proj.freelancer}</span>
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

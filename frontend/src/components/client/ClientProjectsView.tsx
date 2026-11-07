@@ -801,6 +801,19 @@ export default function ClientProjectsView({
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
 
+                      {/* View Spec Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenProject(project.id);
+                        }}
+                        className="px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-slate-500" />
+                        <span>View Spec</span>
+                      </button>
+
                       {/* Resume Draft Button */}
                       <button
                         type="button"
