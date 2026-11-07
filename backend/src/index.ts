@@ -50,6 +50,7 @@ import telegramRouter from "./routes/telegram.js";
 import { telegramService } from "./services/telegramService.js";
 import clientPaymentsRouter from "./routes/clientPayments.js";
 import milestonesVerifierRouter from "./routes/milestonesVerifier.js";
+import handoverRouter from "./routes/handover.js";
 
 // Load environment variables
 dotenv.config();
@@ -163,6 +164,7 @@ app.use("/api/client", clientRouter);
 app.use("/api/milestones", milestonesVerifierRouter);
 app.use("/api/workspace", workspaceRouter);
 app.use("/api/telegram", telegramRouter);
+app.use("/api/projects", handoverRouter);
 
 // Root fallback
 app.get("/", (_req: express.Request, res: express.Response) => {

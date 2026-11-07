@@ -4876,3 +4876,158 @@ export async function rejectClientProposal(proposalId: string, feedback?: string
     return { success: false, error: msg };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Project Handover & Deliverable Checklist Protocol API
+// ---------------------------------------------------------------------------
+
+export interface ProjectHandoverItemData {
+  id: string;
+  handoverId: string;
+  title: string;
+  description: string;
+  category: "REPOSITORY" | "DOCUMENTATION" | "DEPLOYMENT" | "CREDENTIALS" | "TESTS" | "IP_TRANSFER" | "CUSTOM";
+  isRequired: boolean;
+  status: "PENDING" | "PROVIDED" | "ACCEPTED" | "REVISIONS_REQUESTED";
+  providedUrl?: string | null;
+  providedFileKey?: string | null;
+  providedNotes?: string | null;
+  rejectionReason?: string | null;
+  providedAt?: string | null;
+  acceptedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectHandoverData {
+  id: string;
+  projectId: string;
+  status: "PENDING_SUBMISSION" | "IN_REVIEW" | "COMPLETED";
+  requestedById: string;
+  requestedAt: string;
+  completedAt?: string | null;
+  contentHash?: string | null;
+  items: ProjectHandoverItemData[];
+  stats?: {
+    totalItems: number;
+    requiredItems: number;
+    acceptedItems: number;
+    providedItems: number;
+    isFullyVerified: boolean;
+    percentComplete: number;
+  };
+}
+
+export async function fetchProjectHandover(projectId: string): Promise<{
+  success: boolean;
+  data?: {
+    hasHandover: boolean;
+    readyForHandover: boolean;
+    milestoneProgress: { total: number; accepted: number };
+    handover: ProjectHandoverData | null;
+  };
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/projects/${projectId}/handover`, {
+      cache: "no-store",
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch project handover";
+    return { success: false, error: msg };
+  }
+}
+
+export async function initiateProjectHandover(
+  projectId: string,
+  items?: Array<{
+    title: string;
+    description: string;
+    category: "REPOSITORY" | "DOCUMENTATION" | "DEPLOYMENT" | "CREDENTIALS" | "TESTS" | "IP_TRANSFER" | "CUSTOM";
+    isRequired?: boolean;
+  }>
+): Promise<{
+  success: boolean;
+  message?: string;
+  data?: ProjectHandoverData;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/projects/${projectId}/handover`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to initiate project handover";
+    return { success: false, error: msg };
+  }
+}
+
+export async function submitHandoverItem(
+  projectId: string,
+  itemId: string,
+  data: { providedUrl?: string; providedFileKey?: string; providedNotes?: string }
+): Promise<{
+  success: boolean;
+  message?: string;
+  data?: ProjectHandoverItemData;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/projects/${projectId}/handover/items/${itemId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to submit handover document";
+    return { success: false, error: msg };
+  }
+}
+
+export async function reviewHandoverItem(
+  projectId: string,
+  itemId: string,
+  decision: "ACCEPTED" | "REVISIONS_REQUESTED",
+  rejectionReason?: string
+): Promise<{
+  success: boolean;
+  message?: string;
+  data?: ProjectHandoverItemData;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/projects/${projectId}/handover/items/${itemId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, rejectionReason }),
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to review handover document";
+    return { success: false, error: msg };
+  }
+}
+
+export async function finalizeProjectHandover(projectId: string): Promise<{
+  success: boolean;
+  message?: string;
+  contentHash?: string;
+  handover?: ProjectHandoverData;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/projects/${projectId}/handover/finalize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to finalize project handover";
+    return { success: false, error: msg };
+  }
+}

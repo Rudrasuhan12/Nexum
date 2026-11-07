@@ -234,6 +234,29 @@ enum LedgerType {
   REFUNDED
 }
 
+enum HandoverStatus {
+  PENDING_SUBMISSION
+  IN_REVIEW
+  COMPLETED
+}
+
+enum HandoverCategory {
+  REPOSITORY
+  DOCUMENTATION
+  DEPLOYMENT
+  CREDENTIALS
+  TESTS
+  IP_TRANSFER
+  CUSTOM
+}
+
+enum HandoverItemStatus {
+  PENDING
+  PROVIDED
+  ACCEPTED
+  REVISIONS_REQUESTED
+}
+
 // ---------------------------------------------------------------------------
 // Core Identity & Profile
 // ---------------------------------------------------------------------------
@@ -422,6 +445,44 @@ model Project {
   @@index([budgetCents])
   @@index([category])
   workspaceConversation WorkspaceConversation?
+  handover              ProjectHandover?
+}
+
+model ProjectHandover {
+  id            String               @id @default(cuid())
+  projectId     String               @unique
+  project       Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status        HandoverStatus       @default(PENDING_SUBMISSION)
+  requestedById String
+  requestedAt   DateTime             @default(now())
+  completedAt   DateTime?
+  contentHash   String?
+  items         ProjectHandoverItem[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([projectId, status])
+}
+
+model ProjectHandoverItem {
+  id              String             @id @default(cuid())
+  handoverId      String
+  handover        ProjectHandover    @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  title           String
+  description     String
+  category        HandoverCategory
+  isRequired      Boolean            @default(true)
+  status          HandoverItemStatus @default(PENDING)
+  providedUrl     String?
+  providedFileKey String?
+  providedNotes   String?
+  rejectionReason String?
+  providedAt      DateTime?
+  acceptedAt      DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([handoverId, status])
 }
 
 model ProjectBriefVersion {

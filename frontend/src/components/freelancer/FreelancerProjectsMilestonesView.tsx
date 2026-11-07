@@ -21,7 +21,11 @@ import {
   fetchProjectFiles,
   createProjectTask,
   updateProjectTask,
+  fetchProjectHandover,
+  ProjectHandoverData,
 } from "@/lib/api-client";
+import ProjectHandoverBanner from "@/components/handover/ProjectHandoverBanner";
+import HandoverChecklistView from "@/components/handover/HandoverChecklistView";
 import ProjectSummaryCards from "./projects/ProjectSummaryCards";
 import ProjectDirectory from "./projects/ProjectDirectory";
 import SelectedProjectHeader from "./projects/SelectedProjectHeader";
@@ -86,6 +90,10 @@ export default function FreelancerProjectsMilestonesView({
   const [viewingMilestone, setViewingMilestone] =
     useState<ProjectMilestone | null>(null);
   const [showProposeModal, setShowProposeModal] = useState(false);
+
+  // Handover state
+  const [freelancerHandoverData, setFreelancerHandoverData] = useState<ProjectHandoverData | null>(null);
+  const [showFreelancerHandoverChecklist, setShowFreelancerHandoverChecklist] = useState<boolean>(false);
 
   // Dynamic Left/Right Sticky Tracking
   const leftPanelRef = useRef<HTMLDivElement>(null);
@@ -272,18 +280,25 @@ export default function FreelancerProjectsMilestonesView({
     if (!selectedProjectId) {
       setSelectedProjectTasks([]);
       setSelectedProjectFiles([]);
+      setFreelancerHandoverData(null);
       return;
     }
 
     let active = true;
     async function loadProjectDetails() {
       try {
-        const [tasksRes, filesRes] = await Promise.all([
+        const [tasksRes, filesRes, handoverRes] = await Promise.all([
           fetchProjectTasks(selectedProjectId),
           fetchProjectFiles(selectedProjectId),
+          fetchProjectHandover(selectedProjectId),
         ]);
 
         if (active) {
+          if (handoverRes.success && handoverRes.data?.handover) {
+            setFreelancerHandoverData(handoverRes.data.handover);
+          } else {
+            setFreelancerHandoverData(null);
+          }
           if (tasksRes.success && Array.isArray(tasksRes.tasks)) {
             setSelectedProjectTasks(
               tasksRes.tasks.map((t: any) => ({
@@ -657,6 +672,38 @@ export default function FreelancerProjectsMilestonesView({
                 onOpenWorkspace={() => onNavigateTab("workspace")}
                 showToast={showToast}
               />
+
+              {/* Handover & Documentation Protocol (100% Light Theme) */}
+              {(!!freelancerHandoverData ||
+                (selectedProject.milestones.length > 0 &&
+                  selectedProject.milestones.every((m) => m.workStatus === "ACCEPTED"))) && (
+                <div className="space-y-3">
+                  <ProjectHandoverBanner
+                    role="FREELANCER"
+                    projectName={selectedProject.title}
+                    handoverData={freelancerHandoverData}
+                    onInitiateClick={() => {}}
+                    onViewChecklistClick={() => setShowFreelancerHandoverChecklist((prev) => !prev)}
+                  />
+
+                  {showFreelancerHandoverChecklist && freelancerHandoverData && (
+                    <HandoverChecklistView
+                      projectId={selectedProject.id}
+                      projectName={selectedProject.title}
+                      role="FREELANCER"
+                      handoverData={freelancerHandoverData}
+                      onRefresh={async () => {
+                        const res = await fetchProjectHandover(selectedProject.id);
+                        if (res.success && res.data?.handover) {
+                          setFreelancerHandoverData(res.data.handover);
+                        }
+                      }}
+                      showToast={showToast}
+                      onClose={() => setShowFreelancerHandoverChecklist(false)}
+                    />
+                  )}
+                </div>
+              )}
 
               {/* Project Navigation Tabs */}
               <ProjectTabs

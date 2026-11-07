@@ -46,6 +46,8 @@ import ReviewVersionModal from "@/components/client/workspace/ReviewVersionModal
 import ReadOriginalMessageModal from "@/components/client/workspace/ReadOriginalMessageModal";
 import ProposeMeetingModal from "@/components/client/workspace/ProposeMeetingModal";
 import SubmitDeliverableModal from "./SubmitDeliverableModal";
+import ProjectHandoverBanner from "@/components/handover/ProjectHandoverBanner";
+import HandoverChecklistView from "@/components/handover/HandoverChecklistView";
 import {
   getWorkspaceTimeline,
   sendWorkspaceMessage,
@@ -56,6 +58,8 @@ import {
   createWorkspaceTask,
   updateWorkspaceTaskStatus,
   fetchWorkspaceProjects,
+  fetchProjectHandover,
+  ProjectHandoverData,
 } from "@/lib/api-client";
 
 interface FreelancerWorkspaceChatsModeProps {
@@ -90,6 +94,7 @@ export default function FreelancerWorkspaceChatsMode({
     | "chat"
     | "overview"
     | "deliverables"
+    | "handover"
     | "milestones"
     | "tasks"
     | "files"
@@ -98,6 +103,9 @@ export default function FreelancerWorkspaceChatsMode({
     | "activity"
     | "meetings"
   >("chat");
+
+  // Handover Protocol State
+  const [handoverData, setHandoverData] = useState<ProjectHandoverData | null>(null);
 
   // Proof Modal State
   const [selectedTxForProof, setSelectedTxForProof] = useState<{
@@ -300,6 +308,17 @@ export default function FreelancerWorkspaceChatsMode({
       } finally {
         setIsLoading(false);
       }
+
+      // Load live handover protocol state
+      fetchProjectHandover(selectedProjectId)
+        .then((res) => {
+          if (res.success && res.data?.handover) {
+            setHandoverData(res.data.handover);
+          } else {
+            setHandoverData(null);
+          }
+        })
+        .catch(() => setHandoverData(null));
     };
     loadState();
   }, [selectedProjectId]);
@@ -765,6 +784,15 @@ export default function FreelancerWorkspaceChatsMode({
                     { id: "chat", label: "Chat" },
                     { id: "overview", label: "Overview" },
                     { id: "deliverables", label: "Deliverables" },
+                    {
+                      id: "handover",
+                      label: "Handover",
+                      badge: handoverData?.status === "COMPLETED"
+                        ? "Done"
+                        : handoverData?.status
+                        ? "Active"
+                        : undefined,
+                    },
                     { id: "milestones", label: "Milestones" },
                     { id: "tasks", label: "Tasks" },
                     { id: "files", label: "Files" },
@@ -777,13 +805,22 @@ export default function FreelancerWorkspaceChatsMode({
                       key={tab.id}
                       type="button"
                       onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                      className={`pb-1.5 transition relative cursor-pointer shrink-0 whitespace-nowrap ${
+                      className={`pb-1.5 transition relative cursor-pointer shrink-0 whitespace-nowrap flex items-center gap-1.5 ${
                         activeTab === tab.id
                           ? "text-indigo-600 font-bold"
                           : "text-slate-500 hover:text-slate-900"
                       }`}
                     >
                       <span>{tab.label}</span>
+                      {tab.badge && (
+                        <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded-full ${
+                          tab.badge === "Done"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-blue-100 text-blue-800"
+                        }`}>
+                          {tab.badge}
+                        </span>
+                      )}
                       {activeTab === tab.id && (
                         <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
                       )}
@@ -1230,6 +1267,18 @@ export default function FreelancerWorkspaceChatsMode({
                 </button>
               </div>
 
+              {handoverData && (
+                <div className="mb-2">
+                  <ProjectHandoverBanner
+                    role="FREELANCER"
+                    projectName={selectedProject.name}
+                    handoverData={handoverData}
+                    onInitiateClick={() => {}}
+                    onViewChecklistClick={() => setActiveTab("handover")}
+                  />
+                </div>
+              )}
+
               {!selectedProject.milestones || selectedProject.milestones.length === 0 ? (
                 <div className="text-center py-12 px-4 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
                   <Package className="w-10 h-10 text-slate-300 mx-auto mb-3" />
@@ -1280,6 +1329,58 @@ export default function FreelancerWorkspaceChatsMode({
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 2.5: PROJECT HANDOVER CHECKLIST */}
+          {activeTab === "handover" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Final Deliverables &amp; Documentation Handover
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Submit production repository transfers, deployment runbooks, credentials, and architectural documents.
+                  </p>
+                </div>
+              </div>
+
+              {/* Handover Banner */}
+              <ProjectHandoverBanner
+                role="FREELANCER"
+                projectName={selectedProject.name}
+                handoverData={handoverData}
+                onInitiateClick={() => {}}
+                onViewChecklistClick={() => {}}
+              />
+
+              {/* Handover Checklist View */}
+              {handoverData ? (
+                <HandoverChecklistView
+                  projectId={selectedProject.id}
+                  projectName={selectedProject.name}
+                  role="FREELANCER"
+                  handoverData={handoverData}
+                  onRefresh={async () => {
+                    const res = await fetchProjectHandover(selectedProject.id);
+                    if (res.success && res.data?.handover) {
+                      setHandoverData(res.data.handover);
+                    } else {
+                      setHandoverData(null);
+                    }
+                  }}
+                  showToast={showToast}
+                />
+              ) : (
+                <div className="p-8 rounded-2xl border border-slate-200/80 bg-slate-50/50 text-center flex flex-col items-center justify-center">
+                  <Package className="w-8 h-8 text-slate-400 mb-2" />
+                  <h4 className="text-sm font-bold text-slate-800 mb-1">Handover Checklist Not Yet Initiated</h4>
+                  <p className="text-xs text-slate-500 max-w-sm leading-relaxed">
+                    Once all project milestone deliverables are accepted, the client will initiate the final handover checklist for code repositories, documentation, and credentials.
+                  </p>
                 </div>
               )}
             </div>

@@ -31,7 +31,13 @@ import {
   fetchClientMilestones,
   approveClientMilestone,
   requestClientMilestoneCorrections,
+  fetchProjectHandover,
+  initiateProjectHandover,
+  ProjectHandoverData,
 } from "@/lib/api-client";
+import ProjectHandoverBanner from "@/components/handover/ProjectHandoverBanner";
+import ProjectHandoverModal from "@/components/handover/ProjectHandoverModal";
+import HandoverChecklistView from "@/components/handover/HandoverChecklistView";
 
 interface ClientMilestonesViewProps {
   onOpenProjectWorkspace?: (projectId: string, tab?: string) => void;
@@ -90,6 +96,11 @@ export default function ClientMilestonesView({
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  // Handover Protocol State
+  const [handoverData, setHandoverData] = useState<ProjectHandoverData | null>(null);
+  const [showHandoverModal, setShowHandoverModal] = useState(false);
+  const [showHandoverView, setShowHandoverView] = useState(false);
+
   // Distinct project list for dropdown filter
   const distinctProjects = useMemo(() => {
     const map = new Map<string, string>();
@@ -100,6 +111,61 @@ export default function ClientMilestonesView({
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [milestones]);
+
+  // Check if any project is eligible for handover (all its milestones accepted)
+  const handoverEligibleProject = useMemo(() => {
+    if (projectFilter !== "ALL") {
+      const pMilestones = milestones.filter((m) => m.projectId === projectFilter);
+      if (pMilestones.length > 0 && pMilestones.every((m) => m.workflowStatus === "ACCEPTED")) {
+        return { id: projectFilter, name: pMilestones[0].projectName };
+      }
+      return null;
+    }
+
+    for (const p of distinctProjects) {
+      const pMilestones = milestones.filter((m) => m.projectId === p.id);
+      if (pMilestones.length > 0 && pMilestones.every((m) => m.workflowStatus === "ACCEPTED")) {
+        return p;
+      }
+    }
+    return null;
+  }, [milestones, distinctProjects, projectFilter]);
+
+  // Load handover data if project is eligible
+  const loadHandover = async () => {
+    if (!handoverEligibleProject) {
+      setHandoverData(null);
+      return;
+    }
+    try {
+      const res = await fetchProjectHandover(handoverEligibleProject.id);
+      if (res.success && res.data?.handover) {
+        setHandoverData(res.data.handover);
+      } else {
+        setHandoverData(null);
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
+  useEffect(() => {
+    loadHandover();
+  }, [handoverEligibleProject?.id]);
+
+  const handleInitiateHandoverConfirm = async (
+    items: Array<{ title: string; description: string; category: any; isRequired: boolean }>
+  ) => {
+    if (!handoverEligibleProject) return;
+    const res = await initiateProjectHandover(handoverEligibleProject.id, items);
+    if (res.success) {
+      showToast("Handover checklist successfully created and sent to freelancer!");
+      await loadHandover();
+      setShowHandoverView(true);
+    } else {
+      showToast(res.error || "Failed to initiate handover");
+    }
+  };
 
   // Top 4 Stats Calculation
   const stats = useMemo(() => {
@@ -472,6 +538,42 @@ export default function ClientMilestonesView({
           </div>
         </button>
       </div>
+
+      {/* ==============================================================
+          PROJECT HANDOVER & DELIVERABLE CHECKLIST BANNER (100% LIGHT THEME)
+         ============================================================== */}
+      {handoverEligibleProject && (
+        <div className="space-y-4">
+          <ProjectHandoverBanner
+            role="CLIENT"
+            projectName={handoverEligibleProject.name}
+            handoverData={handoverData}
+            onInitiateClick={() => setShowHandoverModal(true)}
+            onViewChecklistClick={() => setShowHandoverView((prev) => !prev)}
+          />
+
+          {/* Expandable Handover Checklist View */}
+          {showHandoverView && handoverData && (
+            <HandoverChecklistView
+              projectId={handoverEligibleProject.id}
+              projectName={handoverEligibleProject.name}
+              role="CLIENT"
+              handoverData={handoverData}
+              onRefresh={loadHandover}
+              showToast={showToast}
+              onClose={() => setShowHandoverView(false)}
+            />
+          )}
+
+          {/* Initiate Handover Modal */}
+          <ProjectHandoverModal
+            isOpen={showHandoverModal}
+            projectName={handoverEligibleProject.name}
+            onClose={() => setShowHandoverModal(false)}
+            onConfirm={handleInitiateHandoverConfirm}
+          />
+        </div>
+      )}
 
       {/* ==============================================================
           SECTION 2: SEARCH & FILTERS BAR

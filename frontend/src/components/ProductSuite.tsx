@@ -36,16 +36,16 @@ export default function ProductSuite() {
   const [activeId, setActiveId] = useState<string>("prd");
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
-  // Accurate viewport scroll spy (activates when section hits focal reading zone)
+  // Accurate viewport scroll spy (activates when section enters reading focal zone)
   useEffect(() => {
     const handleScroll = () => {
-      // If near the top of the page, activate first item
+      // 1. If near the top of the page, activate first item
       if (window.scrollY < 120) {
         setActiveId(navItems[0].id);
         return;
       }
 
-      // If near the very bottom of the page, activate the last item
+      // 2. If near the very bottom of the page, activate the last item
       if (
         window.innerHeight + window.scrollY >=
         document.documentElement.scrollHeight - 80
@@ -54,21 +54,32 @@ export default function ProductSuite() {
         return;
       }
 
-      const focalOffset = 220; // 220px from top of viewport
-      let current = navItems[0].id;
+      // 3. Focal eye-line: 35% of the viewport height (natural reading eye-line)
+      const focalY = Math.max(160, window.innerHeight * 0.35);
+      let bestId = navItems[0].id;
+      let minDistance = Infinity;
 
       for (const item of navItems) {
         const el = sectionRefs.current[item.id];
         if (el) {
           const rect = el.getBoundingClientRect();
-          // The deepest section whose top has crossed the focal line is the active section
-          if (rect.top <= focalOffset) {
-            current = item.id;
+          // Direct hit: the focal line falls squarely inside this section
+          if (rect.top <= focalY && rect.bottom >= focalY) {
+            bestId = item.id;
+            minDistance = 0;
+            break;
+          }
+          // Gap fallback: find section whose center is closest to focal line
+          const sectionMid = (rect.top + rect.bottom) / 2;
+          const dist = Math.abs(sectionMid - focalY);
+          if (dist < minDistance) {
+            minDistance = dist;
+            bestId = item.id;
           }
         }
       }
 
-      setActiveId(current);
+      setActiveId(bestId);
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
@@ -81,7 +92,7 @@ export default function ProductSuite() {
     const el = sectionRefs.current[id];
     if (el) {
       const rect = el.getBoundingClientRect();
-      const targetScroll = window.scrollY + rect.top - 120;
+      const targetScroll = window.scrollY + rect.top - 140;
       window.scrollTo({
         top: targetScroll,
         behavior: "smooth",
@@ -642,11 +653,11 @@ export default function ProductSuite() {
               </div>
 
               {/* Stage Visual: Compact Telegram Desktop & Web Preview */}
-              <div className="rounded-2xl border border-slate-200/90 bg-[#FAF9F6] p-3 sm:p-4 shadow-attio max-w-2xl mx-auto">
-                <div className="w-full rounded-2xl border border-slate-200/80 bg-white shadow-lg overflow-hidden flex flex-col md:flex-row h-[400px]">
+              <div className="rounded-2xl border border-slate-200/90 bg-[#FAF9F6] p-3 sm:p-4 shadow-attio max-w-xl mx-auto">
+                <div className="w-full rounded-2xl border border-slate-200/80 bg-white shadow-lg overflow-hidden flex flex-col md:flex-row h-[390px]">
                   
                   {/* Telegram Desktop Left Sidebar (Chats) - ONLY NEXUM BOT */}
-                  <div className="hidden md:flex flex-col w-56 border-r border-slate-200 bg-white select-none shrink-0">
+                  <div className="hidden md:flex flex-col w-52 border-r border-slate-200 bg-white select-none shrink-0">
                     {/* Top Search & Menu Bar */}
                     <div className="p-2.5 border-b border-slate-100 flex items-center gap-2">
                       <button className="text-slate-500 hover:text-slate-800 p-0.5">
@@ -665,15 +676,11 @@ export default function ProductSuite() {
 
                     {/* Chat List - Only Nexum Bot with official logo */}
                     <div className="p-1.5 flex-1 overflow-y-auto">
-                      <div className="px-2.5 py-2 rounded-xl flex items-center gap-2 bg-[#8755D5] text-white shadow-xs">
-                        <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center shrink-0 border border-white/20 p-1">
-                          <Image
-                            src="/logo.png"
-                            alt="Nexum"
-                            width={20}
-                            height={20}
-                            className="object-contain invert brightness-200"
-                          />
+                      <div className="px-2.5 py-2 rounded-xl flex items-center gap-2.5 bg-[#8755D5] text-white shadow-xs">
+                        <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center shrink-0 border border-white/20 shadow-xs">
+                          <span className="font-heading font-black text-white text-[15px] tracking-tight leading-none select-none">
+                            N
+                          </span>
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between text-xs">
@@ -683,8 +690,7 @@ export default function ProductSuite() {
                             <span className="text-[9.5px] text-white/80">Tue</span>
                           </div>
                           <div className="flex items-center justify-between text-[10.5px] text-white/90 mt-0.5">
-                            <span className="truncate">📁 1 active contract</span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                            <span className="truncate">📁 Your Nexum Contracts (1): 1. N...</span>
                           </div>
                         </div>
                       </div>
@@ -700,24 +706,20 @@ export default function ProductSuite() {
                     </div>
                   </div>
 
-                  {/* Telegram Right Main Canvas (Interactive UI or Video Demo) */}
+                  {/* Telegram Right Main Canvas */}
                   <div className="flex-1 flex flex-col bg-[#F39A8E] relative overflow-hidden">
                     
                     {/* Header with Nexum Logo & Controls */}
-                    <div className="bg-white px-3.5 py-2.5 border-b border-slate-200/90 flex items-center justify-between shadow-2xs z-10">
+                    <div className="bg-white px-3.5 py-2 border-b border-slate-200/90 flex items-center justify-between shadow-2xs z-10">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-black flex items-center justify-center p-1 shrink-0 shadow-xs">
-                          <Image
-                            src="/logo.png"
-                            alt="Nexum"
-                            width={18}
-                            height={18}
-                            className="object-contain invert brightness-200"
-                          />
+                        <div className="w-7 h-7 rounded-full bg-black flex items-center justify-center shrink-0 shadow-xs border border-white/10">
+                          <span className="font-heading font-black text-white text-[13px] tracking-tight leading-none select-none">
+                            N
+                          </span>
                         </div>
                         <div>
                           <div className="font-heading text-xs font-bold text-slate-900 leading-tight">Nexum Bot</div>
-                          <div className="text-[10px] text-slate-400 font-sans leading-none">bot • verified node</div>
+                          <div className="text-[10px] text-slate-400 font-sans leading-none">bot</div>
                         </div>
                       </div>
 
@@ -732,87 +734,100 @@ export default function ProductSuite() {
                     </div>
 
                     {/* Compact Telegram Chat UI */}
-                    <div className="flex-1 p-3 overflow-y-auto space-y-2 bg-gradient-to-br from-[#ECA18F] via-[#E88E99] to-[#DF7FA0] relative flex flex-col justify-between">
+                    <div className="flex-1 p-2.5 overflow-y-auto space-y-1.5 bg-gradient-to-br from-[#ECA18F] via-[#E88E99] to-[#DF7FA0] relative flex flex-col justify-between">
                       
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {/* Inbound Bot Message 1: Quick Controls */}
-                        <div className="relative max-w-[88%] bg-white rounded-xl rounded-tl-xs p-2.5 shadow-xs text-slate-800 text-[11px] font-sans leading-relaxed space-y-1 border border-black/5">
+                        <div className="relative max-w-[92%] bg-white rounded-xl rounded-tl-xs p-2 shadow-xs text-slate-800 text-[10.5px] font-sans leading-snug space-y-1 border border-black/5">
                           <div className="font-bold text-slate-900 flex items-center gap-1">
                             <span>📱 Quick Controls:</span>
                           </div>
-                          <div className="text-slate-600 space-y-0.5 text-[10.5px]">
-                            <div>📊 <strong>Status</strong> • 📋 <strong>Milestones</strong> • 💰 <strong>Escrow</strong> • 📁 <strong>Projects</strong></div>
-                            <div>• <code className="bg-slate-100 text-[#8755D5] px-1 rounded font-mono text-[10px]">/ai &lt;prompt&gt;</code> - Private consultation with Nexum AI</div>
+                          <div className="text-slate-600 space-y-0.5 text-[10px]">
+                            <div>📊 <strong>Status</strong> - Live contract &amp; milestone telemetry</div>
+                            <div>📋 <strong>Milestones</strong> - Deliverables &amp; review status</div>
+                            <div>💰 <strong>Escrow</strong> - PayPal Orders v2 balance</div>
+                            <div>📁 <strong>Projects</strong> - Switch active contract context</div>
+                            <div>• <code className="bg-slate-100 text-[#8755D5] px-1 rounded font-mono text-[9.5px]">/ai &lt;prompt&gt;</code> - Private consultation with Nexum AI</div>
+                            <div>• <strong>Send Text/Voice</strong> - Relays straight to Nexum Protocol Core MVP</div>
+                            <div>• <code className="bg-slate-100 text-[#8755D5] px-1 rounded font-mono text-[9.5px]">/logout</code> - Unlink this phone session</div>
                           </div>
-                          <div className="text-right text-[9.5px] text-slate-400 font-sans pt-0.5">
+                          <div className="text-right text-[9px] text-slate-400 font-sans pt-0.5">
                             20:51
                           </div>
                         </div>
 
                         {/* Outbound User Message: Projects */}
                         <div className="flex justify-end">
-                          <div className="bg-white rounded-xl rounded-tr-xs px-2.5 py-1 shadow-xs text-slate-900 text-[11px] font-medium flex items-center gap-1.5 border border-black/5">
+                          <div className="bg-white rounded-xl rounded-tr-xs px-2.5 py-1 shadow-xs text-slate-900 text-[10.5px] font-medium flex items-center gap-1.5 border border-black/5">
                             <span>📁 Projects</span>
-                            <span className="text-[9.5px] text-slate-400 flex items-center gap-0.5 font-sans">
+                            <span className="text-[9px] text-slate-400 flex items-center gap-0.5 font-sans">
                               20:52
-                              <CheckCheck className="w-3.5 h-3.5 text-[#8755D5] inline" />
+                              <CheckCheck className="w-3 h-3 text-[#8755D5] inline" />
                             </span>
                           </div>
                         </div>
 
                         {/* Inbound Bot Message 2: Your Nexum Contracts */}
-                        <div className="relative max-w-[90%] bg-white rounded-xl rounded-tl-xs p-2.5 shadow-xs text-slate-800 text-[11px] font-sans leading-relaxed space-y-1 border border-black/5">
-                          <div className="font-bold text-slate-900 flex items-center gap-1 text-[11px]">
-                            <span>📁 Active Contract:</span>
-                            <span className="rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold px-1 py-0.2">ACTIVE</span>
+                        <div className="relative max-w-[92%] bg-white rounded-xl rounded-tl-xs p-2 shadow-xs text-slate-800 text-[10.5px] font-sans leading-snug space-y-1 border border-black/5">
+                          <div className="font-bold text-slate-900 flex items-center gap-1 text-[10.5px]">
+                            <span>📁 Your Nexum Contracts (1):</span>
                           </div>
                           
-                          <div className="p-1.5 rounded-lg bg-slate-50 border border-slate-200/80 space-y-0.5 text-[10px] font-sans">
-                            <div className="font-semibold text-slate-900">1. Nexum Protocol Core MVP ⭐</div>
-                            <div className="text-slate-600 font-mono text-[9.5px]">• ID: <span className="text-[#8755D5]">prj_nexum_core_mvp</span></div>
-                            <div className="text-slate-600">• Budget: <strong className="text-slate-900 font-mono">$4,000.00 USD</strong> • Elena Rostova</div>
+                          <div className="p-1.5 rounded-lg bg-slate-50 border border-slate-200/80 space-y-0.5 text-[9.5px] font-sans">
+                            <div className="font-semibold text-slate-900 flex items-center justify-between">
+                              <span>1. Nexum Protocol Core MVP ⭐</span>
+                              <span className="rounded bg-emerald-100 text-emerald-800 font-mono text-[8.5px] font-bold px-1 py-0.2">ACTIVE</span>
+                            </div>
+                            <div className="text-slate-600 font-mono text-[9px]">• ID: <span className="text-[#8755D5]">prj_nexum_core_mvp</span></div>
+                            <div className="text-slate-600">• Budget: <strong className="text-slate-900 font-mono">$4,000.00 USD</strong></div>
+                            <div className="text-slate-600">• Contractor: Elena Rostova</div>
+                            <div className="text-slate-600">• Status: <span className="text-emerald-700 font-medium">ACTIVE</span></div>
                           </div>
 
-                          <div className="text-right text-[9.5px] text-slate-400 font-sans pt-0.5">
+                          <div className="text-[9px] text-slate-500 font-sans italic pt-0.5">
+                            To switch your active chat relay target: <code className="bg-slate-100 text-[#8755D5] px-1 rounded font-mono text-[8.5px] not-italic">/switch &lt;projectId&gt;</code>
+                          </div>
+
+                          <div className="text-right text-[9px] text-slate-400 font-sans pt-0.5">
                             20:52
                           </div>
                         </div>
                       </div>
 
                       {/* Bottom Telegram Controls Area */}
-                      <div className="space-y-1.5 pt-1">
+                      <div className="space-y-1 pt-0.5">
                         {/* Input Field Floating Bar */}
-                        <div className="rounded-full bg-white/95 backdrop-blur-md px-3 py-1.5 shadow-xs border border-white/60 flex items-center gap-2">
+                        <div className="rounded-full bg-white/95 backdrop-blur-md px-3 py-1 shadow-xs border border-white/60 flex items-center gap-2">
                           <Paperclip className="w-3.5 h-3.5 text-slate-400" />
-                          <div className="flex-1 text-[11px] text-slate-400 font-sans">
+                          <div className="flex-1 text-[10.5px] text-slate-400 font-sans">
                             Message
                           </div>
-                          <span className="font-mono text-[10px] text-slate-400 font-bold">⌘</span>
+                          <span className="font-mono text-[9.5px] text-slate-400 font-bold">⌘</span>
                           <Smile className="w-3.5 h-3.5 text-slate-400" />
-                          <div className="w-6 h-6 rounded-full bg-[#8755D5] text-white flex items-center justify-center shadow-xs">
-                            <Mic className="w-3 h-3" />
+                          <div className="w-5 h-5 rounded-full bg-[#8755D5] text-white flex items-center justify-center shadow-xs">
+                            <Mic className="w-2.5 h-2.5" />
                           </div>
                         </div>
 
                         {/* Telegram Custom Reply Keyboard (Translucent Rose Grid) */}
                         <div className="space-y-1">
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div className="py-1 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[10.5px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+                          <div className="grid grid-cols-2 gap-1">
+                            <div className="py-0.5 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[10px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
                               <span>📊</span> Status
                             </div>
-                            <div className="py-1 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[10.5px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+                            <div className="py-0.5 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[10px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
                               <span>📋</span> Milestones
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div className="py-1 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[10.5px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+                          <div className="grid grid-cols-2 gap-1">
+                            <div className="py-0.5 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[10px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
                               <span>💰</span> Escrow
                             </div>
-                            <div className="py-1 px-2 rounded-lg bg-white/30 hover:bg-white/40 backdrop-blur-md border border-white/35 text-white font-bold text-[10.5px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer ring-1 ring-white/30">
+                            <div className="py-0.5 px-2 rounded-lg bg-white/30 hover:bg-white/40 backdrop-blur-md border border-white/35 text-white font-bold text-[10px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer ring-1 ring-white/30">
                               <span>📁</span> Projects
                             </div>
                           </div>
-                          <div className="w-full py-0.5 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[10px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+                          <div className="w-full py-0.5 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[9.5px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
                             <span className="text-amber-300">❓</span> Help
                           </div>
                         </div>

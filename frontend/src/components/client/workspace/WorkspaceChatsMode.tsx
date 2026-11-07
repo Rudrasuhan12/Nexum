@@ -54,6 +54,9 @@ import {
   createWorkspaceTask,
   updateWorkspaceTaskStatus,
   fetchWorkspaceProjects,
+  fetchProjectHandover,
+  initiateProjectHandover,
+  ProjectHandoverData,
 } from "@/lib/api-client";
 import { useAuth } from "@/context/AuthContext";
 import ReviewVersionModal from "./ReviewVersionModal";
@@ -61,6 +64,9 @@ import ReadOriginalMessageModal from "./ReadOriginalMessageModal";
 import ProposeMeetingModal from "./ProposeMeetingModal";
 import PostponeMeetingModal from "./PostponeMeetingModal";
 import PostponeMilestoneModal from "./PostponeMilestoneModal";
+import ProjectHandoverBanner from "@/components/handover/ProjectHandoverBanner";
+import ProjectHandoverModal from "@/components/handover/ProjectHandoverModal";
+import HandoverChecklistView from "@/components/handover/HandoverChecklistView";
 
 interface WorkspaceChatsModeProps {
   onSwitchToAIMode: (projectScope?: string) => void;
@@ -85,8 +91,12 @@ export default function WorkspaceChatsMode({
   // Timeline & Messages
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [activeTab, setActiveTab] = useState<
-    "chat" | "milestones" | "deliverables" | "tasks" | "files" | "decisions" | "meetings" | "safe_harbor"
+    "chat" | "milestones" | "deliverables" | "handover" | "tasks" | "files" | "decisions" | "meetings" | "safe_harbor"
   >("chat");
+
+  // Project Handover State
+  const [handoverData, setHandoverData] = useState<ProjectHandoverData | null>(null);
+  const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
 
   // Dynamic Workspace Engine State
   const [tasks, setTasks] = useState<WorkspaceTaskItem[]>([]);
@@ -276,6 +286,17 @@ export default function WorkspaceChatsMode({
       } finally {
         setIsLoading(false);
       }
+
+      // Load live handover protocol state
+      fetchProjectHandover(selectedProjectId)
+        .then((res) => {
+          if (res.success && res.data?.handover) {
+            setHandoverData(res.data.handover);
+          } else {
+            setHandoverData(null);
+          }
+        })
+        .catch(() => setHandoverData(null));
     };
 
     loadWorkspaceState();
@@ -1023,13 +1044,22 @@ export default function WorkspaceChatsMode({
                 </div>
               </div>
 
-          {/* Subtabs: 8 Full Collaboration Tabs */}
+          {/* Subtabs: 9 Full Collaboration Tabs */}
           <div className="flex items-center justify-between mt-2 border-t border-slate-100/80 pt-1 text-xs font-semibold">
             <div className="flex items-center gap-4 sm:gap-5 overflow-x-auto scrollbar-none pb-0.5">
               {[
                 { id: "chat", label: "Chat" },
                 { id: "milestones", label: "Milestones" },
                 { id: "deliverables", label: "Deliverables" },
+                {
+                  id: "handover",
+                  label: "Handover",
+                  badge: handoverData?.status === "COMPLETED"
+                    ? "Done"
+                    : handoverData?.status
+                    ? "Active"
+                    : undefined,
+                },
                 { id: "tasks", label: "Tasks" },
                 { id: "files", label: "Files" },
                 { id: "decisions", label: "Decisions" },
@@ -1040,13 +1070,22 @@ export default function WorkspaceChatsMode({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`pb-1.5 transition relative cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`pb-1.5 transition relative cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
                     activeTab === tab.id
                       ? "text-indigo-600 font-bold"
                       : "text-slate-500 hover:text-slate-900"
                   }`}
                 >
                   <span>{tab.label}</span>
+                  {tab.badge && (
+                    <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded-full ${
+                      tab.badge === "Done"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-blue-100 text-blue-800"
+                    }`}>
+                      {tab.badge}
+                    </span>
+                  )}
                   {activeTab === tab.id && (
                     <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
                   )}
@@ -1538,6 +1577,18 @@ export default function WorkspaceChatsMode({
                 </div>
               </div>
 
+              {handoverData && (
+                <div className="mb-2">
+                  <ProjectHandoverBanner
+                    role="CLIENT"
+                    projectName={selectedProject.name}
+                    handoverData={handoverData}
+                    onInitiateClick={() => setIsHandoverModalOpen(true)}
+                    onViewChecklistClick={() => setActiveTab("handover")}
+                  />
+                </div>
+              )}
+
               {!selectedProject.milestones || selectedProject.milestones.length === 0 ? (
                 <div className="p-8 rounded-2xl border border-slate-200/80 bg-slate-50/50 text-center flex flex-col items-center justify-center">
                   <Package className="w-8 h-8 text-slate-400 mb-2" />
@@ -1642,6 +1693,76 @@ export default function WorkspaceChatsMode({
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3.5: PROJECT HANDOVER CHECKLIST */}
+          {activeTab === "handover" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Project Handover &amp; Deliverables Checklist
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Tamper-proof deliverable manifest, code repository transfer, architecture docs, and credential assignment.
+                  </p>
+                </div>
+                {!handoverData && (
+                  <button
+                    type="button"
+                    onClick={() => setIsHandoverModalOpen(true)}
+                    className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Initiate Handover</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Handover Banner */}
+              <ProjectHandoverBanner
+                role="CLIENT"
+                projectName={selectedProject.name}
+                handoverData={handoverData}
+                onInitiateClick={() => setIsHandoverModalOpen(true)}
+                onViewChecklistClick={() => {}}
+              />
+
+              {/* Handover Checklist View */}
+              {handoverData ? (
+                <HandoverChecklistView
+                  projectId={selectedProject.id}
+                  projectName={selectedProject.name}
+                  role="CLIENT"
+                  handoverData={handoverData}
+                  onRefresh={async () => {
+                    const res = await fetchProjectHandover(selectedProject.id);
+                    if (res.success && res.data?.handover) {
+                      setHandoverData(res.data.handover);
+                    } else {
+                      setHandoverData(null);
+                    }
+                  }}
+                  showToast={showToast}
+                />
+              ) : (
+                <div className="p-8 rounded-2xl border border-slate-200/80 bg-slate-50/50 text-center flex flex-col items-center justify-center">
+                  <Package className="w-8 h-8 text-slate-400 mb-2" />
+                  <h4 className="text-sm font-bold text-slate-800 mb-1">Handover Checklist Not Yet Initiated</h4>
+                  <p className="text-xs text-slate-500 max-w-sm mb-4 leading-relaxed">
+                    Once all project milestones are accepted, initiate the handover checklist to request repositories, documentation, and credentials from {selectedProject.freelancerName}.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsHandoverModalOpen(true)}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Initiate Handover Protocol</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -2376,6 +2497,31 @@ export default function WorkspaceChatsMode({
     onSuccess={() => window.location.reload()}
     showToast={showToast}
   />
+
+  {/* Project Handover Configuration Modal */}
+  {isHandoverModalOpen && (
+    <ProjectHandoverModal
+      isOpen={isHandoverModalOpen}
+      projectName={selectedProject?.name || "Active Project"}
+      onClose={() => setIsHandoverModalOpen(false)}
+      onConfirm={async (items) => {
+        setIsHandoverModalOpen(false);
+        if (!selectedProjectId) return;
+        try {
+          const res = await initiateProjectHandover(selectedProjectId, items);
+          if (res.success && res.data) {
+            setHandoverData(res.data);
+            setActiveTab("handover");
+            showToast("Final handover checklist requested from freelancer.");
+          } else {
+            showToast(res.error || "Failed to initiate handover checklist.");
+          }
+        } catch {
+          showToast("Network error initiating handover.");
+        }
+      }}
+    />
+  )}
 
   {/* Toast Notification */}
       {toastMessage && (
