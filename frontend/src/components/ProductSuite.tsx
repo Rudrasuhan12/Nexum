@@ -1,17 +1,33 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import Image from "next/image";
 import {
   Sparkles,
   GitBranch,
   Lock,
   Check,
+  CheckCircle2,
+  Smartphone,
+  ExternalLink,
+  ShieldCheck,
+  Eye,
+  Copy,
+  Search,
+  Menu,
+  MoreVertical,
+  Paperclip,
+  Smile,
+  Mic,
+  CheckCheck,
 } from "lucide-react";
 
 const navItems = [
   { id: "prd", label: "Synthesize PRD" },
+  { id: "verifier", label: "Autonomous deliverable verifier" },
   { id: "change-control", label: "Mid-flight change control" },
   { id: "consensus", label: "Dual SHA-256 consensus" },
+  { id: "telegram", label: "Telegram mobile control" },
   { id: "recovery", label: "Intelligent recovery" },
   { id: "audit", label: "Audit ledger & telemetry" },
 ];
@@ -20,23 +36,39 @@ export default function ProductSuite() {
   const [activeId, setActiveId] = useState<string>("prd");
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
-  // Accurate viewport scroll spy
+  // Accurate viewport scroll spy (activates when section hits focal reading zone)
   useEffect(() => {
     const handleScroll = () => {
-      let currentActive = navItems[0].id; // Always defaults to the first item (Synthesize PRD)
+      // If near the top of the page, activate first item
+      if (window.scrollY < 120) {
+        setActiveId(navItems[0].id);
+        return;
+      }
+
+      // If near the very bottom of the page, activate the last item
+      if (
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 80
+      ) {
+        setActiveId(navItems[navItems.length - 1].id);
+        return;
+      }
+
+      const focalOffset = 220; // 220px from top of viewport
+      let current = navItems[0].id;
 
       for (const item of navItems) {
         const el = sectionRefs.current[item.id];
         if (el) {
           const rect = el.getBoundingClientRect();
-          // Activates when the stage reaches the sticky top threshold (220px)
-          if (rect.top <= 220) {
-            currentActive = item.id;
+          // The deepest section whose top has crossed the focal line is the active section
+          if (rect.top <= focalOffset) {
+            current = item.id;
           }
         }
       }
 
-      setActiveId(currentActive);
+      setActiveId(current);
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
@@ -45,10 +77,13 @@ export default function ProductSuite() {
   }, []);
 
   const scrollTo = (id: string) => {
+    setActiveId(id);
     const el = sectionRefs.current[id];
     if (el) {
+      const rect = el.getBoundingClientRect();
+      const targetScroll = window.scrollY + rect.top - 120;
       window.scrollTo({
-        top: el.offsetTop - 120,
+        top: targetScroll,
         behavior: "smooth",
       });
     }
@@ -160,7 +195,7 @@ export default function ProductSuite() {
                     <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
                       <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-cobalt uppercase">
                         <Sparkles className="h-3.5 w-3.5" />
-                        <span>Synthesized PRD v1.1</span>
+                        <span>Synthesized Canonical PRD</span>
                       </div>
                       <span className="rounded bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-mono font-bold">
                         100% Schema Valid
@@ -198,6 +233,176 @@ export default function ProductSuite() {
                   <h4 className="font-heading text-sm font-bold text-ink">Zero Strategy Leakage</h4>
                   <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                     Internal notes and maximum willing spend are cryptographically stripped before sending the proposal brief to the freelancer.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* --------------------------------------------------------
+                STAGE 1.5: AUTONOMOUS DELIVERABLE VERIFIER
+               -------------------------------------------------------- */}
+            <div
+              id="verifier"
+              ref={(el) => { sectionRefs.current["verifier"] = el; }}
+              className="scroll-mt-28 space-y-8"
+            >
+              <div>
+                <h3 className="font-heading text-2xl sm:text-3xl font-bold text-ink">
+                  Autonomous proof-of-execution verifier.
+                </h3>
+                <p className="mt-2 text-base text-slate-600 max-w-2xl font-normal leading-relaxed">
+                  Never release funds on blind trust. Nexum boots an autonomous staging inspector, tests demo credentials, runs AST code analysis, and captures high-resolution visual proof before escrow can be released.
+                </p>
+              </div>
+
+              {/* Stage Visual: Interactive Verifier Preview Card */}
+              <div className="rounded-2xl border border-slate-200/90 bg-[#FAF9F6] p-4 sm:p-6 shadow-attio space-y-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+                  
+                  {/* Top Bar */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-heading text-sm font-bold text-slate-900">
+                            Milestone 2: Storefront &amp; Checkout Pipeline
+                          </span>
+                          <span className="rounded bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-mono font-bold">
+                            12/12 PASSED
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-sans">
+                          Inspected by Nexum Autonomous Cascade • Target: https://staging.shopkart.com
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="font-mono text-[11px] font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md">
+                        $1,600.00 USD
+                      </span>
+                      <span className="rounded bg-indigo-50 text-indigo-700 px-2 py-1 font-semibold text-[10px]">
+                        Escrow Pre-Funded
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Two Column Grid: Automated Checks & Visual Proof Preview */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
+                    
+                    {/* Left: 3-Tier Multi-Model Cascade Checklist */}
+                    <div className="md:col-span-5 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 flex flex-col justify-between text-xs space-y-2.5">
+                      <div className="space-y-2">
+                        <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Automated Check Cascade
+                        </span>
+
+                        <div className="space-y-1.5 font-sans">
+                          <div className="flex items-center gap-2 text-[11.5px] text-slate-800">
+                            <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-bold">✓</span>
+                            <span>AST Syntax Skeleton Tree (0 errors)</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11.5px] text-slate-800">
+                            <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-bold">✓</span>
+                            <span>12 Vitest Unit &amp; Integration Tests</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11.5px] text-slate-800">
+                            <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-bold">✓</span>
+                            <span>PayPal Webhook HMAC Signature Verified</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11.5px] text-slate-800">
+                            <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-bold">✓</span>
+                            <span>Authenticated Staging Login Simulated</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-[10px] font-mono text-slate-500">
+                        <span>Session: demo@shopkart.com</span>
+                        <span className="text-emerald-700 font-semibold">Ready for Release</span>
+                      </div>
+                    </div>
+
+                    {/* Right: Visual Proof Browser Viewport */}
+                    <div className="md:col-span-7 rounded-xl border border-slate-200 bg-white overflow-hidden flex flex-col shadow-xs">
+                      
+                      {/* Browser Chrome Header */}
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-slate-100/80 border-b border-slate-200 text-[10px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-[#FF5F56]" />
+                          <span className="w-2 h-2 rounded-full bg-[#FFBD2E]" />
+                          <span className="w-2 h-2 rounded-full bg-[#27C93F]" />
+                          <span className="ml-2 font-mono text-slate-600 truncate max-w-[200px]">
+                            staging.shopkart.com/checkout
+                          </span>
+                        </div>
+                        <span className="font-mono text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-semibold border border-emerald-200">
+                          Auth: Client Session
+                        </span>
+                      </div>
+
+                      {/* Mock Rendered Storefront UI Proof */}
+                      <div className="p-3.5 bg-slate-50/50 flex-1 flex flex-col justify-between">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-heading font-bold text-xs text-slate-900">
+                              ShopKart Checkout Sandbox
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded">
+                              Proof Captured
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-[10px]">
+                            <div className="p-2 rounded bg-white border border-slate-200">
+                              <span className="text-slate-400 block text-[9px]">Cart Items</span>
+                              <span className="font-bold text-slate-800">2 Items ($1,600.00)</span>
+                            </div>
+                            <div className="p-2 rounded bg-white border border-slate-200">
+                              <span className="text-slate-400 block text-[9px]">Payment Method</span>
+                              <span className="font-bold text-slate-800">PayPal REST v2 Vault</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Interactive Buttons Bar */}
+                        <div className="mt-3 pt-2 border-t border-slate-200/80 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-slate-700 bg-white border border-slate-200 px-2 py-1 rounded shadow-2xs">
+                              Demo ↗
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-700 bg-white border border-slate-200 px-2 py-1 rounded shadow-2xs">
+                              Copy Logins
+                            </span>
+                          </div>
+                          <span className="font-mono text-[9px] text-slate-400">
+                            Seal: sha256_#9b3e...1f7a
+                          </span>
+                        </div>
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Sub-Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                  <h4 className="font-heading text-sm font-bold text-ink">Headless UI &amp; Demo Credentials</h4>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    Freelancers provide staging links and credentials in 1 unified field. Nexum simulates authenticated user sessions and captures immutable visual snapshots.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                  <h4 className="font-heading text-sm font-bold text-ink">Multi-Model AST Cascade</h4>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    Combines AST syntax parsing, Groq LPU fast validation, and Gemini reasoning to verify code changes before notifying the client.
                   </p>
                 </div>
               </div>
@@ -407,13 +612,231 @@ export default function ProductSuite() {
                 <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
                   <h4 className="font-heading text-sm font-bold text-ink">Cryptographic Version Snapshots</h4>
                   <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                    v1.0 Draft $\rightarrow$ v1.1 Counteroffer $\rightarrow$ v1.2 Consensus. Full immutable lineage with zero unrecorded commitments.
+                    Draft Proposal $\rightarrow$ Counteroffer Review $\rightarrow$ Consensus Agreement. Full immutable lineage with zero unrecorded commitments.
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
                   <h4 className="font-heading text-sm font-bold text-ink">Non-Autonomous AI Security</h4>
                   <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                     AI suggests pricing curves and drafts specs, but is cryptographically prevented from signing agreements or releasing funds.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* --------------------------------------------------------
+                STAGE 3.5: TELEGRAM MOBILE EDGE GATEWAY
+               -------------------------------------------------------- */}
+            <div
+              id="telegram"
+              ref={(el) => { sectionRefs.current["telegram"] = el; }}
+              className="scroll-mt-28 space-y-8"
+            >
+              <div>
+                <h3 className="font-heading text-2xl sm:text-3xl font-bold text-ink">
+                  Run your contracts &amp; escrow from Telegram.
+                </h3>
+                <p className="mt-2 text-base text-slate-600 max-w-2xl font-normal leading-relaxed">
+                  Operate your projects directly from your phone. Our verified @NexumDev_Bot gateway relays voice memos, pushes instant milestone alerts, and lets you approve code deliverables with 1 tap.
+                </p>
+              </div>
+
+              {/* Stage Visual: Compact Telegram Desktop & Web Preview */}
+              <div className="rounded-2xl border border-slate-200/90 bg-[#FAF9F6] p-3 sm:p-4 shadow-attio max-w-2xl mx-auto">
+                <div className="w-full rounded-2xl border border-slate-200/80 bg-white shadow-lg overflow-hidden flex flex-col md:flex-row h-[400px]">
+                  
+                  {/* Telegram Desktop Left Sidebar (Chats) - ONLY NEXUM BOT */}
+                  <div className="hidden md:flex flex-col w-56 border-r border-slate-200 bg-white select-none shrink-0">
+                    {/* Top Search & Menu Bar */}
+                    <div className="p-2.5 border-b border-slate-100 flex items-center gap-2">
+                      <button className="text-slate-500 hover:text-slate-800 p-0.5">
+                        <Menu className="w-4 h-4" />
+                      </button>
+                      <div className="flex-1 relative">
+                        <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-2" />
+                        <input
+                          type="text"
+                          placeholder="Search"
+                          readOnly
+                          className="w-full rounded-full bg-slate-100/80 pl-7 pr-2.5 py-1 text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Chat List - Only Nexum Bot with official logo */}
+                    <div className="p-1.5 flex-1 overflow-y-auto">
+                      <div className="px-2.5 py-2 rounded-xl flex items-center gap-2 bg-[#8755D5] text-white shadow-xs">
+                        <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center shrink-0 border border-white/20 p-1">
+                          <Image
+                            src="/logo.png"
+                            alt="Nexum"
+                            width={20}
+                            height={20}
+                            className="object-contain invert brightness-200"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-bold text-white truncate">
+                              Nexum Bot
+                            </span>
+                            <span className="text-[9.5px] text-white/80">Tue</span>
+                          </div>
+                          <div className="flex items-center justify-between text-[10.5px] text-white/90 mt-0.5">
+                            <span className="truncate">📁 1 active contract</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sidebar Footer Indicator */}
+                    <div className="p-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                      <span>@NexumDev_Bot</span>
+                      <span className="flex items-center gap-1 text-emerald-600 font-sans font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        Online
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Telegram Right Main Canvas (Interactive UI or Video Demo) */}
+                  <div className="flex-1 flex flex-col bg-[#F39A8E] relative overflow-hidden">
+                    
+                    {/* Header with Nexum Logo & Controls */}
+                    <div className="bg-white px-3.5 py-2.5 border-b border-slate-200/90 flex items-center justify-between shadow-2xs z-10">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-black flex items-center justify-center p-1 shrink-0 shadow-xs">
+                          <Image
+                            src="/logo.png"
+                            alt="Nexum"
+                            width={18}
+                            height={18}
+                            className="object-contain invert brightness-200"
+                          />
+                        </div>
+                        <div>
+                          <div className="font-heading text-xs font-bold text-slate-900 leading-tight">Nexum Bot</div>
+                          <div className="text-[10px] text-slate-400 font-sans leading-none">bot • verified node</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2.5 text-slate-400">
+                        <button className="hover:text-slate-700 p-0.5">
+                          <Search className="w-3.5 h-3.5" />
+                        </button>
+                        <button className="hover:text-slate-700 p-0.5">
+                          <MoreVertical className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Compact Telegram Chat UI */}
+                    <div className="flex-1 p-3 overflow-y-auto space-y-2 bg-gradient-to-br from-[#ECA18F] via-[#E88E99] to-[#DF7FA0] relative flex flex-col justify-between">
+                      
+                      <div className="space-y-2">
+                        {/* Inbound Bot Message 1: Quick Controls */}
+                        <div className="relative max-w-[88%] bg-white rounded-xl rounded-tl-xs p-2.5 shadow-xs text-slate-800 text-[11px] font-sans leading-relaxed space-y-1 border border-black/5">
+                          <div className="font-bold text-slate-900 flex items-center gap-1">
+                            <span>📱 Quick Controls:</span>
+                          </div>
+                          <div className="text-slate-600 space-y-0.5 text-[10.5px]">
+                            <div>📊 <strong>Status</strong> • 📋 <strong>Milestones</strong> • 💰 <strong>Escrow</strong> • 📁 <strong>Projects</strong></div>
+                            <div>• <code className="bg-slate-100 text-[#8755D5] px-1 rounded font-mono text-[10px]">/ai &lt;prompt&gt;</code> - Private consultation with Nexum AI</div>
+                          </div>
+                          <div className="text-right text-[9.5px] text-slate-400 font-sans pt-0.5">
+                            20:51
+                          </div>
+                        </div>
+
+                        {/* Outbound User Message: Projects */}
+                        <div className="flex justify-end">
+                          <div className="bg-white rounded-xl rounded-tr-xs px-2.5 py-1 shadow-xs text-slate-900 text-[11px] font-medium flex items-center gap-1.5 border border-black/5">
+                            <span>📁 Projects</span>
+                            <span className="text-[9.5px] text-slate-400 flex items-center gap-0.5 font-sans">
+                              20:52
+                              <CheckCheck className="w-3.5 h-3.5 text-[#8755D5] inline" />
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Inbound Bot Message 2: Your Nexum Contracts */}
+                        <div className="relative max-w-[90%] bg-white rounded-xl rounded-tl-xs p-2.5 shadow-xs text-slate-800 text-[11px] font-sans leading-relaxed space-y-1 border border-black/5">
+                          <div className="font-bold text-slate-900 flex items-center gap-1 text-[11px]">
+                            <span>📁 Active Contract:</span>
+                            <span className="rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold px-1 py-0.2">ACTIVE</span>
+                          </div>
+                          
+                          <div className="p-1.5 rounded-lg bg-slate-50 border border-slate-200/80 space-y-0.5 text-[10px] font-sans">
+                            <div className="font-semibold text-slate-900">1. Nexum Protocol Core MVP ⭐</div>
+                            <div className="text-slate-600 font-mono text-[9.5px]">• ID: <span className="text-[#8755D5]">prj_nexum_core_mvp</span></div>
+                            <div className="text-slate-600">• Budget: <strong className="text-slate-900 font-mono">$4,000.00 USD</strong> • Elena Rostova</div>
+                          </div>
+
+                          <div className="text-right text-[9.5px] text-slate-400 font-sans pt-0.5">
+                            20:52
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bottom Telegram Controls Area */}
+                      <div className="space-y-1.5 pt-1">
+                        {/* Input Field Floating Bar */}
+                        <div className="rounded-full bg-white/95 backdrop-blur-md px-3 py-1.5 shadow-xs border border-white/60 flex items-center gap-2">
+                          <Paperclip className="w-3.5 h-3.5 text-slate-400" />
+                          <div className="flex-1 text-[11px] text-slate-400 font-sans">
+                            Message
+                          </div>
+                          <span className="font-mono text-[10px] text-slate-400 font-bold">⌘</span>
+                          <Smile className="w-3.5 h-3.5 text-slate-400" />
+                          <div className="w-6 h-6 rounded-full bg-[#8755D5] text-white flex items-center justify-center shadow-xs">
+                            <Mic className="w-3 h-3" />
+                          </div>
+                        </div>
+
+                        {/* Telegram Custom Reply Keyboard (Translucent Rose Grid) */}
+                        <div className="space-y-1">
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <div className="py-1 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[10.5px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+                              <span>📊</span> Status
+                            </div>
+                            <div className="py-1 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[10.5px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+                              <span>📋</span> Milestones
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <div className="py-1 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[10.5px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+                              <span>💰</span> Escrow
+                            </div>
+                            <div className="py-1 px-2 rounded-lg bg-white/30 hover:bg-white/40 backdrop-blur-md border border-white/35 text-white font-bold text-[10.5px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer ring-1 ring-white/30">
+                              <span>📁</span> Projects
+                            </div>
+                          </div>
+                          <div className="w-full py-0.5 px-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/25 text-white font-medium text-[10px] text-center shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+                            <span className="text-amber-300">❓</span> Help
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Sub-Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                  <h4 className="font-heading text-sm font-bold text-ink">Voice Memos to PRD Scope</h4>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    Leave a voice memo while walking to a meeting. Nexum AI transcribes, extracts actionable deliverable boundaries, and updates the workspace agreement.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                  <h4 className="font-heading text-sm font-bold text-ink">Zero App Install Required</h4>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    1-click deep link pairs your existing Telegram account securely with cryptographic OTP authorization. No custom app download needed.
                   </p>
                 </div>
               </div>

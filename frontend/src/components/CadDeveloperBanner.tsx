@@ -12,7 +12,7 @@ const nexum = new Nexum({ apiKey: process.env.NEXUM_KEY });
 
 // Lock agreement with dual SHA-256 consensus
 const consensus = await nexum.agreements.lock({
-  projectId: "prj_ecom_v1.1",
+  projectId: "prj_shopkart_checkout",
   enforceState: "IMMUTABLE",
 });`,
   curl: `curl -X POST https://api.nexum.network/v1/settle \\

@@ -8,9 +8,21 @@ import {
   RefreshCw,
   EyeOff,
   Scale,
+  Smartphone,
+  CheckCircle2,
 } from "lucide-react";
 
 const invariants = [
+  {
+    icon: CheckCircle2,
+    title: "Autonomous Verifier",
+    desc: "AST multi-model & visual staging proof",
+  },
+  {
+    icon: Smartphone,
+    title: "Telegram Mobile Gateway",
+    desc: "Operate escrow & tasks from your phone",
+  },
   {
     icon: Lock,
     title: "Dual SHA-256 Consensus",

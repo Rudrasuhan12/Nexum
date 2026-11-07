@@ -18,22 +18,22 @@ interface ShowcaseTab {
 
 const showcaseTabs: ShowcaseTab[] = [
   {
-    id: "context",
-    label: "Context",
+    id: "verifier",
+    label: "Autonomous Proof-of-Execution",
     description:
-      "Emails, calls, records, product usage, connected tools. All live.",
+      "Automated test suites, AST syntax parsing, and headless staging UI inspection with demo credentials before escrow release.",
   },
   {
-    id: "agents",
-    label: "Agents + automations",
+    id: "telegram",
+    label: "Telegram Mobile Gateway",
     description:
-      "An always-on revenue engine. Prospect, follow-up, research, running 24/7.",
+      "Run your workspace directly from your phone. Approve milestones, review deliverables, receive voice memos, and release escrow via @NexumDev_Bot.",
   },
   {
-    id: "ecosystem",
-    label: "Ecosystem",
+    id: "consensus",
+    label: "Dual AI & Bilateral Consensus",
     description:
-      "Nexum wherever you work. Browser, inbox, Slack, terminal, agents.",
+      "Dedicated AI copilots for client and freelancer operating behind the FR-03 privacy firewall with dual SHA-256 agreement seals.",
   },
 ];
 
@@ -843,13 +843,13 @@ export default function DarkHorizon() {
           <div className="lg:col-span-5 flex flex-col justify-between min-h-[460px]">
             <div>
               <span className="inline-flex items-center px-2.5 py-1 rounded-[4px] bg-[#142238] text-[#539bf5] text-[13px] font-medium tracking-tight mb-6">
-                Signals
+                Autonomous Control
               </span>
 
               <h3 className="font-heading text-4xl sm:text-5xl lg:text-[54px] font-bold text-white leading-[1.08] tracking-[-0.03em]">
-                All of the signals, <br />
-                none of the noise. <br />
-                <span className="text-[#868a91] font-normal">Ready to act on.</span>
+                Every milestone, <br />
+                proven before paid. <br />
+                <span className="text-[#868a91] font-normal">On desktop or your phone.</span>
               </h3>
 
               <div className="mt-8">

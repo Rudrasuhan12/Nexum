@@ -17,7 +17,7 @@ export default function Footer() {
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-mono text-xs text-slate-600 mb-5">
               <span className="h-1.5 w-1.5 rounded-full bg-slate-900" />
-              <span>Nexum Protocol v1.1</span>
+              <span>Nexum Protocol Specification</span>
             </div>
 
             <h2 className="font-heading text-3xl sm:text-5xl lg:text-6xl font-bold tracking-[-0.035em] text-slate-900 leading-[1.1]">
@@ -110,7 +110,7 @@ export default function Footer() {
               Developers
             </h4>
             <ul className="space-y-2.5 text-xs font-medium text-slate-500">
-              <li><Link href="#spec" className="hover:text-slate-900 transition-colors">Specification v1.1</Link></li>
+              <li><Link href="#spec" className="hover:text-slate-900 transition-colors">Protocol Specification</Link></li>
               <li><Link href="#docs" className="hover:text-slate-900 transition-colors">TypeScript SDK</Link></li>
               <li><Link href="#docs" className="hover:text-slate-900 transition-colors">REST API Docs</Link></li>
               <li><Link href="#docs" className="hover:text-slate-900 transition-colors">Webhook Verification</Link></li>

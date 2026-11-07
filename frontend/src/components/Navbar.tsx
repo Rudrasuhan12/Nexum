@@ -111,7 +111,25 @@ export default function Navbar() {
                             Dual AI Workspaces
                           </div>
                           <p className="text-xs text-slate-400 leading-snug mt-0.5">
-                            Private workspaces for client and agency with shared consensus.
+                            Private workspaces for client and freelancer with shared consensus.
+                          </p>
+                        </Link>
+
+                        <Link href="#verifier" className="group block">
+                          <div className={`font-heading text-sm font-semibold group-hover:text-cobalt transition-colors ${isDark ? "text-white" : "text-slate-900"}`}>
+                            Autonomous Verifier
+                          </div>
+                          <p className="text-xs text-slate-400 leading-snug mt-0.5">
+                            Multi-model AST inspection &amp; visual staging proof.
+                          </p>
+                        </Link>
+
+                        <Link href="#telegram" className="group block">
+                          <div className={`font-heading text-sm font-semibold group-hover:text-cobalt transition-colors ${isDark ? "text-white" : "text-slate-900"}`}>
+                            Telegram Mobile Gateway
+                          </div>
+                          <p className="text-xs text-slate-400 leading-snug mt-0.5">
+                            Operate contracts, voice notes &amp; escrow from your phone.
                           </p>
                         </Link>
 

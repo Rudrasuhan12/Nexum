@@ -6,7 +6,7 @@ import { ChevronRight } from "lucide-react";
 import DualWorkspaceCanvas from "./DualWorkspaceCanvas";
 
 export default function Hero() {
-  const headlineWords = ["Welcome", "to", "bilateral", "work."];
+  const headlineWords = ["Where", "Work", "Finds", "Its", "Structure."];
 
   return (
     <section className="relative overflow-hidden bg-white pt-8 pb-12 lg:pt-12 lg:pb-16">
@@ -26,7 +26,7 @@ export default function Hero() {
             className="group relative inline-flex items-center gap-2 rounded-full border border-slate-200/90 bg-white px-3.5 py-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.03)] backdrop-blur transition hover:border-slate-300 hover:shadow-md"
           >
             <span className="font-sans text-xs font-medium text-slate-800">
-              Protocol Specification v1.1
+              Protocol Specification
             </span>
             <span className="text-slate-300">•</span>
             <span className="font-sans text-xs text-slate-500 group-hover:text-slate-900 transition flex items-center gap-0.5">
