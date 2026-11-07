@@ -1,5 +1,6 @@
+import crypto from "crypto";
 import { csrfProtection } from "../src/middleware/csrf.js";
-import { SESSION_COOKIE_NAME } from "../src/lib/auth.js";
+import { SESSION_COOKIE_NAME, verifyHmacSessionToken } from "../src/lib/auth.js";
 import { ForbiddenError } from "../src/lib/errors.js";
 
 function runTest(name: string, fn: () => void) {
@@ -169,6 +170,42 @@ runTest("Case 4a (Old Client clicks Sign Up) -> redirects directly to /client/da
 runTest("Case 4b (Old Freelancer clicks Sign Up) -> redirects directly to /freelancer/dashboard without /choose-role", () => {
   const target = resolveOAuthTarget({ role: "FREELANCER", requiresRole: false });
   if (target !== "/freelancer/dashboard") throw new Error(`Expected /freelancer/dashboard, got ${target}`);
+});
+
+console.log("\n--- Testing Next.js HMAC Session Token Verification ---\n");
+
+runTest("verifyHmacSessionToken correctly validates genuine Next.js signed token", () => {
+  const secret = process.env.SESSION_SECRET || "proofloop-demo-session-secret-key-32-bytes-secure-local-auth";
+  const payload = {
+    userId: "cmw2dnha60000852e25lag5hy",
+    email: "sambitkumarmohanty25@gmail.com",
+    role: null,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  };
+  const payloadEncoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", secret).update(payloadEncoded).digest("base64url");
+  const token = `${payloadEncoded}.${signature}`;
+
+  const verified = verifyHmacSessionToken(token);
+  if (!verified || verified.userId !== "cmw2dnha60000852e25lag5hy") {
+    throw new Error(`Expected verified userId cmw2dnha60000852e25lag5hy, got ${JSON.stringify(verified)}`);
+  }
+});
+
+runTest("verifyHmacSessionToken rejects forged or tampered token signature", () => {
+  const secret = "different_secret_key_12345678901234567890";
+  const payload = {
+    userId: "cmw2dnha60000852e25lag5hy",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  };
+  const payloadEncoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", secret).update(payloadEncoded).digest("base64url");
+  const forgedToken = `${payloadEncoded}.${signature}`;
+
+  const verified = verifyHmacSessionToken(forgedToken);
+  if (verified !== null) {
+    throw new Error(`Expected null for forged token, got ${JSON.stringify(verified)}`);
+  }
 });
 
 console.log("\nAll CSRF and OAuth resolution checks verified!\n");

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setSession, UserRole, DemoUser } from "@/lib/auth";
+import { setSession, createSessionToken, UserRole, DemoUser, AUTH_COOKIE_NAME } from "@/lib/auth";
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Issue signed Next.js session cookie
+    const sessionToken = await createSessionToken(loggedInUser);
     await setSession(loggedInUser);
 
     // Determine target redirect — null role ALWAYS goes to /choose-role
@@ -99,10 +100,20 @@ export async function GET(request: NextRequest) {
 
     const response = NextResponse.redirect(new URL(targetPath, baseUrl));
 
-    // Forward Set-Cookie headers from Express (PostgreSQL session)
+    // Ensure session cookie is stamped on response
+    response.cookies.set(AUTH_COOKIE_NAME, sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60,
+    });
+
+    // Forward Set-Cookie headers from Express (PostgreSQL session) if present
     const rawSetCookie = backendRes.headers.get("set-cookie");
     if (rawSetCookie) {
-      response.headers.set("set-cookie", rawSetCookie);
+      // Append Express session cookie without wiping Next.js auth cookie
+      response.headers.append("set-cookie", rawSetCookie);
     }
 
     return response;

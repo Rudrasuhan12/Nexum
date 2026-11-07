@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser, setSession, UserRole } from "@/lib/auth";
+import { getCurrentUser, setSession, createSessionToken, AUTH_COOKIE_NAME, UserRole } from "@/lib/auth";
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
@@ -23,6 +23,9 @@ export async function POST(request: NextRequest) {
       request.headers.get("origin") || request.nextUrl.origin || "http://localhost:3000";
     const refererHeader = request.headers.get("referer") || request.url;
 
+    const currentUser = await getCurrentUser();
+    const userId = currentUser?.id || "";
+
     const backendRes = await fetch(`${BACKEND_URL}/api/auth/role`, {
       method: "POST",
       headers: {
@@ -31,6 +34,7 @@ export async function POST(request: NextRequest) {
         Origin: originHeader,
         Referer: refererHeader,
         "x-nexum-internal": "true",
+        ...(userId ? { "x-user-id": userId } : {}),
       },
       body: JSON.stringify(body),
     });
@@ -64,12 +68,13 @@ export async function POST(request: NextRequest) {
     const backendData = await backendRes.json();
 
     // Update current Next.js user session
-    const currentUser = await getCurrentUser();
+    let updatedToken: string | null = null;
     if (currentUser) {
       currentUser.role = role as UserRole;
       currentUser.title = role === "CLIENT" ? "Verified Client" : "Verified Freelancer";
       currentUser.statusBadge = role === "CLIENT" ? "Verified Buyer" : "Verified Freelancer";
       await setSession(currentUser);
+      updatedToken = await createSessionToken(currentUser);
     }
 
     const response = NextResponse.json({
@@ -78,9 +83,19 @@ export async function POST(request: NextRequest) {
       user: backendData.user,
     });
 
+    if (updatedToken) {
+      response.cookies.set(AUTH_COOKIE_NAME, updatedToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 7 * 24 * 60 * 60,
+      });
+    }
+
     const rawSetCookie = backendRes.headers.get("set-cookie");
     if (rawSetCookie) {
-      response.headers.set("set-cookie", rawSetCookie);
+      response.headers.append("set-cookie", rawSetCookie);
     }
 
     return response;

@@ -85,12 +85,54 @@ export async function createSession(userId: string, req?: Request): Promise<{ ra
   return { rawToken, expiresAt };
 }
 
+const SESSION_SECRET =
+  process.env.SESSION_SECRET ||
+  "proofloop-demo-session-secret-key-32-bytes-secure-local-auth";
+
 /**
- * Validate an incoming raw session token against the database.
+ * Verify a signed Next.js HMAC session token.
+ */
+export function verifyHmacSessionToken(token: string): { userId: string; exp: number } | null {
+  if (!token || !token.includes(".")) return null;
+  const [payloadEncoded, signature] = token.split(".");
+  if (!payloadEncoded || !signature) return null;
+
+  try {
+    const expectedSig = crypto
+      .createHmac("sha256", SESSION_SECRET)
+      .update(payloadEncoded)
+      .digest("base64url");
+
+    if (
+      signature.length !== expectedSig.length ||
+      !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))
+    ) {
+      return null;
+    }
+
+    const raw = Buffer.from(payloadEncoded, "base64url").toString("utf-8");
+    const data = JSON.parse(raw);
+    if (!data.userId || (data.exp && Date.now() / 1000 > data.exp)) {
+      return null;
+    }
+
+    return {
+      userId: data.userId,
+      exp: data.exp || Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Validate an incoming raw session token against the database,
+ * or verify signed Next.js HMAC session token.
  */
 export async function validateSession(rawToken: string) {
   if (!rawToken || rawToken.trim().length === 0) return null;
 
+  // 1. Check database session table via SHA-256 tokenHash
   const tokenHash = hashSessionToken(rawToken);
   const session = await prisma.session.findUnique({
     where: { tokenHash },
@@ -103,14 +145,42 @@ export async function validateSession(rawToken: string) {
     },
   });
 
-  if (!session) return null;
-
-  // Check if revoked or expired
-  if (session.revokedAt || new Date() > session.expiresAt) {
-    return null;
+  if (session) {
+    // Check if revoked or expired
+    if (session.revokedAt || new Date() > session.expiresAt) {
+      return null;
+    }
+    return session;
   }
 
-  return session;
+  // 2. Fallback: Verify signed Next.js HMAC session token
+  if (rawToken.includes(".")) {
+    const verified = verifyHmacSessionToken(rawToken);
+    if (verified?.userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: verified.userId },
+        include: {
+          freelancerProfile: true,
+        },
+      });
+
+      if (user && user.status !== "DELETED") {
+        return {
+          id: `sess_hmac_${user.id}`,
+          userId: user.id,
+          tokenHash,
+          expiresAt: new Date(verified.exp * 1000),
+          revokedAt: null,
+          userAgent: null,
+          ipAddress: null,
+          createdAt: new Date(),
+          user,
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
