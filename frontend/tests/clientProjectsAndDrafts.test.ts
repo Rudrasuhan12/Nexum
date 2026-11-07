@@ -49,7 +49,8 @@ describe("Client Projects & Drafts API Client", () => {
 
     const res = await fetchClientProjects({ status: "DRAFT" });
     expect(res.success).toBe(true);
-    expect(res.count).toBe(8);
+    expect(res.count).toBe(1);
+    expect(res.stats.totalCount).toBe(8);
     expect(res.stats.needsActionCount).toBe(3);
     expect(res.stats.countsByStatus.DRAFT).toBe(1);
   });

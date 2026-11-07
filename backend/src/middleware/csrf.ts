@@ -25,6 +25,26 @@ export function csrfProtection(
     return next();
   }
 
+  // 2b. Internal server-to-server proxy calls from local Next.js frontend are exempt
+  const isInternalProxy = req.headers["x-nexum-internal"] === "true";
+  const remoteIp = req.socket?.remoteAddress || req.ip || "";
+  const isLoopback =
+    remoteIp === "127.0.0.1" ||
+    remoteIp === "::1" ||
+    remoteIp === "::ffff:127.0.0.1" ||
+    remoteIp.includes("127.0.0.1") ||
+    remoteIp === "localhost" ||
+    req.ip === "127.0.0.1" ||
+    req.ip === "::1" ||
+    req.ip === "::ffff:127.0.0.1" ||
+    req.socket?.remoteAddress === "127.0.0.1" ||
+    req.socket?.remoteAddress === "::1" ||
+    req.socket?.remoteAddress === "::ffff:127.0.0.1";
+
+  if (isInternalProxy && isLoopback) {
+    return next();
+  }
+
   // 3. Requests without a session cookie do not use ambient credentials
   const sessionCookie = req.cookies?.[SESSION_COOKIE_NAME];
   if (!sessionCookie) {
@@ -45,23 +65,13 @@ export function csrfProtection(
     try {
       candidateHeader = new URL(referer).origin;
     } catch {
-      // Invalid URL format
+      // Invalid referer URL format
     }
   }
 
   // Internal loopback proxy exemption (e.g. Next.js server route handler proxying to localhost Express)
-  if (!candidateHeader) {
-    const isLoopback =
-      req.ip === "127.0.0.1" ||
-      req.ip === "::1" ||
-      req.ip === "::ffff:127.0.0.1" ||
-      req.socket.remoteAddress === "127.0.0.1" ||
-      req.socket.remoteAddress === "::1" ||
-      req.socket.remoteAddress === "::ffff:127.0.0.1";
-
-    if (isLoopback) {
-      candidateHeader = "http://localhost:3000";
-    }
+  if (!candidateHeader && isLoopback) {
+    candidateHeader = "http://localhost:3000";
   }
 
   if (!candidateHeader) {
@@ -91,4 +101,3 @@ export function csrfProtection(
 
   next();
 }
-

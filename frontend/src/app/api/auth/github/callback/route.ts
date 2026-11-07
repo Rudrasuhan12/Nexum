@@ -23,12 +23,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const cookieHeader = request.headers.get("cookie") || "";
+    const originHeader =
+      request.headers.get("origin") || request.nextUrl.origin || "http://localhost:3000";
 
     const backendRes = await fetch(`${BACKEND_URL}/api/auth/github/callback`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Cookie: cookieHeader,
+        Origin: originHeader,
+        Referer: request.headers.get("referer") || request.url,
+        "x-nexum-internal": "true",
       },
       body: JSON.stringify({
         code: code || undefined,

@@ -312,15 +312,47 @@ router.post(
           throw new NotFoundError("User", user.id);
         }
 
+        const pType = parsed.data.profileType;
+        const expLevel = pType === "Experienced / Senior" ? "SENIOR" : pType === "Student / Beginner" ? "BEGINNER" : "MID";
+
         if (lockedUser.role !== null) {
-          throw new ConflictError("User role has already been set", {
-            code: "ROLE_ALREADY_SET",
-            currentRole: lockedUser.role,
+          // Idempotent assignment: update profile details if already assigned without error
+          return await tx.user.update({
+            where: { id: user.id },
+            data: {
+              preferences: {
+                ...(parsed.data.companyName ? { companyName: parsed.data.companyName } : {}),
+                ...(parsed.data.interests ? { interests: parsed.data.interests } : {}),
+                ...(parsed.data.budget ? { budget: parsed.data.budget } : {}),
+              },
+              ...(lockedUser.role === "FREELANCER"
+                ? {
+                    freelancerProfile: {
+                      upsert: {
+                        create: {
+                          title: parsed.data.title?.trim() || "Freelancer Specialist",
+                          bio: parsed.data.workExperience?.trim() || "Independent specialist on the Nexum protocol.",
+                          skills: parsed.data.skills || [],
+                          experienceLevel: expLevel,
+                          onboardingStatus: parsed.data.skills && parsed.data.skills.length > 0 ? "COMPLETED" : "NOT_STARTED",
+                          rateHourlyMinor: parsed.data.hourlyRate ? parsed.data.hourlyRate * 100 : 5000,
+                          availability: "AVAILABLE",
+                        },
+                        update: {
+                          title: parsed.data.title?.trim() || undefined,
+                          bio: parsed.data.workExperience?.trim() || undefined,
+                          skills: parsed.data.skills || undefined,
+                          experienceLevel: expLevel,
+                          onboardingStatus: parsed.data.skills && parsed.data.skills.length > 0 ? "COMPLETED" : undefined,
+                        },
+                      },
+                    },
+                  }
+                : {}),
+            },
           });
         }
 
-        const pType = parsed.data.profileType;
-        const expLevel = pType === "Experienced / Senior" ? "SENIOR" : pType === "Student / Beginner" ? "BEGINNER" : "MID";
         return await tx.user.update({
           where: { id: user.id },
           data: {

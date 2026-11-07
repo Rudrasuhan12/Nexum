@@ -19,18 +19,42 @@ export async function POST(request: NextRequest) {
     }
 
     const cookieHeader = request.headers.get("cookie") || "";
+    const originHeader =
+      request.headers.get("origin") || request.nextUrl.origin || "http://localhost:3000";
+    const refererHeader = request.headers.get("referer") || request.url;
 
     const backendRes = await fetch(`${BACKEND_URL}/api/auth/role`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Cookie: cookieHeader,
+        Origin: originHeader,
+        Referer: refererHeader,
+        "x-nexum-internal": "true",
       },
       body: JSON.stringify(body),
     });
 
     if (!backendRes.ok) {
       const errData = await backendRes.json().catch(() => ({}));
+
+      // Gracefully handle if role is already configured for this user
+      if (backendRes.status === 409 || errData?.error?.code === "ROLE_ALREADY_SET") {
+        const currentRole = (errData?.error?.details?.currentRole || role) as UserRole;
+        const currentUser = await getCurrentUser();
+        if (currentUser) {
+          currentUser.role = currentRole;
+          currentUser.title = currentRole === "CLIENT" ? "Verified Client" : "Verified Freelancer";
+          currentUser.statusBadge = currentRole === "CLIENT" ? "Verified Buyer" : "Verified Freelancer";
+          await setSession(currentUser);
+        }
+        return NextResponse.json({
+          success: true,
+          role: currentRole,
+          message: "Role has already been set.",
+        });
+      }
+
       return NextResponse.json(
         { error: errData?.error?.message || "Failed to assign role." },
         { status: backendRes.status }

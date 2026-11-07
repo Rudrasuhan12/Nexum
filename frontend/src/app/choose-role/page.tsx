@@ -106,6 +106,17 @@ export default function ChooseRolePage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // If the user already has a role assigned, redirect straight to their dashboard
+  useEffect(() => {
+    if (user?.role) {
+      if (user.role === "CLIENT") {
+        router.replace("/client/dashboard");
+      } else if (user.role === "FREELANCER") {
+        router.replace("/freelancer/dashboard");
+      }
+    }
+  }, [user?.role, router]);
+
   // Pre-fill user's name from OAuth session if available
   useEffect(() => {
     if (user?.name) {

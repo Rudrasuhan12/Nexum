@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { setSession, DemoUser, UserRole } from "@/lib/auth";
 
 const BACKEND_URL =
@@ -6,7 +6,7 @@ const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   "http://localhost:4000";
 
-export async function POST(request: Request) {
+export async function POST(request: Request | NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const {
@@ -42,7 +42,12 @@ export async function POST(request: Request) {
     try {
       backendRes = await fetch(`${BACKEND_URL}/api/auth/signup`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Origin: request.headers.get("origin") || "http://localhost:3000",
+          Referer: request.headers.get("referer") || request.url,
+          "x-nexum-internal": "true",
+        },
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
           password,

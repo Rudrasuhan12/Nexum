@@ -86,7 +86,9 @@ export async function POST(request: Request) {
     const saved = saveProjectToStore(payload, clientId);
 
     const cookieHeader = request.headers.get("cookie") || "";
-    const originHeader = request.headers.get("origin") || request.headers.get("referer") || "http://localhost:3000";
+    const originHeader =
+      request.headers.get("origin") || request.headers.get("referer") || "http://localhost:3000";
+    const refererHeader = request.headers.get("referer") || request.url;
 
     // Forward to Express backend if online
     try {
@@ -95,7 +97,9 @@ export async function POST(request: Request) {
         headers: {
           "Content-Type": "application/json",
           "x-user-id": clientId,
-          "Origin": originHeader,
+          Origin: originHeader,
+          Referer: refererHeader,
+          "x-nexum-internal": "true",
           ...(cookieHeader ? { Cookie: cookieHeader } : {}),
         },
         body: JSON.stringify(payload),
