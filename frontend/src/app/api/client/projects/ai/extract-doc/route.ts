@@ -56,10 +56,10 @@ export async function POST(request: Request) {
         subcategory: "Web Development",
         overview: "End-to-end web platform implementation requiring robust architecture, API idempotency, and milestone-based deliverable releases.",
         keyGoals: [
-          "Deploy responsive and accessible application",
-          "Automated test assertions with sub-200ms API response latency",
-          "Verify deliverables against dual SHA-256 state machines",
+          "Build a new product",
+          "Integrate AI/ML",
         ],
+        customGoal: "Sub-200ms API response latency with automated verification", 
         requiredSkills: ["TypeScript", "Next.js", "Node.js", "PostgreSQL", "TailwindCSS"],
         detailedRequirements: "• Build responsive user interfaces adhering strictly to design tokens\n• Implement idempotent backend endpoints with automated test assertions\n• Configure automated CI/CD deployment pipelines",
         scopeOfWork: ["Frontend development", "Backend development", "Database design", "Testing and deployment"],

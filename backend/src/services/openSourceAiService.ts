@@ -6,11 +6,95 @@ export interface ExtractedProjectData {
   subcategory: string;
   overview: string;
   keyGoals: string[];
+  customGoal?: string;
   requiredSkills: string[];
   detailedRequirements: string;
   scopeOfWork: string[];
   estimatedBudgetCents?: number;
   estimatedTimelineWeeks?: number;
+}
+
+export const CANONICAL_PROJECT_GOALS = [
+  "Build a new product",
+  "Integrate AI/ML",
+  "Improve existing system",
+  "Fix issues / maintenance",
+];
+
+export function resolveCanonicalGoals(
+  rawGoals: string[] | undefined,
+  contextText: string
+): { keyGoals: string[]; customGoal?: string } {
+  const matched = new Set<string>();
+  let customGoal: string | undefined = undefined;
+
+  const mapSingle = (g: string) => {
+    const lower = g.toLowerCase().trim();
+    if (CANONICAL_PROJECT_GOALS.some((cg) => cg.toLowerCase() === lower)) {
+      return CANONICAL_PROJECT_GOALS.find((cg) => cg.toLowerCase() === lower)!;
+    }
+    if (/\b(ai|ml|machine learning|nlp|llm|model|intelligence|smart|algorithm|classifier|neural)\b/i.test(lower)) {
+      return "Integrate AI/ML";
+    }
+    if (/\b(improve|upgrade|refactor|optimize|enhance|scale|modernize|revamp)\b/i.test(lower)) {
+      return "Improve existing system";
+    }
+    if (/\b(fix|bug|issue|maintenance|patch|troubleshoot|debug)\b/i.test(lower)) {
+      return "Fix issues / maintenance";
+    }
+    if (/\b(build|new|platform|create|develop|greenfield|mvp|product|app|system)\b/i.test(lower)) {
+      return "Build a new product";
+    }
+    return null;
+  };
+
+  if (Array.isArray(rawGoals)) {
+    for (const rg of rawGoals) {
+      const mapped = mapSingle(String(rg));
+      if (mapped) {
+        matched.add(mapped);
+      } else if (!customGoal && String(rg).trim().length > 3 && String(rg).trim().length < 80) {
+        customGoal = String(rg).trim();
+      }
+    }
+  }
+
+  const textLower = contextText.toLowerCase();
+  if (/\b(ai|ml|machine learning|nlp|llm|neural|model|deep learning|groq|openai|intelligence)\b/i.test(textLower)) {
+    matched.add("Integrate AI/ML");
+  }
+  if (/\b(improve|refactor|upgrade|optimize|enhance|scale|modernize|revamp)\b/i.test(textLower)) {
+    matched.add("Improve existing system");
+  }
+  if (/\b(fix|bug|issue|maintenance|patch|troubleshoot|debug)\b/i.test(textLower)) {
+    matched.add("Fix issues / maintenance");
+  }
+  if (/\b(build|new|platform|create|develop|greenfield|mvp|product|system|app)\b/i.test(textLower) || matched.size === 0) {
+    matched.add("Build a new product");
+  }
+
+  return {
+    keyGoals: Array.from(matched).slice(0, 3),
+    customGoal,
+  };
+}
+
+export function stripMarkdownStars(text: string): string {
+  if (!text) return "";
+  return text
+    // Remove bold asterisks: **text** -> text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    // Remove italic asterisks: *text* -> text
+    .replace(/(^|[^\*])\*([^\*\n]+)\*([^\*]|$)/g, "$1$2$3")
+    // Convert asterisk bullet lists to dot bullets: * item -> • item
+    .replace(/^(\s*)\*\s+/gm, "$1• ")
+    // Remove markdown heading hashes: ### Heading -> Heading
+    .replace(/^#{1,6}\s+/gm, "")
+    // Remove code backticks: `code` -> code
+    .replace(/`([^`]+)`/g, "$1")
+    // Remove any leftover double asterisks or loose stars
+    .replace(/\*\*/g, "")
+    .trim();
 }
 
 const COMMON_SKILL_KEYWORDS = [
@@ -149,7 +233,8 @@ Return ONLY valid JSON matching this schema:
   "category": "Development & IT",
   "subcategory": "string (e.g. Web Development, Full-Stack, AI / Machine Learning)",
   "overview": "string (concise 2-3 paragraph executive overview)",
-  "keyGoals": ["string (3-5 concrete measurable outcomes)"],
+  "keyGoals": ["string (MUST select 1 to 3 items from canonical options: 'Build a new product', 'Integrate AI/ML', 'Improve existing system', 'Fix issues / maintenance')"],
+  "customGoal": "string (optional specific custom outcome if any, or empty string)", 
   "requiredSkills": ["string (5-8 required tech skills)"],
   "detailedRequirements": "string (markdown bullet points with clear technical acceptance criteria)",
   "scopeOfWork": ["string (e.g. Frontend development, Backend development, Database design, Testing and deployment)"],
@@ -172,9 +257,14 @@ Return ONLY valid JSON matching this schema:
           category: parsed.category || "Development & IT",
           subcategory: parsed.subcategory || "Web Development",
           overview: parsed.overview || sanitized.slice(0, 350),
-          keyGoals: Array.isArray(parsed.keyGoals) && parsed.keyGoals.length > 0
-            ? parsed.keyGoals
-            : ["Deliver production-ready code with automated tests", "Deploy with high reliability and zero downtime"],
+          keyGoals: resolveCanonicalGoals(
+            Array.isArray(parsed.keyGoals) ? parsed.keyGoals : [],
+            `${parsed.title || ""} ${parsed.overview || ""} ${sanitized}`
+          ).keyGoals,
+          customGoal: parsed.customGoal || resolveCanonicalGoals(
+            Array.isArray(parsed.keyGoals) ? parsed.keyGoals : [],
+            `${parsed.title || ""} ${parsed.overview || ""} ${sanitized}`
+          ).customGoal,
           requiredSkills: Array.isArray(parsed.requiredSkills) && parsed.requiredSkills.length > 0
             ? parsed.requiredSkills
             : ["TypeScript", "Next.js", "PostgreSQL"],
@@ -215,14 +305,19 @@ Current Overview: ${current}
 Provide an enriched, highly professional overview including:
 1. Architectural objective and business value
 2. Key performance & security benchmarks (e.g. sub-200ms latency, zero-drop webhooks, role-based access)
-3. Quality assurance and milestone verification expectations. Keep it concise (under 180 words).`;
+3. Quality assurance and milestone verification expectations. Keep it concise (under 180 words).
+
+FORMATTING REQUIREMENTS:
+- Output clean plain text ONLY suitable for a plain form textarea.
+- Do NOT use markdown bold asterisks (like **text**), NO stars (*), NO markdown hashes (#), NO backticks.
+- Use standard text labels and bullet points with '•' instead of asterisks.`;
 
         const enhanced = await this.callChatCompletion([
-          { role: "system", content: "You write crisp, senior engineering briefs." },
+          { role: "system", content: "You write crisp, senior engineering briefs in clean plain text with ZERO markdown asterisks or stars." },
           { role: "user", content: prompt },
         ]);
 
-        return enhanced.trim();
+        return stripMarkdownStars(enhanced.trim());
       } catch (err) {
         console.warn("[OpenSourceAiService] AI improveOverview failed, using fallback:", err);
       }
@@ -230,7 +325,9 @@ Provide an enriched, highly professional overview including:
 
     // Offline / deterministic fallback
     const base = current.trim() || `Architect and deliver production-grade milestone deliverables for ${title}.`;
-    return `${base}\n\nTechnical Architecture & Standards:\n• Sub-200ms API latency targets with idempotent payload handling\n• Strict TypeScript typings with zero unchecked runtime exceptions\n• Dual SHA-256 state tracking for transparent deliverable verification\n• Comprehensive unit & integration test coverage with automated assertion logs`;
+    return stripMarkdownStars(
+      `${base}\n\nTechnical Architecture & Standards:\n• Sub-200ms API latency targets with idempotent payload handling\n• Strict TypeScript typings with zero unchecked runtime exceptions\n• Dual SHA-256 state tracking for transparent deliverable verification\n• Comprehensive unit & integration test coverage with automated assertion logs`
+    );
   }
 
   /**
@@ -308,14 +405,16 @@ Overview: ${(params.overview || "").slice(0, 400)}
 Current Requirements:
 ${current}
 
-Refine these requirements into high-clarity bullet points with technical acceptance criteria (e.g. API contracts, latency benchmarks, security standards, test coverage). Return ONLY valid JSON:
+Refine these requirements into high-clarity bullet points with technical acceptance criteria (e.g. API contracts, latency benchmarks, security standards, test coverage).
+IMPORTANT: Do NOT use markdown bold asterisks (no **words**). Use bullet points starting with '•'.
+Return ONLY valid JSON:
 {
-  "refinedRequirements": "string (markdown bullet points with clear technical acceptance criteria)",
+  "refinedRequirements": "string (bullet points starting with •, NO markdown asterisks or stars)",
   "suggestedScope": ["Frontend development", "Backend development", "Database design", "Testing and deployment"]
 }`;
 
         const res = await this.callChatCompletion([
-          { role: "system", content: "You output ONLY valid JSON matching the schema." },
+          { role: "system", content: "You output ONLY valid JSON matching the schema. Never include markdown bold asterisks or stars." },
           { role: "user", content: prompt },
         ], true);
 
@@ -324,7 +423,7 @@ Refine these requirements into high-clarity bullet points with technical accepta
         const parsed = JSON.parse(jsonStr);
         if (parsed && typeof parsed.refinedRequirements === "string") {
           return {
-            refinedRequirements: parsed.refinedRequirements,
+            refinedRequirements: stripMarkdownStars(parsed.refinedRequirements),
             suggestedScope: Array.isArray(parsed.suggestedScope) ? parsed.suggestedScope : [],
           };
         }
@@ -346,14 +445,28 @@ Refine these requirements into high-clarity bullet points with technical accepta
   private fallbackExtract(text: string, fileName?: string): ExtractedProjectData {
     const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
 
+    const isGarbled = (s: string) => /[\x00-\x08\x0E-\x1F\uFFFD]|^PK|\[Content_Types\]|\.xml/i.test(s);
+
+    const cleanFileName = fileName
+      ? fileName
+          .replace(/\.[^/.]+$/, "")
+          .replace(/[-_]+/g, " ")
+          .replace(/\s*v\d+(\.\d+)*$/i, "")
+          .replace(/\s*(?:Business Requirements Document|PRD|BRD|Product Requirements|Specification)$/i, "")
+          .trim()
+      : "";
+
     // 1. Title
     let title = "";
-    if (lines.length > 0) {
-      // Pick first non-empty heading or line
-      const cleanFirst = lines[0].replace(/^[#*\-=\s]+/, "").slice(0, 80);
-      title = cleanFirst.length > 5 ? cleanFirst : (fileName ? fileName.replace(/\.[^/.]+$/, "") : "Full-Stack Web Application");
+    const nonGarbledLines = lines.filter((l) => !isGarbled(l));
+    if (nonGarbledLines.length > 0) {
+      // Pick first non-empty heading or clean line
+      const cleanFirst = nonGarbledLines[0].replace(/^[#*\-=\s]+/, "").slice(0, 80).trim();
+      title = cleanFirst.length >= 3 && !isGarbled(cleanFirst)
+        ? cleanFirst
+        : (cleanFileName || "Full-Stack Web Application");
     } else {
-      title = "Production Full-Stack Application";
+      title = cleanFileName || "Production Full-Stack Application";
     }
 
     // 2. Skills
@@ -394,17 +507,15 @@ Refine these requirements into high-clarity bullet points with technical accepta
         ].join("\n");
 
     // 5. Overview
-    const paragraphLines = lines.filter((l) => !l.startsWith("#") && !l.startsWith("-") && l.length > 40);
+    const paragraphLines = lines.filter(
+      (l) => !l.startsWith("#") && !l.startsWith("-") && l.length > 30 && !isGarbled(l)
+    );
     const overview = paragraphLines.length > 0
       ? paragraphLines.slice(0, 2).join("\n\n")
       : `Complete end-to-end implementation of ${title}. The project requires verifiable deliverables, robust error-handling, and clear milestone progress tracked on Nexum bilateral rails.`;
 
-    // 6. Goals
-    const keyGoals = [
-      "Production deployment with verified milestone acceptance",
-      "Comprehensive test assertions ensuring sub-second response times",
-      "Seamless integration with existing repositories and CI/CD pipelines",
-    ];
+    // 6. Canonical Goals resolved from document context
+    const { keyGoals, customGoal } = resolveCanonicalGoals([], `${title} ${overview} ${text}`);
 
     // 7. Budget estimate (look for $xxx or xxx USD)
     let estimatedBudgetCents: number | undefined = undefined;
@@ -422,6 +533,7 @@ Refine these requirements into high-clarity bullet points with technical accepta
       subcategory: "Web Development",
       overview,
       keyGoals,
+      customGoal,
       requiredSkills: matchedSkills.slice(0, 8),
       detailedRequirements,
       scopeOfWork: matchedScopes,

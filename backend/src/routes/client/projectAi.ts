@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 import multer from "multer";
 import { z } from "zod";
-import { openSourceAiService } from "../../services/openSourceAiService.js";
+import { openSourceAiService, stripMarkdownStars } from "../../services/openSourceAiService.js";
+import { extractTextFromDocx } from "../../lib/docxParser.js";
 
 const router = Router();
 const upload = multer({
@@ -33,7 +34,13 @@ router.post(
       if (req.file) {
         fileName = req.file.originalname;
         const mime = req.file.mimetype || "";
-        const isPdf = mime.includes("pdf") || req.file.originalname.toLowerCase().endsWith(".pdf");
+        const originalLower = req.file.originalname.toLowerCase();
+        const isPdf = mime.includes("pdf") || originalLower.endsWith(".pdf");
+        const isDocx =
+          mime.includes("wordprocessingml") ||
+          mime.includes("officedocument") ||
+          originalLower.endsWith(".docx") ||
+          (req.file.buffer.length > 4 && req.file.buffer[0] === 0x50 && req.file.buffer[1] === 0x4b);
 
         if (isPdf) {
           try {
@@ -45,14 +52,25 @@ router.post(
                 ? await pdfParseFn.default(req.file.buffer)
                 : null;
 
-            documentText = parsed?.text || req.file.buffer.toString("utf-8");
+            documentText = parsed?.text || "";
           } catch (pdfErr) {
-            console.warn("[ProjectAI] PDF parse error, falling back to raw buffer string:", pdfErr);
-            documentText = req.file.buffer.toString("utf-8");
+            console.warn("[ProjectAI] PDF parse error:", pdfErr);
+            documentText = "";
           }
+        } else if (isDocx) {
+          documentText = extractTextFromDocx(req.file.buffer);
         } else {
+          // Standard text / Markdown / JSON
           documentText = req.file.buffer.toString("utf-8");
         }
+
+        // Strip raw PK zip binary if document parsing yielded nothing or unhandled zip payload
+        if (documentText.startsWith("PK") && documentText.includes("[Content_Types].xml")) {
+          documentText = "";
+        }
+
+        // Clean binary control codes if any leaked through
+        documentText = documentText.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "").trim();
       } else if (req.body?.text && typeof req.body.text === "string") {
         documentText = req.body.text;
         fileName = req.body.fileName || "Pasted Brief";
@@ -104,7 +122,7 @@ router.post("/projects/ai/assist", async (req: Request, res: Response) => {
 
     if (action === "IMPROVE_OVERVIEW") {
       const enriched = await openSourceAiService.improveOverview({ title, overview, category });
-      return res.json({ success: true, data: { improvedOverview: enriched } });
+      return res.json({ success: true, data: { improvedOverview: stripMarkdownStars(enriched) } });
     }
 
     if (action === "SUGGEST_SKILLS") {

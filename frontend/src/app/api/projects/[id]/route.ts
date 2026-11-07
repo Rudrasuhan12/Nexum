@@ -18,6 +18,7 @@ export async function GET(
 
     const res = await fetch(`${BACKEND_URL}/api/projects/${id}?clientId=${clientId}`, {
       headers: {
+        "x-user-id": clientId,
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       },
       cache: "no-store",
@@ -51,17 +52,21 @@ export async function PUT(
     const user = await getCurrentUser();
     const body = await request.json();
     const cookieHeader = request.headers.get("cookie") || "";
+    const originHeader = request.headers.get("origin") || request.headers.get("referer") || "http://localhost:3000";
 
+    const clientId = user?.id || body.clientId || "usr_client_alex";
     const payload = {
       ...body,
       id,
-      clientId: body.clientId || user?.id || "usr_client_alex",
+      clientId,
     };
 
     const res = await fetch(`${BACKEND_URL}/api/projects/${id}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
+        "x-user-id": clientId,
+        "Origin": originHeader,
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       },
       body: JSON.stringify(payload),
@@ -95,10 +100,13 @@ export async function DELETE(
     const user = await getCurrentUser();
     const clientId = user?.id || "usr_client_alex";
     const cookieHeader = request.headers.get("cookie") || "";
+    const originHeader = request.headers.get("origin") || request.headers.get("referer") || "http://localhost:3000";
 
     const res = await fetch(`${BACKEND_URL}/api/projects/${id}?clientId=${clientId}`, {
       method: "DELETE",
       headers: {
+        "x-user-id": clientId,
+        "Origin": originHeader,
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       },
     });

@@ -253,11 +253,87 @@ function PostNewProjectContent() {
       const json = await res.json();
       if (json.success && json.data) {
         const d = json.data;
-        if (d.title) setTitle(d.title);
+        const isGarbled = (s: string) => /[\uFFFD]|^PK|\[Content_Types\]|\.xml/i.test(s);
+
+        if (d.title && !isGarbled(d.title)) {
+          setTitle(d.title);
+        } else if (file?.name) {
+          const cleanName = file.name
+            .replace(/\.[^/.]+$/, "")
+            .replace(/[-_]+/g, " ")
+            .replace(/\s*v\d+(\.\d+)*$/i, "")
+            .replace(/\s*(?:Business Requirements Document|PRD|BRD|Product Requirements|Specification)$/i, "")
+            .trim();
+          setTitle(cleanName || "Technical Engineering Project");
+        }
+
         if (d.category) setCategory(d.category);
         if (d.subcategory) setSubcategory(d.subcategory);
-        if (d.overview) setOverview(d.overview);
-        if (Array.isArray(d.keyGoals) && d.keyGoals.length > 0) setKeyGoals(d.keyGoals);
+
+        if (d.overview && !isGarbled(d.overview)) {
+          setOverview(d.overview);
+        }
+
+        const CANONICAL_GOALS = [
+          "Build a new product",
+          "Integrate AI/ML",
+          "Improve existing system",
+          "Fix issues / maintenance",
+        ];
+
+        const matchedGoals: string[] = [];
+        let detectedOtherGoal = "";
+
+        const mapGoalString = (g: string) => {
+          const lower = g.toLowerCase().trim();
+          if (CANONICAL_GOALS.some((cg) => cg.toLowerCase() === lower)) {
+            return CANONICAL_GOALS.find((cg) => cg.toLowerCase() === lower)!;
+          }
+          if (/\b(ai|ml|machine learning|nlp|llm|model|intelligence|smart|algorithm|classifier|neural)\b/i.test(lower)) {
+            return "Integrate AI/ML";
+          }
+          if (/\b(improve|upgrade|refactor|optimize|enhance|scale|modernize|revamp)\b/i.test(lower)) {
+            return "Improve existing system";
+          }
+          if (/\b(fix|bug|issue|maintenance|patch|troubleshoot|debug)\b/i.test(lower)) {
+            return "Fix issues / maintenance";
+          }
+          if (/\b(build|new|platform|create|develop|greenfield|mvp|product|app|system)\b/i.test(lower)) {
+            return "Build a new product";
+          }
+          return null;
+        };
+
+        if (Array.isArray(d.keyGoals) && d.keyGoals.length > 0) {
+          for (const rawGoal of d.keyGoals) {
+            const matched = mapGoalString(String(rawGoal));
+            if (matched && !matchedGoals.includes(matched)) {
+              matchedGoals.push(matched);
+            } else if (!detectedOtherGoal && typeof rawGoal === "string" && rawGoal.trim().length > 3 && rawGoal.trim().length < 80) {
+              detectedOtherGoal = rawGoal.trim();
+            }
+          }
+        }
+
+        const docContext = `${d.title || ""} ${d.overview || ""} ${d.detailedRequirements || ""}`.toLowerCase();
+        if (!matchedGoals.includes("Integrate AI/ML") && /\b(ai|ml|machine learning|nlp|llm|neural|model|deepseek|openai|intelligence)\b/i.test(docContext)) {
+          matchedGoals.push("Integrate AI/ML");
+        }
+        if (!matchedGoals.includes("Improve existing system") && /\b(improve existing|upgrade existing|refactor|modernize legacy|revamp)\b/i.test(docContext)) {
+          matchedGoals.push("Improve existing system");
+        }
+        if (!matchedGoals.includes("Fix issues / maintenance") && /\b(fix issues|maintenance|bug fixes|patching|troubleshoot)\b/i.test(docContext)) {
+          matchedGoals.push("Fix issues / maintenance");
+        }
+        if (!matchedGoals.includes("Build a new product") && (/\b(build|new product|new platform|from scratch|greenfield|mvp|create a platform)\b/i.test(docContext) || matchedGoals.length === 0)) {
+          matchedGoals.unshift("Build a new product");
+        }
+
+        const finalGoals = Array.from(new Set(matchedGoals)).slice(0, 3);
+        if (finalGoals.length > 0) setKeyGoals(finalGoals);
+        if (d.customGoal || detectedOtherGoal) {
+          setOtherGoal(d.customGoal || detectedOtherGoal);
+        }
         if (Array.isArray(d.requiredSkills) && d.requiredSkills.length > 0) {
           setRequiredSkills((prev) => Array.from(new Set([...prev, ...d.requiredSkills])));
           setRecommendedSkillsList((prev) => Array.from(new Set([...d.requiredSkills, ...prev])).slice(0, 8));
@@ -283,6 +359,18 @@ function PostNewProjectContent() {
     }
   };
 
+  const cleanMarkdownFormatting = (text: string): string => {
+    if (!text) return "";
+    return text
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/(^|[^\*])\*([^\*\n]+)\*([^\*]|$)/g, "$1$2$3")
+      .replace(/^(\s*)\*\s+/gm, "$1• ")
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\*\*/g, "")
+      .trim();
+  };
+
   const handleImproveOverview = async () => {
     setIsAiImprovingOverview(true);
     try {
@@ -298,7 +386,7 @@ function PostNewProjectContent() {
       });
       const json = await res.json();
       if (json.success && json.data?.improvedOverview) {
-        setOverview(json.data.improvedOverview);
+        setOverview(cleanMarkdownFormatting(json.data.improvedOverview));
         showToast("Overview enriched with technical architecture benchmarks!");
       } else {
         showToast("Could not enhance overview. Manual editing preserved.");
@@ -357,7 +445,7 @@ function PostNewProjectContent() {
       });
       const json = await res.json();
       if (json.success && json.data?.refinedRequirements) {
-        setDetailedRequirements(json.data.refinedRequirements);
+        setDetailedRequirements(cleanMarkdownFormatting(json.data.refinedRequirements));
         if (Array.isArray(json.data.suggestedScope) && json.data.suggestedScope.length > 0) {
           setScopeOfWork((prev) => Array.from(new Set([...prev, ...json.data.suggestedScope])));
         }
@@ -627,9 +715,9 @@ function PostNewProjectContent() {
           days: m.days,
         }));
 
-      await saveProject({
+      const res = await saveProject({
         id: activeDraftId || undefined,
-        clientId: user?.id || "usr_client_alex",
+        clientId: user?.id,
         title: title.trim(),
         description: overview || "Project requirements and deliverables spec",
         state: "ACTIVE",
@@ -649,15 +737,17 @@ function PostNewProjectContent() {
         milestones: formattedMilestones,
       });
 
+      if (!res.success) {
+        showToast(res.error || "Could not publish project. Please check required fields.");
+        return;
+      }
+
       showToast("Project published successfully! Redirecting to your workspace...");
       setTimeout(() => {
         router.push("/client/dashboard?tab=projects");
       }, 1000);
     } catch {
-      showToast("Project created and registered in workspace.");
-      setTimeout(() => {
-        router.push("/client/dashboard?tab=projects");
-      }, 1000);
+      showToast("Could not publish project. Please check network connection.");
     } finally {
       setIsPublishing(false);
     }
@@ -677,7 +767,7 @@ function PostNewProjectContent() {
 
       const res = await saveProject({
         id: activeDraftId || undefined,
-        clientId: user?.id || "usr_client_alex",
+        clientId: user?.id,
         title: title || "Untitled Draft Specification",
         description: overview || "",
         state: "DRAFT",
@@ -697,6 +787,11 @@ function PostNewProjectContent() {
         milestones: formattedMilestones,
       });
 
+      if (!res.success) {
+        showToast(res.error || "Could not save draft. Please try again.");
+        return;
+      }
+
       if (res.data?.id) {
         setActiveDraftId(res.data.id);
       }
@@ -706,10 +801,7 @@ function PostNewProjectContent() {
         router.push("/client/dashboard?tab=projects&filter=DRAFT");
       }, 800);
     } catch {
-      showToast("Draft saved to your workspace.");
-      setTimeout(() => {
-        router.push("/client/dashboard?tab=projects&filter=DRAFT");
-      }, 800);
+      showToast("Could not save draft. Please try again.");
     } finally {
       setIsSavingDraft(false);
     }

@@ -230,9 +230,9 @@ export default function ClientProjectsView({
       // 1. Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const matchesName = proj.name.toLowerCase().includes(q);
-        const matchesDesc = proj.description.toLowerCase().includes(q);
-        const matchesFreelancer = proj.freelancer?.name.toLowerCase().includes(q);
+        const matchesName = (proj.name || (proj as any).title || "").toLowerCase().includes(q);
+        const matchesDesc = (proj.description || "").toLowerCase().includes(q);
+        const matchesFreelancer = proj.freelancer?.name?.toLowerCase().includes(q) ?? false;
         if (!matchesName && !matchesDesc && !matchesFreelancer) return false;
       }
 
