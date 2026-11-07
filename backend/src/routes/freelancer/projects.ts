@@ -44,7 +44,7 @@ const searchProjectsSchema = z.object({
  */
 function buildVisibilityWhere(freelancerId: string): Prisma.ProjectWhereInput {
   return {
-    state: { in: [ProjectState.MATCHING, ProjectState.ACTIVE] },
+    state: { in: [ProjectState.MATCHING, ProjectState.ACTIVE, ProjectState.INTAKE] },
     AND: [
       {
         OR: [

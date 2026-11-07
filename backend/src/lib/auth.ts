@@ -87,7 +87,7 @@ export async function createSession(userId: string, req?: Request): Promise<{ ra
 
 const SESSION_SECRET =
   process.env.SESSION_SECRET ||
-  "proofloop-demo-session-secret-key-32-bytes-secure-local-auth";
+  "nexum-platform-session-secret-default-key-32chars";
 
 /**
  * Verify a signed Next.js HMAC session token.

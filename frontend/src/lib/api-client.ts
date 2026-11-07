@@ -5,10 +5,24 @@
 
 import { AppNotification } from "./notifications-data";
 
-export const BACKEND_URL =
+const rawBackendUrl =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   process.env.BACKEND_URL ||
   "http://localhost:4000";
+
+const isBrowser = typeof window !== "undefined";
+const isRemoteHost =
+  isBrowser &&
+  window.location.hostname !== "localhost" &&
+  window.location.hostname !== "127.0.0.1";
+
+const isLocalhostConfigured =
+  !process.env.NEXT_PUBLIC_BACKEND_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL.includes("localhost") ||
+  process.env.NEXT_PUBLIC_BACKEND_URL.includes("127.0.0.1");
+
+export const BACKEND_URL =
+  isRemoteHost && isLocalhostConfigured ? "" : rawBackendUrl;
 
 export interface BackendHealthResponse {
   status: string;

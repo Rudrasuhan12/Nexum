@@ -340,3 +340,29 @@ export function computeProjectStats(list: StoredProject[]) {
   };
 }
 
+/**
+ * Return all published/open projects across all clients for freelancer discovery fallback
+ */
+export function getAllOpenProjectsFromStore(): StoredProject[] {
+  const seenIds = new Set<string>();
+  const openProjects: StoredProject[] = [];
+
+  for (const list of storeMap.values()) {
+    for (const p of list) {
+      if (p.status !== "DRAFT" && !seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        openProjects.push(p);
+      }
+    }
+  }
+
+  for (const p of INITIAL_PROJECTS) {
+    if (p.status !== "DRAFT" && !seenIds.has(p.id)) {
+      seenIds.add(p.id);
+      openProjects.push(p);
+    }
+  }
+
+  return openProjects;
+}
+

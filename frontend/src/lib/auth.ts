@@ -8,7 +8,7 @@ export const AUTH_COOKIE_NAME = "nexum_session";
 
 const SESSION_SECRET =
   process.env.SESSION_SECRET ||
-  "nexum_default_demo_secret_key_minimum_32_characters_for_hmac_sha256";
+  "nexum-platform-session-secret-default-key-32chars";
 
 // Helper: base64url encoding
 function base64UrlEncode(str: string): string {
