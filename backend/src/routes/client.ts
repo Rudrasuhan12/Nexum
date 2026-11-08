@@ -322,6 +322,47 @@ router.post("/proposals/:id/accept", async (req: Request, res: Response) => {
         },
       });
 
+      // 1b. Automatically decline all other candidate proposals for this project
+      const otherProposals = await tx.proposal.findMany({
+        where: {
+          projectId: proposal.projectId,
+          id: { not: proposal.id },
+          status: { in: [ProposalStatus.SUBMITTED, ProposalStatus.UNDER_REVIEW, ProposalStatus.DRAFT] },
+        },
+      });
+
+      if (otherProposals.length > 0) {
+        await tx.proposal.updateMany({
+          where: {
+            projectId: proposal.projectId,
+            id: { not: proposal.id },
+            status: { in: [ProposalStatus.SUBMITTED, ProposalStatus.UNDER_REVIEW, ProposalStatus.DRAFT] },
+          },
+          data: {
+            status: ProposalStatus.REJECTED,
+            rejectionFeedback: "Another candidate was selected for this project.",
+            lastActivityAt: now,
+          },
+        });
+
+        for (const other of otherProposals) {
+          await tx.auditEvent.create({
+            data: {
+              actorId: effectiveClientId,
+              action: "PROPOSAL_CLOSED_OTHER_ACCEPTED",
+              objectType: "PROPOSAL",
+              objectId: other.id,
+              metadata: {
+                projectId: proposal.projectId,
+                acceptedProposalId: proposal.id,
+                reason: "Another candidate was selected for this project",
+                timestamp: now.toISOString(),
+              },
+            },
+          }).catch(() => {});
+        }
+      }
+
       // 2. Initialize Agreement if not already existing
       const existingAgreement = await tx.agreement.findUnique({
         where: { projectId: proposal.projectId },

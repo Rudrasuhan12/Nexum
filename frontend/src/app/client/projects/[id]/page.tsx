@@ -32,11 +32,13 @@ import {
   ChevronRight,
   TrendingUp,
   FolderKanban,
+  X,
+  Eye,
 } from "lucide-react";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import DashboardTopHeader from "@/components/DashboardTopHeader";
 import { useAuth } from "@/context/AuthContext";
-import { getProjectById, ProjectDetailData, MOCK_PROJECTS, ProjectLifecycleStatus, MilestoneItem } from "@/lib/mock-projects";
+import { getProjectById, ProjectDetailData, MOCK_PROJECTS, ProjectLifecycleStatus, MilestoneItem, ProposalItem } from "@/lib/mock-projects";
 import { fetchProjectById, acceptClientProposal, rejectClientProposal, approveClientMilestone } from "@/lib/api-client";
 import MilestoneAutomatedChecksCard from "@/components/MilestoneAutomatedChecksCard";
 import ProjectUploadedDocumentCard from "@/components/ProjectUploadedDocumentCard";
@@ -267,8 +269,10 @@ function ProjectWorkspaceContent() {
               avatar: p.freelancer?.preferences?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80",
               rating: "5.0",
               proposedBudget: `$${((p.amountCents || live.budgetCents || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
-              estimatedTimeline: live.timelineDuration || "Sprint schedule",
+              estimatedTimeline: p.estimatedTimeline || (p.estimatedDurationWeeks ? `${p.estimatedDurationWeeks} weeks` : (live.timelineDuration || "Sprint schedule")),
               coverLetter: p.coverLetter || "Experienced developer ready to execute deliverables with automated test assert logs.",
+              approach: p.approach || p.scopeText || "",
+              proposedMilestones: p.proposedMilestones || p.milestones || [],
               status: p.status === "ACCEPTED" ? "ACCEPTED" : (p.status === "REJECTED" || p.status === "DECLINED") ? "DECLINED" : "UNDER_REVIEW",
               submittedDate: "Recent",
               attachments: p.attachments || [],
@@ -325,6 +329,42 @@ function ProjectWorkspaceContent() {
   };
 
   const [actionLoadingProposalId, setActionLoadingProposalId] = useState<string | null>(null);
+  const [reviewingProposal, setReviewingProposal] = useState<ProposalItem | null>(null);
+  const [decliningProposal, setDecliningProposal] = useState<ProposalItem | null>(null);
+  const [declineReasonPreset, setDeclineReasonPreset] = useState("Budget exceeds project allocation");
+  const [declineCustomFeedback, setDeclineCustomFeedback] = useState("");
+
+  const handleOpenDeclineModal = (prop: ProposalItem) => {
+    setDecliningProposal(prop);
+    const preset = "Budget exceeds project allocation";
+    setDeclineReasonPreset(preset);
+    setDeclineCustomFeedback(
+      "Thank you for your proposal. At this time, we are unable to accept this proposal as the quote exceeds our allocated budget. You are welcome to adjust your scope, timeline, or pricing and submit a revised proposal."
+    );
+  };
+
+  const handleSelectDeclinePreset = (preset: string) => {
+    setDeclineReasonPreset(preset);
+    if (preset === "Budget exceeds project allocation") {
+      setDeclineCustomFeedback(
+        "Thank you for your proposal. We are unable to proceed at this time as the quoted price exceeds our budget for this scope. You are welcome to revise your pricing or milestone scope and reapply."
+      );
+    } else if (preset === "Estimated delivery timeline is too long") {
+      setDeclineCustomFeedback(
+        "Thank you for your proposal. Our project roadmap requires delivery within a tighter timeframe than proposed. If you are able to adjust the delivery pace or sprint scope, please feel free to submit a revised proposal."
+      );
+    } else if (preset === "Milestone checkpoints need more granular deliverables") {
+      setDeclineCustomFeedback(
+        "Thank you for your proposal. We would like to see a more granular breakdown of milestones with concrete deliverables and test criteria before making a commitment. Please feel free to revise your milestones and reapply."
+      );
+    } else if (preset === "Technical scope / approach does not align with requirements") {
+      setDeclineCustomFeedback(
+        "Thank you for your proposal. The proposed technical approach or scope does not fully align with our architectural requirements. Please review our specifications and consider submitting a revised proposal."
+      );
+    } else {
+      setDeclineCustomFeedback("");
+    }
+  };
 
   const handleAcceptProposal = async (proposalId: string) => {
     setActionLoadingProposalId(proposalId);
@@ -341,7 +381,13 @@ function ProjectWorkspaceContent() {
             statusLabel: "In Progress",
             statusColor: "bg-blue-50 text-blue-700 border-blue-200/80",
             proposals: prev.proposals.map((p) =>
-              p.id === proposalId ? { ...p, status: "ACCEPTED" } : p
+              p.id === proposalId
+                ? { ...p, status: "ACCEPTED" }
+                : {
+                    ...p,
+                    status: "DECLINED",
+                    rejectionFeedback: "Another candidate was selected for this project.",
+                  }
             ),
           };
         });
@@ -357,23 +403,32 @@ function ProjectWorkspaceContent() {
     }
   };
 
-  const handleRejectProposal = async (proposalId: string) => {
+  const handleConfirmDecline = async () => {
+    if (!decliningProposal) return;
+    const proposalId = decliningProposal.id;
     setActionLoadingProposalId(proposalId);
-    showToast("Declining proposal...");
+    showToast("Declining proposal and delivering feedback to candidate...");
 
     try {
-      const res = await rejectClientProposal(proposalId, "Declined by client");
+      const feedback = declineCustomFeedback.trim() || declineReasonPreset || "Declined by client";
+      const res = await rejectClientProposal(proposalId, feedback);
       if (res.success) {
         setProjectData((prev) => {
           if (!prev) return null;
           return {
             ...prev,
             proposals: prev.proposals.map((p) =>
-              p.id === proposalId ? { ...p, status: "DECLINED" as const } : p
+              p.id === proposalId
+                ? { ...p, status: "DECLINED" as const, rejectionFeedback: feedback }
+                : p
             ),
           };
         });
-        showToast("Proposal declined.");
+        showToast("Proposal declined and feedback delivered to candidate.");
+        setDecliningProposal(null);
+        if (reviewingProposal?.id === proposalId) {
+          setReviewingProposal(null);
+        }
       } else {
         showToast(res.error || "Failed to decline proposal.");
       }
@@ -1250,27 +1305,38 @@ function ProjectWorkspaceContent() {
                           )}
                         </div>
 
-                        {prop.status !== "ACCEPTED" && prop.status !== "DECLINED" && (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleRejectProposal(prop.id)}
-                              disabled={actionLoadingProposalId === prop.id}
-                              className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition disabled:opacity-50 cursor-pointer"
-                            >
-                              Decline
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleAcceptProposal(prop.id)}
-                              disabled={actionLoadingProposalId === prop.id}
-                              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs disabled:opacity-50 cursor-pointer"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>{actionLoadingProposalId === prop.id ? "Processing..." : "Approve & Accept Proposal"}</span>
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setReviewingProposal(prop)}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 hover:border-indigo-300 bg-white hover:bg-indigo-50/50 text-xs font-bold text-indigo-600 transition shadow-2xs cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Review Details</span>
+                          </button>
+
+                          {prop.status !== "ACCEPTED" && prop.status !== "DECLINED" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDeclineModal(prop)}
+                                disabled={actionLoadingProposalId === prop.id}
+                                className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition disabled:opacity-50 cursor-pointer"
+                              >
+                                Decline
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAcceptProposal(prop.id)}
+                                disabled={actionLoadingProposalId === prop.id}
+                                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs disabled:opacity-50 cursor-pointer"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>{actionLoadingProposalId === prop.id ? "Processing..." : "Approve & Accept Proposal"}</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))
@@ -1755,6 +1821,299 @@ function ProjectWorkspaceContent() {
                     className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold"
                   >
                     Send Revision Request
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Proposal Details & Review Modal */}
+          {reviewingProposal && (
+            <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+              <div className="w-full max-w-2xl bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 my-8 max-h-[92vh] flex flex-col">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0 border border-slate-200">
+                      <Image
+                        src={reviewingProposal.avatar}
+                        alt={reviewingProposal.freelancerName}
+                        width={44}
+                        height={44}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-900">
+                          {reviewingProposal.freelancerName}
+                        </h3>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          ★ {reviewingProposal.rating} Verified Talent
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">{reviewingProposal.freelancerRole}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setReviewingProposal(null)}
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Scrollable Content */}
+                <div className="space-y-4 overflow-y-auto pr-1 flex-1 text-xs">
+                  {/* Proposal Quote & Estimated Duration */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proposed Fixed Quote</p>
+                      <p className="text-lg font-black text-slate-900 font-mono">
+                        {reviewingProposal.proposedBudget}
+                      </p>
+                      <p className="text-[11px] text-slate-500">Fixed-Price Milestone Escrow</p>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Delivery Timeframe</p>
+                      <p className="text-lg font-black text-slate-900">
+                        {reviewingProposal.estimatedTimeline}
+                      </p>
+                      <p className="text-[11px] text-slate-500">Committed sprint delivery</p>
+                    </div>
+                  </div>
+
+                  {/* Cover Letter & Technical Approach */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Cover Letter & Technical Approach</span>
+                    </label>
+                    <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 text-slate-700 text-xs leading-relaxed whitespace-pre-wrap">
+                      {reviewingProposal.coverLetter}
+                    </div>
+                  </div>
+
+                  {/* Proposed Milestone Breakdown */}
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Proposed Milestones & Payment Checkpoints</span>
+                      </label>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {reviewingProposal.proposedMilestones?.length || 0} checkpoints
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {(reviewingProposal.proposedMilestones && reviewingProposal.proposedMilestones.length > 0
+                        ? reviewingProposal.proposedMilestones
+                        : projectData?.milestones || []
+                      ).map((m: any, idx: number) => {
+                        const amt = m.amountMinor
+                          ? `$${(m.amountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+                          : typeof m.amount === "number"
+                          ? `$${m.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+                          : m.amount || "Custom";
+                        return (
+                          <div
+                            key={idx}
+                            className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between"
+                          >
+                            <div className="min-w-0 pr-3">
+                              <p className="font-bold text-slate-900 line-clamp-1">
+                                #{idx + 1} {m.title}
+                              </p>
+                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                {m.days ? `${m.days} days duration` : m.durationWeeks ? `${m.durationWeeks} weeks` : "Scheduled stage"}
+                              </p>
+                            </div>
+                            <span className="font-mono font-bold text-slate-800 shrink-0">
+                              {amt}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Attached Proposal Document (Object Storage / S3) */}
+                  {reviewingProposal.attachments && reviewingProposal.attachments.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Attached Technical Proposal Document</span>
+                      </label>
+                      <div className="space-y-2">
+                        {reviewingProposal.attachments.map((att: any) => (
+                          <div
+                            key={att.id}
+                            className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200/80 flex items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                                <FileText className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-bold text-slate-900 truncate">
+                                  {att.name}
+                                </p>
+                                <p className="text-[10px] text-slate-500 font-mono">
+                                  {att.size} · Stored in Object Storage
+                                </p>
+                              </div>
+                            </div>
+
+                            <a
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={att.name}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-indigo-600 shadow-2xs transition shrink-0"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Download</span>
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Actions */}
+                <div className="flex items-center justify-between pt-3.5 border-t border-slate-100 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setReviewingProposal(null)}
+                    className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Close
+                  </button>
+
+                  {reviewingProposal.status !== "ACCEPTED" && reviewingProposal.status !== "DECLINED" && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleOpenDeclineModal(reviewingProposal);
+                        }}
+                        disabled={actionLoadingProposalId === reviewingProposal.id}
+                        className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition cursor-pointer"
+                      >
+                        Decline
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const id = reviewingProposal.id;
+                          setReviewingProposal(null);
+                          handleAcceptProposal(id);
+                        }}
+                        disabled={actionLoadingProposalId === reviewingProposal.id}
+                        className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Approve & Accept Proposal</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Decline Proposal with Rejection Feedback Modal */}
+          {decliningProposal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+              <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/60">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                    <h2 className="text-sm font-bold text-slate-900">
+                      Decline Proposal & Provide Reason
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDecliningProposal(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">{decliningProposal.freelancerName}</p>
+                      <p className="text-[11px] text-slate-500">{decliningProposal.freelancerRole}</p>
+                    </div>
+                    <span className="text-xs font-extrabold text-slate-900">{decliningProposal.proposedBudget}</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Select Primary Reason
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        "Budget exceeds project allocation",
+                        "Estimated delivery timeline is too long",
+                        "Milestone checkpoints need more granular deliverables",
+                        "Technical scope / approach does not align with requirements",
+                        "Other / Custom feedback",
+                      ].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => handleSelectDeclinePreset(preset)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition cursor-pointer ${
+                            declineReasonPreset === preset
+                              ? "bg-rose-100 text-rose-800 border border-rose-300 font-semibold"
+                              : "bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200"
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Feedback for Candidate <span className="text-slate-400 font-normal">(Shared with freelancer so they can revise & reapply)</span>
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={declineCustomFeedback}
+                      onChange={(e) => setDeclineCustomFeedback(e.target.value)}
+                      placeholder="Explain what needs adjustment (quote, timeline, or milestone scope) so the freelancer can address it..."
+                      className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 resize-none text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+                  <button
+                    type="button"
+                    onClick={() => setDecliningProposal(null)}
+                    disabled={actionLoadingProposalId === decliningProposal.id}
+                    className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDecline}
+                    disabled={actionLoadingProposalId === decliningProposal.id || !declineCustomFeedback.trim()}
+                    className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-xs disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>{actionLoadingProposalId === decliningProposal.id ? "Sending..." : "Decline & Send Feedback"}</span>
                   </button>
                 </div>
               </div>

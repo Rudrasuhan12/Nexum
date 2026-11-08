@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, Suspense } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -48,6 +48,9 @@ function FreelancerApplyContent() {
   const params = useParams();
   const router = useRouter();
   const projectId = (params?.id as string) || "";
+  const searchParams = useSearchParams();
+  const revisionOf = searchParams.get("revisionOf");
+  const [revisionFeedback, setRevisionFeedback] = useState<string | null>(null);
 
   // Project state
   const [project, setProject] = useState<any>(null);
@@ -73,6 +76,49 @@ function FreelancerApplyContent() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4500);
   };
+
+  // If re-applying, fetch previous proposal data and client rejection feedback
+  useEffect(() => {
+    if (!revisionOf) return;
+    async function loadPastProposal() {
+      try {
+        const res = await fetch(`/api/freelancer/proposals/${revisionOf}`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.proposal?.rejectionFeedback) {
+            setRevisionFeedback(json.proposal.rejectionFeedback);
+          }
+          if (json.currentVersion) {
+            const cv = json.currentVersion;
+            const amt = cv.totalAmountMinor ? cv.totalAmountMinor / 100 : cv.amountCents ? cv.amountCents / 100 : null;
+            if (amt) {
+              setProposalQuote(`$${amt.toLocaleString("en-US", { minimumFractionDigits: 2 })}`);
+            }
+            if (cv.estimatedDurationWeeks) {
+              setProposalDurationWeeks(cv.estimatedDurationWeeks);
+            }
+            if (cv.coverLetter || cv.scopeText) {
+              setProposalScope(cv.coverLetter || cv.scopeText);
+            }
+            if (Array.isArray(cv.milestonesJson) && cv.milestonesJson.length > 0) {
+              setMilestones(
+                cv.milestonesJson.map((m: any, idx: number) => ({
+                  title: m.title || `Milestone ${idx + 1}`,
+                  days: m.durationWeeks ? m.durationWeeks * 7 : 14,
+                  amount: String(m.amountMinor ? m.amountMinor / 100 : 1500),
+                }))
+              );
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load revision proposal:", err);
+      }
+    }
+    loadPastProposal();
+  }, [revisionOf]);
 
   // Fetch project details
   useEffect(() => {
@@ -252,7 +298,7 @@ function FreelancerApplyContent() {
         }
       }
 
-      // 3. Format milestones
+      // 3. Format milestones and deliverables
       const formattedMilestones = milestones.map((m, idx) => ({
         title: m.title || `Milestone ${idx + 1}`,
         amountMinor: Math.round((parseFloat(m.amount) || 0) * 100),
@@ -263,14 +309,26 @@ function FreelancerApplyContent() {
         ],
       }));
 
+      const formattedDeliverables = milestones.map((m, idx) => ({
+        title: m.title || `Deliverable ${idx + 1}`,
+        description: `Deliverable milestone checkpoint #${idx + 1} with automated verification`,
+        criteria: [
+          "Full delivery of agreed scope",
+          "Automated verification pass",
+        ],
+      }));
+
       // 4. Update draft proposal with counteroffer terms
       const updateRes = await updateDraftProposal(proposalId, {
         totalAmountMinor: priceMinor,
         paymentModel: "FIXED_PRICE",
         coverLetter: proposalScope.trim(),
+        approach: proposalScope.trim(),
         scopeText: proposalScope.trim(),
+        scope: proposalScope.trim(),
         estimatedDurationWeeks: proposalDurationWeeks,
         milestones: formattedMilestones,
+        deliverables: formattedDeliverables,
       });
 
       if (!updateRes.success) {
@@ -352,6 +410,31 @@ function FreelancerApplyContent() {
               <span>Back to Project Overview</span>
             </Link>
           </div>
+
+          {/* Reapplication Notice Banner */}
+          {revisionOf && (
+            <div className="p-5 rounded-2xl bg-amber-50/90 border border-amber-200 shadow-2xs space-y-2.5">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                <h3 className="text-xs font-bold text-amber-950 uppercase tracking-wider">
+                  Reapplication: Revising Previous Proposal
+                </h3>
+              </div>
+              {revisionFeedback && (
+                <div className="p-3.5 rounded-xl bg-white/95 border border-amber-200/90 text-xs text-amber-950 space-y-1">
+                  <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                    Client Rejection Feedback:
+                  </p>
+                  <p className="italic font-medium text-slate-800">
+                    &quot;{revisionFeedback}&quot;
+                  </p>
+                </div>
+              )}
+              <p className="text-[11px] text-amber-900 font-medium leading-relaxed">
+                Your previous proposal quote, timeline, and deliverables have been loaded into the form below. Adjust your quote, duration, or milestone breakdown to address the client&apos;s notes before submitting.
+              </p>
+            </div>
+          )}
 
           {/* Project Summary Banner */}
           <div className="p-5 sm:p-6 bg-white rounded-2xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -608,6 +691,10 @@ function FreelancerApplyContent() {
                         <option value={6}>6 weeks (1.5 Months Delivery)</option>
                         <option value={8}>8 weeks (2 Months Delivery)</option>
                         <option value={12}>12 weeks (3 Months Quarter)</option>
+                        <option value={16}>16 weeks (4 Months Delivery)</option>
+                        <option value={24}>24 weeks (6 Months Mid-Term)</option>
+                        <option value={36}>36 weeks (9 Months Extended Scope)</option>
+                        <option value={52}>52 weeks (1 Year / Long-Term Engagement)</option>
                       </select>
                       <p className="text-[11px] text-slate-400 mt-1">
                         Select the delivery timeframe you commit to for all milestones.
@@ -861,7 +948,11 @@ function FreelancerApplyContent() {
                     ) : (
                       <>
                         <Send className="w-3.5 h-3.5" />
-                        <span>Submit Formal Proposal & Escrow Checkpoints</span>
+                        <span>
+                          {revisionOf
+                            ? "Submit Revised Proposal to Client"
+                            : "Submit Formal Proposal & Escrow Checkpoints"}
+                        </span>
                       </>
                     )}
                   </button>

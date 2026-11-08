@@ -212,10 +212,15 @@ function FreelancerProjectDetailsContent() {
               <button
                 type="button"
                 onClick={handleApply}
-                className="px-4 py-2 rounded-xl bg-[#0f172a] hover:bg-[#4f46e5] text-white font-bold text-xs transition cursor-pointer shadow-xs flex items-center gap-1.5 active:scale-98"
+                disabled={project?.isFilled}
+                className={`px-4 py-2 rounded-xl font-bold text-xs transition shadow-xs flex items-center gap-1.5 active:scale-98 ${
+                  project?.isFilled
+                    ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                    : "bg-[#0f172a] hover:bg-[#4f46e5] text-white cursor-pointer"
+                }`}
               >
-                <span>Submit Proposal</span>
-                <Send className="w-3.5 h-3.5" />
+                <span>{project?.isFilled ? "Position Filled" : "Submit Proposal"}</span>
+                {!project?.isFilled && <Send className="w-3.5 h-3.5" />}
               </button>
             </div>
           </div>
@@ -260,10 +265,17 @@ function FreelancerProjectDetailsContent() {
                     <Sparkles className="w-3 h-3 text-purple-600" />
                     <span>Verified Opportunity</span>
                   </span>
-                  <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md text-[10px] border border-emerald-200">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                    <span>Escrow Guaranteed</span>
-                  </span>
+                  {project.isFilled ? (
+                    <span className="inline-flex items-center gap-1 font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full text-[10px] border border-amber-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      <span>Position Filled · In Progress</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md text-[10px] border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span>Escrow Guaranteed</span>
+                    </span>
+                  )}
                   <span className="inline-flex items-center gap-1 text-slate-500 font-medium text-[11px] ml-auto">
                     <Clock className="w-3 h-3 text-slate-400" />
                     <span>Posted {project.postedAt ? new Date(project.postedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recently"}</span>
@@ -563,15 +575,23 @@ function FreelancerProjectDetailsContent() {
                   <button
                     type="button"
                     onClick={handleApply}
-                    disabled={project.isApplied || isJustSubmitted}
+                    disabled={project.isFilled || project.isApplied || isJustSubmitted}
                     className={`px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 active:scale-98 ${
-                      project.isApplied || isJustSubmitted
+                      project.isFilled
+                        ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                        : project.isApplied || isJustSubmitted
                         ? "bg-slate-100 text-slate-500 border border-slate-200 cursor-default"
                         : "bg-[#0f172a] hover:bg-[#4f46e5] text-white cursor-pointer"
                     }`}
                   >
-                    <span>{project.isApplied || isJustSubmitted ? "Applied ✓" : "Apply / Submit Proposal"}</span>
-                    {!project.isApplied && !isJustSubmitted && <ArrowRight className="w-3.5 h-3.5" />}
+                    <span>
+                      {project.isFilled
+                        ? "Position Filled"
+                        : project.isApplied || isJustSubmitted
+                        ? "Applied ✓"
+                        : "Apply / Submit Proposal"}
+                    </span>
+                    {!project.isFilled && !project.isApplied && !isJustSubmitted && <ArrowRight className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>

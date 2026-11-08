@@ -2315,6 +2315,14 @@ export class ClientOverviewService {
               latestVersion?.coverLetter ||
               "Experienced developer ready to execute deliverables with automated test assert logs.",
             milestones: dbProj.projectMilestones,
+            proposedMilestones: Array.isArray(latestVersion?.milestonesJson) && (latestVersion.milestonesJson as any[]).length > 0
+              ? latestVersion.milestonesJson
+              : dbProj.projectMilestones,
+            estimatedDurationWeeks: latestVersion?.estimatedDurationWeeks || null,
+            estimatedTimeline: latestVersion?.estimatedDurationWeeks
+              ? `${latestVersion.estimatedDurationWeeks} weeks`
+              : ((brief as any).timelineDuration || "Sprint schedule"),
+            approach: latestVersion?.approach || latestVersion?.scopeText || "",
             attachments: (prop.attachments || []).map((att: any) => ({
               id: att.id,
               name: att.file?.originalName || "Proposal Attachment",

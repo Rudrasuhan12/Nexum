@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Edit3,
   Calendar,
@@ -11,6 +12,7 @@ import {
   ChevronDown,
   ChevronUp,
   ArrowRight,
+  RotateCcw,
 } from "lucide-react";
 import { FreelancerProposalItem } from "@/lib/freelancer-proposals-types";
 
@@ -29,6 +31,7 @@ export default function ProposalOfferTab({
   onSendFollowUp,
   showToast,
 }: ProposalOfferTabProps) {
+  const router = useRouter();
   const [showFullCoverLetter, setShowFullCoverLetter] = useState(false);
 
   const handleDownloadAll = () => {
@@ -91,6 +94,48 @@ export default function ProposalOfferTab({
             >
               <span>Review Counteroffer</span>
               <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 1b. Client Feedback & Reapply Banner if rejected */}
+      {proposal.status === "REJECTED" && (
+        <div className="p-5 rounded-2xl bg-rose-50/90 border border-rose-200/90 shadow-2xs space-y-3.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+              <h3 className="text-xs font-bold text-rose-950 uppercase tracking-wider">
+                Client Decision: Proposal Declined
+              </h3>
+            </div>
+            <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-200">
+              Revision & Reapplication Available
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-white/80 border border-rose-100 space-y-1">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              Feedback from {proposal.client?.name || "Client"}:
+            </p>
+            <p className="text-xs text-slate-800 leading-relaxed font-medium italic">
+              &quot;{proposal.rejectionFeedback || "The client has declined this proposal. You may adjust your quote, delivery timeline, or milestone deliverables and submit an updated revision."}&quot;
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
+            <p className="text-[11px] text-rose-800 font-medium">
+              You can address the client&apos;s feedback and submit a revised proposal.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                router.push(`/freelancer/projects/${proposal.projectId}/apply?revisionOf=${proposal.id}`);
+              }}
+              className="py-2 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white transition shadow-xs cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Revise & Reapply</span>
             </button>
           </div>
         </div>

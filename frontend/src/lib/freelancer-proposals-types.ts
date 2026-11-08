@@ -67,6 +67,7 @@ export interface FreelancerProposalItem {
   status: ProposalStatus;
   statusLabel: string;
   statusBadgeColor: string;
+  rejectionFeedback?: string | null;
   submittedDate: string;
   submittedTime: string;
   client: {

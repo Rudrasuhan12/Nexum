@@ -99,6 +99,8 @@ function serializeProjectOpportunity(project: any, isSaved: boolean = false) {
     location: project.location || "Remote",
     visibility: project.visibility,
     state: project.state,
+    isFilled: Boolean(project.agreement),
+    agreementId: project.agreement?.id || null,
     postedAt: project.createdAt.toISOString(),
     proposalsCount: project._count?.proposals || 0,
     isSaved,
@@ -920,6 +922,9 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction): Prom
             file: true,
           },
           take: 5,
+        },
+        agreement: {
+          select: { id: true, freelancerId: true, status: true },
         },
         invitations: {
           where: { freelancerId },

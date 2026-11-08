@@ -119,7 +119,7 @@ router.get("/summary", async (req: Request, res: Response, next: NextFunction): 
         totalProposals: allCount,
         draft: draftCount,
         submitted: submittedCount,
-        underReview: underReviewCount,
+        underReview: underReviewCount + submittedCount,
         shortlisted: shortlistedCount,
         interview: interviewCount,
         interviewDiscussion: interviewCount,
@@ -341,6 +341,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
         status: p.status,
         statusLabel: getStatusLabel(p.status),
         statusBadgeColor: getStatusBadgeColor(p.status),
+        rejectionFeedback: p.rejectionFeedback || null,
         categoryIcon: getCategoryIcon(p.project.category),
         submittedAt: p.submittedAt ? p.submittedAt.toISOString() : null,
         submittedDate: p.submittedAt ? new Date(p.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Draft",
@@ -366,11 +367,11 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
           const technicalRequirements = Array.isArray(brief.scopeOfWork) && brief.scopeOfWork.length > 0
             ? brief.scopeOfWork
             : (brief.detailedRequirements
-                ? brief.detailedRequirements
-                    .split("\n")
-                    .map((s: string) => s.replace(/^[•\-\*]\s*/, "").trim())
-                    .filter(Boolean)
-                : p.project.skills || []);
+              ? brief.detailedRequirements
+                .split("\n")
+                .map((s: string) => s.replace(/^[•\-\*]\s*/, "").trim())
+                .filter(Boolean)
+              : p.project.skills || []);
 
           const acceptanceCriteria = Array.isArray(p.project.projectMilestones) && p.project.projectMilestones.length > 0
             ? p.project.projectMilestones.map((m: any) => m.title)
@@ -513,35 +514,22 @@ export async function handleCreateDraftProposal(req: Request, res: Response, nex
       where: {
         projectId,
         freelancerId,
-        status: { not: ProposalStatus.WITHDRAWN },
+        status: { notIn: [ProposalStatus.WITHDRAWN, ProposalStatus.REJECTED] },
       },
     });
 
     if (existingLive) {
-      if (existingLive.status === ProposalStatus.REJECTED) {
-        throw new ConflictError(
-          "Freelancer was previously rejected for this project and cannot re-apply",
-          "PROPOSAL_REJECTED_CANNOT_REAPPLY"
-        );
+      if (existingLive.status === ProposalStatus.DRAFT) {
+        res.status(200).json({
+          success: true,
+          proposal: existingLive,
+          message: "Existing draft proposal retrieved.",
+        });
+        return;
       }
       throw new ConflictError(
         "A live proposal already exists for this project",
         "LIVE_PROPOSAL_EXISTS"
-      );
-    }
-
-    // Also check if any past rejected proposal exists for this freelancer
-    const pastRejected = await prisma.proposal.findFirst({
-      where: {
-        projectId,
-        freelancerId,
-        status: ProposalStatus.REJECTED,
-      },
-    });
-    if (pastRejected) {
-      throw new ConflictError(
-        "Freelancer was previously rejected for this project and cannot re-apply",
-        "PROPOSAL_REJECTED_CANNOT_REAPPLY"
       );
     }
 
@@ -706,8 +694,8 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction): Prom
         const technicalRequirements = Array.isArray(brief.scopeOfWork) && brief.scopeOfWork.length > 0
           ? brief.scopeOfWork
           : (brief.detailedRequirements
-              ? brief.detailedRequirements.split("\n").map((s: string) => s.replace(/^[•\-\*]\s*/, "").trim()).filter(Boolean)
-              : proposal.project.skills || []);
+            ? brief.detailedRequirements.split("\n").map((s: string) => s.replace(/^[•\-\*]\s*/, "").trim()).filter(Boolean)
+            : proposal.project.skills || []);
         const acceptanceCriteria = Array.isArray(proposal.project.projectMilestones) && proposal.project.projectMilestones.length > 0
           ? proposal.project.projectMilestones.map((m: any) => m.title)
           : (Array.isArray(brief.milestones) ? brief.milestones.map((m: any) => m.title) : []);
@@ -903,6 +891,18 @@ router.post("/:id/submit", async (req: Request, res: Response, next: NextFunctio
       select: { id: true },
     });
     const ownedPortfolioIds = ownedPortfolios.map((p) => p.id);
+
+    // Ensure deliverables exist (fallback to milestonesJson if not populated)
+    if (
+      (!Array.isArray(currentVersion.deliverables) || currentVersion.deliverables.length === 0) &&
+      Array.isArray(currentVersion.milestonesJson) &&
+      (currentVersion.milestonesJson as any[]).length > 0
+    ) {
+      currentVersion.deliverables = (currentVersion.milestonesJson as any[]).map((m: any, idx: number) => ({
+        title: m.title || `Milestone ${idx + 1} Deliverable`,
+        description: "Milestone deliverable package",
+      }));
+    }
 
     // Validate for submit
     const validation = validateForSubmit(currentVersion, proposal.project, ownedPortfolioIds);
@@ -1649,7 +1649,7 @@ router.delete("/:id/attachments/:attachmentId", async (req: Request, res: Respon
     });
 
     if (attachment.file?.storageKey) {
-      await defaultStorage.delete(attachment.file.storageKey).catch(() => {});
+      await defaultStorage.delete(attachment.file.storageKey).catch(() => { });
     }
 
     res.status(200).json({
