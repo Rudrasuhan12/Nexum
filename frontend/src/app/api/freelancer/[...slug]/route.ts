@@ -75,11 +75,13 @@ export async function GET(
   const cookieHeader = request.headers.get("cookie") || "";
 
   let effectiveUserId = user?.id;
-  if (!effectiveUserId && cookieHeader) {
-    const match = cookieHeader.match(/nexum_session=([^;]+)/);
-    if (match && match[1]) {
+  const rawCookieToken = request.cookies.get("nexum_session")?.value || "";
+  if (!effectiveUserId && (rawCookieToken || cookieHeader)) {
+    const rawVal = rawCookieToken || (cookieHeader.match(/nexum_session=([^;]+)/)?.[1] ?? "");
+    if (rawVal) {
       try {
-        const [payloadEncoded] = match[1].split(".");
+        const decoded = decodeURIComponent(rawVal);
+        const [payloadEncoded] = decoded.split(".");
         if (payloadEncoded) {
           const raw = Buffer.from(payloadEncoded, "base64url").toString("utf-8");
           const parsed = JSON.parse(raw);
@@ -161,6 +163,24 @@ export async function POST(
   const targetUrls = getTargetUrls(path);
 
   const cookieHeader = request.headers.get("cookie") || "";
+  let effectiveUserId = user?.id;
+  const rawCookieToken = request.cookies.get("nexum_session")?.value || "";
+  if (!effectiveUserId && (rawCookieToken || cookieHeader)) {
+    const rawVal = rawCookieToken || (cookieHeader.match(/nexum_session=([^;]+)/)?.[1] ?? "");
+    if (rawVal) {
+      try {
+        const decoded = decodeURIComponent(rawVal);
+        const [payloadEncoded] = decoded.split(".");
+        if (payloadEncoded) {
+          const raw = Buffer.from(payloadEncoded, "base64url").toString("utf-8");
+          const parsed = JSON.parse(raw);
+          if (parsed?.userId) {
+            effectiveUserId = parsed.userId;
+          }
+        }
+      } catch {}
+    }
+  }
   const originHeader =
     request.headers.get("origin") ||
     request.headers.get("referer") ||
@@ -175,7 +195,7 @@ export async function POST(
     const forwardHeaders: Record<string, string> = {
       Origin: originHeader,
       "x-nexum-internal": "true",
-      ...(user?.id ? { "x-user-id": user.id } : {}),
+      ...(effectiveUserId ? { "x-user-id": effectiveUserId } : {}),
       ...(cookieHeader ? { Cookie: cookieHeader } : {}),
     };
 

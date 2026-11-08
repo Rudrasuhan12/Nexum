@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   searchFreelancerProjects,
   saveFreelancerProject,
@@ -24,6 +25,7 @@ import {
   ShieldCheck,
   ArrowRight,
   ChevronDown,
+  Eye,
 } from "lucide-react";
 
 export interface ProjectOpportunity {
@@ -781,9 +783,11 @@ export default function FreelancerFindProjectsView({
 
                     {/* Middle Section: Title + Badges + Description Snippet */}
                     <div className="space-y-2">
-                      <h3 className="font-bold text-sm sm:text-base text-slate-900 group-hover:text-[#4f46e5] transition-colors leading-snug line-clamp-2">
-                        {opp.title}
-                      </h3>
+                      <Link href={`/freelancer/projects/${opp.id}`} className="block group/link">
+                        <h3 className="font-bold text-sm sm:text-base text-slate-900 group-hover/link:text-[#4f46e5] transition-colors leading-snug line-clamp-2 cursor-pointer">
+                          {opp.title}
+                        </h3>
+                      </Link>
 
                       {/* Verification + Location + Hiring Status */}
                       <div className="flex flex-wrap items-center gap-2 text-xs pt-0.5">
@@ -815,20 +819,30 @@ export default function FreelancerFindProjectsView({
                       </p>
                     </div>
 
-                    {/* Skill Tags */}
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {opp.skills.map((skill) => (
+                    {/* Compact Skill Tags */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 min-h-[26px]">
+                      {opp.skills.slice(0, 3).map((skill) => (
                         <span
                           key={skill}
-                          className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-600 text-[10px] font-medium border border-slate-200/70"
+                          title={skill}
+                          className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-600 text-[10px] font-medium border border-slate-200/70 truncate max-w-[170px]"
                         >
                           {skill}
                         </span>
                       ))}
+                      {opp.skills.length > 3 && (
+                        <Link
+                          href={`/freelancer/projects/${opp.id}`}
+                          title={opp.skills.slice(3).join(", ")}
+                          className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-[#4f46e5] text-[10px] font-bold border border-indigo-200/70 hover:bg-indigo-100 transition"
+                        >
+                          +{opp.skills.length - 3} more
+                        </Link>
+                      )}
                     </div>
 
-                    {/* Footer Row: Budget + Proposals Count + Apply Button */}
-                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+                    {/* Footer Row: Budget + Proposals Count + Actions */}
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                       <div>
                         <div className="font-mono font-bold text-sm text-slate-900 flex items-center gap-1">
                           <span className="text-[#4f46e5] font-extrabold">$</span>
@@ -840,19 +854,29 @@ export default function FreelancerFindProjectsView({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleApply(opp)}
-                        disabled={isApplied}
-                        className={`px-4 py-2 rounded-xl font-bold text-xs transition cursor-pointer shadow-xs active:scale-98 shrink-0 flex items-center gap-1.5 ${
-                          isApplied
-                            ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
-                            : "bg-[#0f172a] hover:bg-[#4f46e5] text-white"
-                        }`}
-                      >
-                        <span>{isApplied ? "Applied ✓" : "Apply Now"}</span>
-                        {!isApplied && <ArrowRight className="w-3 h-3" />}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/freelancer/projects/${opp.id}`}
+                          className="px-2.5 py-1.5 rounded-xl font-bold text-xs text-slate-700 hover:text-indigo-600 border border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Details</span>
+                        </Link>
+
+                        <button
+                          type="button"
+                          onClick={() => handleApply(opp)}
+                          disabled={isApplied}
+                          className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer shadow-xs active:scale-98 shrink-0 flex items-center gap-1 ${
+                            isApplied
+                              ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                              : "bg-[#0f172a] hover:bg-[#4f46e5] text-white"
+                          }`}
+                        >
+                          <span>{isApplied ? "Applied ✓" : "Apply"}</span>
+                          {!isApplied && <ArrowRight className="w-3 h-3" />}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -895,12 +919,22 @@ export default function FreelancerFindProjectsView({
                           <span className="text-slate-400 text-[11px]">· {opp.postedTime}</span>
                         </div>
 
-                        <h3 className="font-bold text-base text-slate-900 group-hover:text-[#4f46e5] transition-colors">
-                          {opp.title}
-                        </h3>
+                        <Link href={`/freelancer/projects/${opp.id}`} className="block group/link">
+                          <h3 className="font-bold text-base text-slate-900 group-hover/link:text-[#4f46e5] transition-colors cursor-pointer">
+                            {opp.title}
+                          </h3>
+                        </Link>
                       </div>
 
                       <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                        <Link
+                          href={`/freelancer/projects/${opp.id}`}
+                          className="px-3 py-2 rounded-xl font-bold text-xs text-slate-700 hover:text-indigo-600 border border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Details</span>
+                        </Link>
+
                         <button
                           type="button"
                           onClick={(e) => toggleSave(opp.id, e)}
@@ -923,26 +957,36 @@ export default function FreelancerFindProjectsView({
                               : "bg-[#0f172a] hover:bg-[#4f46e5] text-white"
                           }`}
                         >
-                          <span>{isApplied ? "Applied ✓" : "Apply Now"}</span>
+                          <span>{isApplied ? "Applied ✓" : "Apply"}</span>
                           {!isApplied && <ArrowRight className="w-3 h-3" />}
                         </button>
                       </div>
                     </div>
 
-                    <p className="text-xs text-slate-500 leading-relaxed">
+                    <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
                       {opp.description}
                     </p>
 
                     <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                      <div className="flex flex-wrap gap-1.5">
-                        {opp.skills.map((skill) => (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {opp.skills.slice(0, 4).map((skill) => (
                           <span
                             key={skill}
-                            className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-600 text-[10px] font-medium border border-slate-200/70"
+                            title={skill}
+                            className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-600 text-[10px] font-medium border border-slate-200/70 truncate max-w-[200px]"
                           >
                             {skill}
                           </span>
                         ))}
+                        {opp.skills.length > 4 && (
+                          <Link
+                            href={`/freelancer/projects/${opp.id}`}
+                            title={opp.skills.slice(4).join(", ")}
+                            className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-[#4f46e5] text-[10px] font-bold border border-indigo-200/70 hover:bg-indigo-100 transition"
+                          >
+                            +{opp.skills.length - 4} more
+                          </Link>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-4 shrink-0">
