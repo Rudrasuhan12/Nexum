@@ -141,6 +141,178 @@ router.get("/freelancers", async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/client/freelancers/:id - get comprehensive public profile details for client review
+router.get("/freelancers/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Try finding in DB
+    const dbUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id },
+          { freelancerProfile: { id } },
+        ],
+        role: Role.FREELANCER,
+      },
+      include: {
+        freelancerProfile: {
+          include: {
+            photoFile: true,
+            coverFile: true,
+            portfolioProjects: {
+              include: { coverFile: true },
+            },
+            workExperiences: { orderBy: { startMonth: "desc" } },
+            educationEntries: { orderBy: { startYear: "desc" } },
+            certifications: { orderBy: { issuedMonth: "desc" } },
+          },
+        },
+        resumeFiles: {
+          where: { status: "ACTIVE" },
+          orderBy: { uploadedAt: "desc" },
+          take: 1,
+        },
+        freelancerSkills: true,
+      },
+    });
+
+    if (dbUser) {
+      const profile = dbUser.freelancerProfile;
+      const skills = (Array.isArray(profile?.skills) && profile.skills.length > 0)
+        ? (profile.skills as string[])
+        : dbUser.freelancerSkills.length > 0
+        ? dbUser.freelancerSkills.map((s) => s.skillName)
+        : ["TypeScript", "Next.js", "Full-Stack"];
+
+      const rawHourly = profile?.rateHourlyMinor || 6000;
+      const hourlyRateDisplay = `$${(rawHourly / 100).toFixed(2)}/hr`;
+
+      // Active resume file
+      const activeResume = dbUser.resumeFiles[0];
+
+      // Avatar logic: only real avatar or null
+      let avatarUrl: string | null = null;
+      if (profile?.photoFileId) {
+        avatarUrl = `/api/files/${profile.photoFileId}`;
+      } else if (dbUser.avatarUrl && !dbUser.avatarUrl.includes("photo-1507003211169") && !dbUser.avatarUrl.includes("photo-1534528741775")) {
+        avatarUrl = dbUser.avatarUrl;
+      } else if (
+        (dbUser.preferences as any)?.avatar &&
+        !(dbUser.preferences as any).avatar.includes("photo-1507003211169") &&
+        !(dbUser.preferences as any).avatar.includes("photo-1534528741775")
+      ) {
+        avatarUrl = (dbUser.preferences as any).avatar;
+      }
+
+      return res.json({
+        success: true,
+        freelancer: {
+          id: dbUser.id,
+          name: dbUser.name,
+          email: dbUser.email,
+          avatar: avatarUrl,
+          title: profile?.professionalTitle || profile?.title || "Freelancer Specialist",
+          headline: profile?.headline || "",
+          bio: profile?.bio || "Verified talent on the Nexum protocol.",
+          fullBio: profile?.bio || "Verified talent on the Nexum protocol.",
+          location: profile?.locationText || "Remote",
+          timezone: profile?.timezone || "UTC",
+          hourlyRateDisplay,
+          hourlyRateCents: rawHourly,
+          experienceLevel: profile?.experienceLevel || "MID",
+          availability: profile?.availabilityStatus || "AVAILABLE",
+          weeklyCapacityHours: profile?.weeklyCapacityHours || 40,
+          skills,
+          servicesOffered: profile?.servicesOffered || [],
+          tools: profile?.tools || [],
+          portfolio: (profile?.portfolioProjects || []).map((p) => ({
+            id: p.id,
+            title: p.title,
+            description: p.description,
+            role: p.role,
+            tools: p.tools,
+            projectUrl: p.projectUrl,
+            repoUrl: p.repoUrl,
+            startMonth: p.startMonth,
+            endMonth: p.endMonth,
+            coverUrl: p.coverFileId ? `/api/files/${p.coverFileId}` : null,
+          })),
+          workHistory: (profile?.workExperiences || []).map((w) => ({
+            id: w.id,
+            role: w.role,
+            company: w.company,
+            location: w.location,
+            startMonth: w.startMonth,
+            endMonth: w.endMonth,
+            isCurrent: w.isCurrent,
+            description: w.description,
+            responsibilities: w.responsibilities,
+            achievements: w.achievements,
+          })),
+          education: (profile?.educationEntries || []).map((ed) => ({
+            id: ed.id,
+            institution: ed.institution,
+            degree: ed.degree,
+            fieldOfStudy: ed.fieldOfStudy,
+            startYear: ed.startYear,
+            graduationYear: ed.graduationYear,
+            description: ed.description,
+          })),
+          certifications: (profile?.certifications || []).map((c) => ({
+            id: c.id,
+            name: c.name,
+            issuer: c.issuer,
+            issuedMonth: c.issuedMonth,
+            expiresMonth: c.expiresMonth,
+            credentialUrl: c.credentialUrl,
+          })),
+          resume: activeResume
+            ? {
+                id: activeResume.id,
+                name: activeResume.originalName,
+                size: `${Math.round(activeResume.sizeBytes / 1024)} KB`,
+                sizeBytes: activeResume.sizeBytes,
+                mime: activeResume.mimeType,
+                url: `/api/files/${activeResume.id}`,
+              }
+            : null,
+          verifiedCredentials: ["Identity Verified", "Automated Consensus Verified", "Milestone Escrow Ready"],
+          rating: "5.0",
+          matchScore: 95,
+        },
+      });
+    }
+
+    // 2. Fallback to clientOverviewService roster (e.g. for mock candidates like Rohan Verma)
+    const roster = await clientOverviewService.getFreelancers("usr_client_alex");
+    const candidate = roster.data.find((f) => f.id === id || f.id === `usr_${id}` || `usr_${f.id}` === id);
+
+    if (candidate) {
+      return res.json({
+        success: true,
+        freelancer: {
+          ...candidate,
+          avatar:
+            candidate.avatar &&
+            !candidate.avatar.includes("photo-1507003211169") &&
+            !candidate.avatar.includes("photo-1534528741775")
+              ? candidate.avatar
+              : null,
+          resume: null,
+          rating: "5.0",
+          matchScore: candidate.fitScore || 95,
+        },
+      });
+    }
+
+    return res.status(404).json({ success: false, error: "Freelancer not found" });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to load freelancer details";
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
 // POST /api/client/freelancers/:id/save - toggle save/bookmark status for a candidate
 router.post("/freelancers/:id/save", async (req: Request, res: Response) => {
   try {
@@ -287,6 +459,103 @@ router.post("/settings/support", async (req: Request, res: Response) => {
 router.post("/overview/reset", (_req: Request, res: Response) => {
   clientOverviewService.reset();
   res.json({ success: true, message: "Client overview state reset" });
+});
+
+// GET /api/client/proposals/:id - get proposal details for client review page
+router.get("/proposals/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const proposal = await prisma.proposal.findUnique({
+      where: { id },
+      include: {
+        freelancer: {
+          include: {
+            freelancerProfile: true,
+          },
+        },
+        project: {
+          include: {
+            projectMilestones: { orderBy: { orderIndex: "asc" } },
+            briefVersions: { orderBy: { version: "desc" }, take: 1 },
+          },
+        },
+        versions: {
+          orderBy: { version: "desc" },
+          take: 1,
+        },
+        attachments: {
+          include: {
+            file: true,
+          },
+        },
+      },
+    });
+
+    if (!proposal) {
+      return res.status(404).json({ success: false, error: "Proposal not found" });
+    }
+
+    const latestVersion = proposal.versions[0];
+    const brief = (proposal.project.briefVersions?.[0]?.structuredBrief as any) || {};
+
+    const proposedMilestones =
+      Array.isArray(latestVersion?.milestonesJson) && (latestVersion.milestonesJson as any[]).length > 0
+        ? latestVersion.milestonesJson
+        : proposal.project.projectMilestones;
+
+    const attachments = (proposal.attachments || []).map((att) => ({
+      id: att.id,
+      name: att.file?.originalName || "Proposal Attachment",
+      size: `${Math.round(((att.file?.sizeBytes || 1024) / 1024 / 1024) * 10) / 10} MB`,
+      sizeBytes: att.file?.sizeBytes || 0,
+      type: att.file?.mime || "application/pdf",
+      url: `/api/files/${att.fileId}`,
+    }));
+
+    const amountCents = latestVersion?.amountCents || latestVersion?.totalAmountMinor || proposal.project.budgetCents || 0;
+
+    res.json({
+      success: true,
+      proposal: {
+        id: proposal.id,
+        projectId: proposal.projectId,
+        projectTitle: proposal.project.title,
+        freelancerId: proposal.freelancerId,
+        freelancerName: proposal.freelancer.name,
+        freelancerRole:
+          proposal.freelancer.freelancerProfile?.title ||
+          proposal.freelancer.freelancerProfile?.professionalTitle ||
+          "Verified Talent",
+        avatar:
+          proposal.freelancer.avatarUrl && !proposal.freelancer.avatarUrl.includes("photo-1507003211169") && !proposal.freelancer.avatarUrl.includes("photo-1534528741775")
+            ? proposal.freelancer.avatarUrl
+            : (proposal.freelancer.preferences as any)?.avatar && !(proposal.freelancer.preferences as any).avatar.includes("photo-1507003211169") && !(proposal.freelancer.preferences as any).avatar.includes("photo-1534528741775")
+            ? (proposal.freelancer.preferences as any).avatar
+            : null,
+        rating: "5.0",
+        status: proposal.status,
+        rejectionFeedback: proposal.rejectionFeedback,
+        amountCents,
+        proposedBudget: `$${((amountCents / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
+        estimatedTimeline: latestVersion?.estimatedDurationWeeks
+          ? `${latestVersion.estimatedDurationWeeks} weeks`
+          : (brief.timelineDuration || "Sprint schedule"),
+        estimatedDurationWeeks: latestVersion?.estimatedDurationWeeks || null,
+        coverLetter:
+          latestVersion?.coverLetter ||
+          "I have thoroughly reviewed your project requirements and technical specifications. I am ready to implement the complete scope adhering strictly to the documented milestones, automated verification, and code quality benchmarks.",
+        approach: latestVersion?.approach || latestVersion?.scopeText || "",
+        proposedMilestones,
+        attachments,
+        submittedDate: proposal.submittedAt
+          ? new Date(proposal.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          : "Recent",
+      },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to load proposal details";
+    res.status(500).json({ success: false, error: msg });
+  }
 });
 
 

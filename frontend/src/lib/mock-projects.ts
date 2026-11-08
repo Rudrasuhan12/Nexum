@@ -31,6 +31,7 @@ export interface MilestoneItem {
 
 export interface ProposalItem {
   id: string;
+  freelancerId?: string;
   freelancerName: string;
   freelancerRole: string;
   avatar: string;

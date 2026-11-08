@@ -34,6 +34,7 @@ import {
   FolderKanban,
   X,
   Eye,
+  User,
 } from "lucide-react";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import DashboardTopHeader from "@/components/DashboardTopHeader";
@@ -42,6 +43,7 @@ import { getProjectById, ProjectDetailData, MOCK_PROJECTS, ProjectLifecycleStatu
 import { fetchProjectById, acceptClientProposal, rejectClientProposal, approveClientMilestone } from "@/lib/api-client";
 import MilestoneAutomatedChecksCard from "@/components/MilestoneAutomatedChecksCard";
 import ProjectUploadedDocumentCard from "@/components/ProjectUploadedDocumentCard";
+import UserAvatar from "@/components/UserAvatar";
 
 type ProjectTab =
   | "overview"
@@ -223,7 +225,7 @@ function ProjectWorkspaceContent() {
               ? {
                   name: freelancer.name,
                   role: freelancer.freelancerProfile?.title || "Contractor",
-                  avatar: freelancer.preferences?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80",
+                  avatar: freelancer.preferences?.avatar && !freelancer.preferences.avatar.includes("photo-1507003211169") ? freelancer.preferences.avatar : null,
                   rating: "5.0",
                   completedJobs: 14,
                   hourlyRate: live.budgetType === "HOURLY" ? `$${Math.round(live.budgetCents / 100)}/hr` : "$75/hr",
@@ -264,9 +266,14 @@ function ProjectWorkspaceContent() {
             milestones: mappedMilestones,
             proposals: (live.proposals || []).map((p: any) => ({
               id: p.id,
+              freelancerId: p.freelancerId || p.freelancer?.id || "",
               freelancerName: p.freelancer?.name || "Candidate",
-              freelancerRole: p.freelancer?.freelancerProfile?.title || "Verified Talent",
-              avatar: p.freelancer?.preferences?.avatar || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80",
+              freelancerRole: p.freelancer?.freelancerProfile?.title || p.freelancer?.freelancerProfile?.professionalTitle || "Verified Talent",
+              avatar: (p.freelancer?.avatar && !p.freelancer.avatar.includes("photo-1507003211169"))
+                ? p.freelancer.avatar
+                : (p.freelancer?.preferences?.avatar && !p.freelancer.preferences.avatar.includes("photo-1507003211169"))
+                ? p.freelancer.preferences.avatar
+                : null,
               rating: "5.0",
               proposedBudget: `$${((p.amountCents || live.budgetCents || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
               estimatedTimeline: p.estimatedTimeline || (p.estimatedDurationWeeks ? `${p.estimatedDurationWeeks} weeks` : (live.timelineDuration || "Sprint schedule")),
@@ -329,7 +336,6 @@ function ProjectWorkspaceContent() {
   };
 
   const [actionLoadingProposalId, setActionLoadingProposalId] = useState<string | null>(null);
-  const [reviewingProposal, setReviewingProposal] = useState<ProposalItem | null>(null);
   const [decliningProposal, setDecliningProposal] = useState<ProposalItem | null>(null);
   const [declineReasonPreset, setDeclineReasonPreset] = useState("Budget exceeds project allocation");
   const [declineCustomFeedback, setDeclineCustomFeedback] = useState("");
@@ -426,9 +432,6 @@ function ProjectWorkspaceContent() {
         });
         showToast("Proposal declined and feedback delivered to candidate.");
         setDecliningProposal(null);
-        if (reviewingProposal?.id === proposalId) {
-          setReviewingProposal(null);
-        }
       } else {
         showToast(res.error || "Failed to decline proposal.");
       }
@@ -1203,20 +1206,34 @@ function ProjectWorkspaceContent() {
                     >
                       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                         <div className="flex items-start gap-3.5">
-                          <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200">
-                            <Image
-                              src={prop.avatar}
-                              alt={prop.freelancerName}
-                              width={48}
-                              height={48}
-                              className="w-full h-full object-cover"
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const targetId = prop.freelancerId || "usr_freelancer_rohan";
+                              router.push(`/client/freelancers/${targetId}?fromProject=${projectId}`);
+                            }}
+                            className="shrink-0 group text-left cursor-pointer"
+                            title="View Freelancer Profile"
+                          >
+                            <UserAvatar
+                              name={prop.freelancerName}
+                              avatarUrl={prop.avatar}
+                              size="lg"
+                              className="group-hover:ring-2 group-hover:ring-indigo-500/30 transition rounded-xl"
                             />
-                          </div>
+                          </button>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h3 className="text-sm font-bold text-slate-900">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const targetId = prop.freelancerId || "usr_freelancer_rohan";
+                                  router.push(`/client/freelancers/${targetId}?fromProject=${projectId}`);
+                                }}
+                                className="text-sm font-bold text-slate-900 hover:text-indigo-600 transition text-left cursor-pointer"
+                              >
                                 {prop.freelancerName}
-                              </h3>
+                              </button>
                               <span
                                 className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                   prop.status === "ACCEPTED"
@@ -1308,7 +1325,19 @@ function ProjectWorkspaceContent() {
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => setReviewingProposal(prop)}
+                            onClick={() => {
+                              const targetId = prop.freelancerId || "usr_freelancer_rohan";
+                              router.push(`/client/freelancers/${targetId}?fromProject=${projectId}`);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition shadow-2xs cursor-pointer"
+                          >
+                            <User className="w-3.5 h-3.5 text-slate-500" />
+                            <span>View Profile</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/client/projects/${projectId}/proposals/${prop.id}`)}
                             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 hover:border-indigo-300 bg-white hover:bg-indigo-50/50 text-xs font-bold text-indigo-600 transition shadow-2xs cursor-pointer"
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -1822,206 +1851,6 @@ function ProjectWorkspaceContent() {
                   >
                     Send Revision Request
                   </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Proposal Details & Review Modal */}
-          {reviewingProposal && (
-            <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-              <div className="w-full max-w-2xl bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 my-8 max-h-[92vh] flex flex-col">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4 shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0 border border-slate-200">
-                      <Image
-                        src={reviewingProposal.avatar}
-                        alt={reviewingProposal.freelancerName}
-                        width={44}
-                        height={44}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-base font-bold text-slate-900">
-                          {reviewingProposal.freelancerName}
-                        </h3>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          ★ {reviewingProposal.rating} Verified Talent
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500">{reviewingProposal.freelancerRole}</p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setReviewingProposal(null)}
-                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Scrollable Content */}
-                <div className="space-y-4 overflow-y-auto pr-1 flex-1 text-xs">
-                  {/* Proposal Quote & Estimated Duration */}
-                  <div className="grid grid-cols-2 gap-3.5">
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proposed Fixed Quote</p>
-                      <p className="text-lg font-black text-slate-900 font-mono">
-                        {reviewingProposal.proposedBudget}
-                      </p>
-                      <p className="text-[11px] text-slate-500">Fixed-Price Milestone Escrow</p>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Delivery Timeframe</p>
-                      <p className="text-lg font-black text-slate-900">
-                        {reviewingProposal.estimatedTimeline}
-                      </p>
-                      <p className="text-[11px] text-slate-500">Committed sprint delivery</p>
-                    </div>
-                  </div>
-
-                  {/* Cover Letter & Technical Approach */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Cover Letter & Technical Approach</span>
-                    </label>
-                    <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 text-slate-700 text-xs leading-relaxed whitespace-pre-wrap">
-                      {reviewingProposal.coverLetter}
-                    </div>
-                  </div>
-
-                  {/* Proposed Milestone Breakdown */}
-                  <div className="space-y-2 pt-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Proposed Milestones & Payment Checkpoints</span>
-                      </label>
-                      <span className="text-[11px] text-slate-400 font-mono">
-                        {reviewingProposal.proposedMilestones?.length || 0} checkpoints
-                      </span>
-                    </div>
-
-                    <div className="space-y-2">
-                      {(reviewingProposal.proposedMilestones && reviewingProposal.proposedMilestones.length > 0
-                        ? reviewingProposal.proposedMilestones
-                        : projectData?.milestones || []
-                      ).map((m: any, idx: number) => {
-                        const amt = m.amountMinor
-                          ? `$${(m.amountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`
-                          : typeof m.amount === "number"
-                          ? `$${m.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
-                          : m.amount || "Custom";
-                        return (
-                          <div
-                            key={idx}
-                            className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between"
-                          >
-                            <div className="min-w-0 pr-3">
-                              <p className="font-bold text-slate-900 line-clamp-1">
-                                #{idx + 1} {m.title}
-                              </p>
-                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                                {m.days ? `${m.days} days duration` : m.durationWeeks ? `${m.durationWeeks} weeks` : "Scheduled stage"}
-                              </p>
-                            </div>
-                            <span className="font-mono font-bold text-slate-800 shrink-0">
-                              {amt}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Attached Proposal Document (Object Storage / S3) */}
-                  {reviewingProposal.attachments && reviewingProposal.attachments.length > 0 && (
-                    <div className="space-y-2 pt-1">
-                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Attached Technical Proposal Document</span>
-                      </label>
-                      <div className="space-y-2">
-                        {reviewingProposal.attachments.map((att: any) => (
-                          <div
-                            key={att.id}
-                            className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200/80 flex items-center justify-between gap-3"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
-                                <FileText className="w-4 h-4" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-bold text-slate-900 truncate">
-                                  {att.name}
-                                </p>
-                                <p className="text-[10px] text-slate-500 font-mono">
-                                  {att.size} · Stored in Object Storage
-                                </p>
-                              </div>
-                            </div>
-
-                            <a
-                              href={att.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              download={att.name}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-indigo-600 shadow-2xs transition shrink-0"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              <span>Download</span>
-                            </a>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Modal Actions */}
-                <div className="flex items-center justify-between pt-3.5 border-t border-slate-100 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setReviewingProposal(null)}
-                    className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-50 transition cursor-pointer"
-                  >
-                    Close
-                  </button>
-
-                  {reviewingProposal.status !== "ACCEPTED" && reviewingProposal.status !== "DECLINED" && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleOpenDeclineModal(reviewingProposal);
-                        }}
-                        disabled={actionLoadingProposalId === reviewingProposal.id}
-                        className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition cursor-pointer"
-                      >
-                        Decline
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const id = reviewingProposal.id;
-                          setReviewingProposal(null);
-                          handleAcceptProposal(id);
-                        }}
-                        disabled={actionLoadingProposalId === reviewingProposal.id}
-                        className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Approve & Accept Proposal</span>
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
