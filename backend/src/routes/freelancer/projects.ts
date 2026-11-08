@@ -45,6 +45,8 @@ const searchProjectsSchema = z.object({
 function buildVisibilityWhere(freelancerId: string): Prisma.ProjectWhereInput {
   return {
     state: { in: [ProjectState.MATCHING, ProjectState.ACTIVE, ProjectState.INTAKE] },
+    // Only show projects that are not assigned to someone
+    agreement: null,
     AND: [
       {
         OR: [

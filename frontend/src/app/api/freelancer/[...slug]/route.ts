@@ -7,6 +7,19 @@ const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   "http://localhost:4000";
 
+const FALLBACK_RENDER_URL = "https://nexum-79g2.onrender.com";
+
+function getTargetUrls(pathWithQuery: string): string[] {
+  const primary = `${BACKEND_URL}/api/freelancer/${pathWithQuery}`;
+  if (
+    !BACKEND_URL.includes("onrender.com") &&
+    (BACKEND_URL.includes("localhost") || BACKEND_URL.includes("127.0.0.1") || !BACKEND_URL)
+  ) {
+    return [primary, `${FALLBACK_RENDER_URL}/api/freelancer/${pathWithQuery}`];
+  }
+  return [primary];
+}
+
 function mapStoredProjectToOpportunity(p: any) {
   const budgetCents = p.budgetCents || 0;
   const budgetAmount = budgetCents > 0 ? budgetCents / 100 : 0;
@@ -48,7 +61,7 @@ export async function GET(
   const path = slug.join("/");
   const user = await getCurrentUser();
   const search = request.nextUrl.search;
-  const targetUrl = `${BACKEND_URL}/api/freelancer/${path}${search}`;
+  const targetUrls = getTargetUrls(`${path}${search}`);
 
   const cookieHeader = request.headers.get("cookie") || "";
   const originHeader =
@@ -56,25 +69,27 @@ export async function GET(
     request.headers.get("referer") ||
     "http://localhost:3000";
 
-  try {
-    const res = await fetch(targetUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Origin": originHeader,
-        "x-nexum-internal": "true",
-        ...(user?.id ? { "x-user-id": user.id } : {}),
-        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-      },
-      cache: "no-store",
-    });
+  for (const targetUrl of targetUrls) {
+    try {
+      const res = await fetch(targetUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Origin": originHeader,
+          "x-nexum-internal": "true",
+          ...(user?.id ? { "x-user-id": user.id } : {}),
+          ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+        },
+        cache: "no-store",
+      });
 
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
+      if (res.ok) {
+        const data = await res.json();
+        return NextResponse.json(data);
+      }
+    } catch (err) {
+      console.warn(`[Freelancer Proxy GET] Fetch failed for ${targetUrl}:`, err);
     }
-  } catch (err) {
-    console.warn(`[Freelancer Proxy GET] Backend fetch failed for ${targetUrl}:`, err);
   }
 
   // Fallback for project discovery if backend is offline or returning empty
@@ -111,13 +126,16 @@ export async function POST(
   const { slug } = await params;
   const path = slug.join("/");
   const user = await getCurrentUser();
-  const targetUrl = `${BACKEND_URL}/api/freelancer/${path}`;
+  const targetUrls = getTargetUrls(path);
 
   const cookieHeader = request.headers.get("cookie") || "";
   const originHeader =
     request.headers.get("origin") ||
     request.headers.get("referer") ||
     "http://localhost:3000";
+
+  let lastStatus = 502;
+  let lastData: any = { success: false, error: "Backend service temporarily unavailable" };
 
   try {
     const contentType = request.headers.get("content-type") || "";
@@ -131,28 +149,35 @@ export async function POST(
 
     if (contentType.includes("multipart/form-data")) {
       forwardBody = await request.formData();
-      // Leave Content-Type header unset so fetch sets multipart boundary automatically
     } else {
       const body = await request.json().catch(() => ({}));
       forwardBody = JSON.stringify(body);
       forwardHeaders["Content-Type"] = "application/json";
     }
 
-    const res = await fetch(targetUrl, {
-      method: "POST",
-      headers: forwardHeaders,
-      body: forwardBody,
-      cache: "no-store",
-    });
+    for (const targetUrl of targetUrls) {
+      try {
+        const res = await fetch(targetUrl, {
+          method: "POST",
+          headers: forwardHeaders,
+          body: forwardBody,
+          cache: "no-store",
+        });
 
-    const data = await res.json().catch(() => ({}));
-    return NextResponse.json(data, { status: res.status });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok || res.status < 500) {
+          return NextResponse.json(data, { status: res.status });
+        }
+        lastStatus = res.status;
+        lastData = data;
+      } catch (err) {
+        console.warn(`[Freelancer Proxy POST] Fetch failed for ${targetUrl}:`, err);
+      }
+    }
+    return NextResponse.json(lastData, { status: lastStatus });
   } catch (err) {
-    console.error(`[Freelancer Proxy POST] Error forwarding to ${targetUrl}:`, err);
-    return NextResponse.json(
-      { success: false, error: "Backend service temporarily unavailable" },
-      { status: 502 }
-    );
+    console.error(`[Freelancer Proxy POST] Error:`, err);
+    return NextResponse.json(lastData, { status: lastStatus });
   }
 }
 
