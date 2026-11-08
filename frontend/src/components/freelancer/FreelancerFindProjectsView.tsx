@@ -47,177 +47,6 @@ export interface ProjectOpportunity {
   escrowStatus: "Pre-Funded in Escrow" | "Verified Payment Method" | "Dual Consensus Ready";
 }
 
-const OPPORTUNITIES: ProjectOpportunity[] = [
-  {
-    id: "opp_1",
-    title: "Let's Collaborate on HAV's Website Redesign",
-    clientName: "Markus Becker",
-    clientCompany: "HAV Creative Studio",
-    location: "Germany",
-    experienceLevel: "Entry Level",
-    category: "Web Design",
-    budget: "$15.00/hour",
-    budgetAmount: 15,
-    budgetType: "Hourly",
-    proposalsCount: 15,
-    hiringState: "Still Selecting",
-    postedTime: "15 mins ago",
-    matchScore: 94,
-    description:
-      "We are looking for a creative person who can redesign & build beautiful landing pages in modern responsive frameworks with clean typography.",
-    skills: ["UI Design", "Web Design", "Landing Page", "Web Development", "Figma"],
-    isVerified: true,
-    escrowStatus: "Pre-Funded in Escrow",
-  },
-  {
-    id: "opp_2",
-    title: "Build/Edit Landing Page for Online Course",
-    clientName: "David Sterling",
-    clientCompany: "EduScale Global",
-    location: "United States",
-    experienceLevel: "Entry Level",
-    category: "Web Design",
-    budget: "$20.00/hour",
-    budgetAmount: 20,
-    budgetType: "Hourly",
-    proposalsCount: 20,
-    hiringState: "Still Selecting",
-    postedTime: "20 mins ago",
-    matchScore: 89,
-    description:
-      "Have a current landing page for my online course already. Need a designer to polish the layout, improve conversion flow, and add high-converting CTA sections.",
-    skills: ["Website Redesign", "Web Design", "Landing Page", "Graphic Design", "UI/UX"],
-    isVerified: true,
-    escrowStatus: "Verified Payment Method",
-  },
-  {
-    id: "opp_3",
-    title: "Web Designer for E-Commerce Website",
-    clientName: "Rahim Chowdhury",
-    clientCompany: "Bengal Retail Co.",
-    location: "India",
-    experienceLevel: "Intermediate",
-    category: "Web Design",
-    budget: "$25.00/hour",
-    budgetAmount: 25,
-    budgetType: "Hourly",
-    proposalsCount: 15,
-    hiringState: "Still Selecting",
-    postedTime: "25 mins ago",
-    matchScore: 92,
-    description:
-      "Install new e-commerce responsive theme, redesign navigation menu, layout product catalog grids, and create custom mobile checkout views.",
-    skills: ["Web Design", "Responsive Design", "Web Development", "Tailwind CSS", "Shopify"],
-    isVerified: true,
-    escrowStatus: "Pre-Funded in Escrow",
-  },
-  {
-    id: "opp_4",
-    title: "SaaS Dashboard Redesign & Design System Architect",
-    clientName: "Emily Tremblay",
-    clientCompany: "CloudPeak Analytics",
-    location: "Canada",
-    experienceLevel: "Expert",
-    category: "Web Design",
-    budget: "$50.00/hour",
-    budgetAmount: 50,
-    budgetType: "Hourly",
-    proposalsCount: 19,
-    hiringState: "1 Interviewing",
-    postedTime: "35 mins ago",
-    matchScore: 97,
-    description:
-      "We're looking for a design systems architect who can help us redesign our B2B SaaS analytics portal in Figma and translate tokens to Next.js Tailwind components.",
-    skills: ["Web Design", "Design Systems", "Figma", "Prototyping", "Next.js"],
-    isVerified: true,
-    escrowStatus: "Dual Consensus Ready",
-  },
-  {
-    id: "opp_5",
-    title: "Enterprise Smart Escrow Integration for Solana Pay",
-    clientName: "Arthur Vance",
-    clientCompany: "FinTech Labs Inc.",
-    location: "United States",
-    experienceLevel: "Expert",
-    category: "Smart Contracts",
-    budget: "$3,800.00 fixed",
-    budgetAmount: 3800,
-    budgetType: "Fixed Price",
-    proposalsCount: 8,
-    hiringState: "Still Selecting",
-    postedTime: "2 hours ago",
-    matchScore: 95,
-    description:
-      "Construct cross-border payment settlement rails with dual SHA-256 state consensus, cryptographic signature verification, and automated webhook recovery.",
-    skills: ["TypeScript", "Next.js", "Solana Pay", "PayPal REST v2", "State Machines"],
-    isVerified: true,
-    escrowStatus: "Pre-Funded in Escrow",
-  },
-  {
-    id: "opp_6",
-    title: "Multi-Tenant PDF Invoice Rendering Worker Pool",
-    clientName: "Elena Rostova",
-    clientCompany: "Apex Retail Group",
-    location: "United Kingdom",
-    experienceLevel: "Intermediate",
-    category: "Full Stack Development",
-    budget: "$2,800.00 fixed",
-    budgetAmount: 2800,
-    budgetType: "Fixed Price",
-    proposalsCount: 6,
-    hiringState: "Still Selecting",
-    postedTime: "4 hours ago",
-    matchScore: 91,
-    description:
-      "Design a zero-leak multi-tenant PDF invoice rendering worker pool using headless Chromium, AWS S3 signed uploads, and automated receipt generation.",
-    skills: ["Node.js", "TypeScript", "Puppeteer", "AWS S3", "Docker"],
-    isVerified: true,
-    escrowStatus: "Pre-Funded in Escrow",
-  },
-  {
-    id: "opp_7",
-    title: "High-Throughput Webhook Ingest Relay & Telemetry Simulator",
-    clientName: "Marcus Chen",
-    clientCompany: "Nova Cloud Inc.",
-    location: "Singapore",
-    experienceLevel: "Intermediate",
-    category: "Full Stack Development",
-    budget: "$75.00/hour",
-    budgetAmount: 75,
-    budgetType: "Hourly",
-    proposalsCount: 4,
-    hiringState: "Still Selecting",
-    postedTime: "1 day ago",
-    matchScore: 88,
-    description:
-      "Build a resilient webhook relay that captures order notifications, simulates failovers with chaos injection, and logs consensus hashes to our audit trail.",
-    skills: ["TypeScript", "Redis", "Go", "Next.js", "PayPal Sandbox"],
-    isVerified: true,
-    escrowStatus: "Dual Consensus Ready",
-  },
-  {
-    id: "opp_8",
-    title: "AI Customer Support Platform Copilot Integration",
-    clientName: "Sarah Jenkins",
-    clientCompany: "Aura Creative AI",
-    location: "Remote",
-    experienceLevel: "Expert",
-    category: "AI & Machine Learning",
-    budget: "$4,500.00 fixed",
-    budgetAmount: 4500,
-    budgetType: "Fixed Price",
-    proposalsCount: 11,
-    hiringState: "Still Selecting",
-    postedTime: "2 days ago",
-    matchScore: 96,
-    description:
-      "Integrate an autonomous multi-turn customer support copilot with streaming SSE events, vector embeddings, and verified milestone deliverable escrow.",
-    skills: ["Python", "OpenAI API", "LangChain", "Next.js 15", "Tailwind CSS"],
-    isVerified: true,
-    escrowStatus: "Pre-Funded in Escrow",
-  },
-];
-
 function mapClientProjectToOpportunity(p: any): ProjectOpportunity {
   const budgetCents = p.budgetCents || 0;
   const budgetAmt = budgetCents > 0 ? budgetCents / 100 : parseFloat(p.budgetAmount) || 0;
@@ -256,23 +85,19 @@ function mapClientProjectToOpportunity(p: any): ProjectOpportunity {
 }
 
 function loadLocalOpportunities(): ProjectOpportunity[] {
-  if (typeof window === "undefined") return OPPORTUNITIES;
+  if (typeof window === "undefined") return [];
   try {
     const raw = getLocalProjects();
     const published = (raw || [])
-      .filter((p: any) => p && p.status !== "DRAFT" && p.state !== "DRAFT")
+      .filter((p: any) => p && p.status !== "DRAFT" && p.state !== "DRAFT" && !p.freelancer)
       .map(mapClientProjectToOpportunity);
 
     const map = new Map<string, ProjectOpportunity>();
-    // User's own published client projects first
+    // User's own published client projects
     for (const p of published) map.set(p.id, p);
-    // Baseline opportunities
-    for (const opp of OPPORTUNITIES) {
-      if (!map.has(opp.id)) map.set(opp.id, opp);
-    }
     return Array.from(map.values());
   } catch {
-    return OPPORTUNITIES;
+    return [];
   }
 }
 
@@ -301,15 +126,17 @@ export default function FreelancerFindProjectsView({
   const [sortBy, setSortBy] = useState<"newest" | "budget_high" | "match_high" | "fewest_proposals">("newest");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
-  // Interaction state - initialized with user's client projects and baseline opportunities
+  // Interaction state - initialized with real published client projects
   const [savedProjectIds, setSavedProjectIds] = useState<string[]>([]);
   const [appliedProjectIds, setAppliedProjectIds] = useState<string[]>([]);
   const [backendProjects, setBackendProjects] = useState<ProjectOpportunity[]>(() => loadLocalOpportunities());
+  const [isLoading, setIsLoading] = useState(true);
   const [isLiveLoaded, setIsLiveLoaded] = useState(false);
 
   // Load live projects from Express backend
   useEffect(() => {
     let isCurrent = true;
+    setIsLoading(true);
     searchFreelancerProjects({
       q: searchQuery,
       location: locationQuery,
@@ -358,7 +185,7 @@ export default function FreelancerFindProjectsView({
           for (const s of mappedServer) map.set(s.id, s);
         }
 
-        // 2. Add local client projects and baseline opportunities
+        // 2. Add local client projects (no mock opportunities)
         for (const loc of localOpp) {
           if (!map.has(loc.id)) map.set(loc.id, loc);
         }
@@ -373,6 +200,11 @@ export default function FreelancerFindProjectsView({
         if (isCurrent) {
           setBackendProjects(loadLocalOpportunities());
           setIsLiveLoaded(true);
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsLoading(false);
         }
       });
 
@@ -420,7 +252,7 @@ export default function FreelancerFindProjectsView({
 
   // Filter & Sort Logic
   const filteredProjects = useMemo(() => {
-    const baseList = backendProjects.length > 0 ? backendProjects : OPPORTUNITIES;
+    const baseList = backendProjects;
     return baseList.filter((opp) => {
       // 1. Text Search (title, company, description, skills)
       const q = searchQuery.toLowerCase().trim();
@@ -850,23 +682,57 @@ export default function FreelancerFindProjectsView({
             </div>
           </div>
 
+          {/* Loading state skeleton */}
+          {isLoading && backendProjects.length === 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="p-5 rounded-2xl border border-slate-200/70 bg-white animate-pulse space-y-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="h-5 w-24 bg-slate-200 rounded-full" />
+                    <div className="h-4 w-16 bg-slate-100 rounded" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-5 w-3/4 bg-slate-200 rounded" />
+                    <div className="h-3 w-1/2 bg-slate-100 rounded" />
+                    <div className="h-10 w-full bg-slate-100 rounded" />
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="h-5 w-16 bg-slate-100 rounded" />
+                    <div className="h-5 w-20 bg-slate-100 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Empty state if nothing matches */}
-          {filteredProjects.length === 0 && (
+          {!isLoading && filteredProjects.length === 0 && (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-12 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-[#4f46e5] mx-auto flex items-center justify-center">
                 <Search className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">No matching projects found</h3>
+              <h3 className="text-base font-bold text-slate-900">
+                {backendProjects.length === 0
+                  ? "No open projects currently available"
+                  : "No matching projects found"}
+              </h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Try widening your search terms or resetting filters to explore all available verified client projects.
+                {backendProjects.length === 0
+                  ? "Clients post new verified project scopes regularly. Check back soon or publish a project from the Client dashboard to test the real workflow."
+                  : "Try widening your search terms or resetting filters to explore all available verified client projects."}
               </p>
-              <button
-                type="button"
-                onClick={handleResetFilters}
-                className="mt-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-[#4f46e5] text-white text-xs font-bold transition shadow-xs cursor-pointer"
-              >
-                Reset Filters
-              </button>
+              {backendProjects.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="mt-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-[#4f46e5] text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                >
+                  Reset Filters
+                </button>
+              )}
             </div>
           )}
 

@@ -221,11 +221,7 @@ function FreelancerDashboardContent() {
               onNavigateTab={handleTabChange}
               onSubmitDeliverableClick={() => setShowSubmitModal(true)}
               onReviewLeadClick={() => {
-                handleApplyProjectFromFind({
-                  title: "Enterprise Smart Escrow Integration for Solana Pay",
-                  budget: "$4,500.00 USD",
-                  clientCompany: "FinTech Labs Inc.",
-                });
+                handleTabChange("find_projects");
               }}
             />
           )}
