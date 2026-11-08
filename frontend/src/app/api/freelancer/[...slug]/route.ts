@@ -241,9 +241,28 @@ export async function PUT(
   const { slug } = await params;
   const path = slug.join("/");
   const user = await getCurrentUser();
-  const targetUrl = `${BACKEND_URL}/api/freelancer/${path}`;
+  const targetUrls = getTargetUrls(path);
 
   const cookieHeader = request.headers.get("cookie") || "";
+  let effectiveUserId = user?.id;
+  const rawCookieToken = request.cookies.get("nexum_session")?.value || "";
+  if (!effectiveUserId && (rawCookieToken || cookieHeader)) {
+    const rawVal = rawCookieToken || (cookieHeader.match(/nexum_session=([^;]+)/)?.[1] ?? "");
+    if (rawVal) {
+      try {
+        const decoded = decodeURIComponent(rawVal);
+        const [payloadEncoded] = decoded.split(".");
+        if (payloadEncoded) {
+          const raw = Buffer.from(payloadEncoded, "base64url").toString("utf-8");
+          const parsed = JSON.parse(raw);
+          if (parsed?.userId) {
+            effectiveUserId = parsed.userId;
+          }
+        }
+      } catch {}
+    }
+  }
+
   const originHeader =
     request.headers.get("origin") ||
     request.headers.get("referer") ||
@@ -251,23 +270,109 @@ export async function PUT(
 
   try {
     const body = await request.json().catch(() => ({}));
-    const res = await fetch(targetUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "Origin": originHeader,
-        "x-nexum-internal": "true",
-        ...(user?.id ? { "x-user-id": user.id } : {}),
-        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-      },
-      body: JSON.stringify(body),
-      cache: "no-store",
-    });
+    for (const targetUrl of targetUrls) {
+      try {
+        const res = await fetch(targetUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: originHeader,
+            "x-nexum-internal": "true",
+            ...(effectiveUserId ? { "x-user-id": effectiveUserId } : {}),
+            ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+          },
+          body: JSON.stringify(body),
+          cache: "no-store",
+          signal: AbortSignal.timeout(35000),
+        });
 
-    const data = await res.json().catch(() => ({}));
-    return NextResponse.json(data, { status: res.status });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok || res.status < 500) {
+          return NextResponse.json(data, { status: res.status });
+        }
+      } catch (err) {
+        console.warn(`[Freelancer Proxy PUT] Failed for ${targetUrl}:`, err);
+      }
+    }
+    return NextResponse.json(
+      { success: false, error: "Backend service temporarily unavailable" },
+      { status: 502 }
+    );
   } catch (err) {
-    console.error(`[Freelancer Proxy PUT] Error forwarding to ${targetUrl}:`, err);
+    console.error(`[Freelancer Proxy PUT] Error:`, err);
+    return NextResponse.json(
+      { success: false, error: "Backend service temporarily unavailable" },
+      { status: 502 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string[] }> }
+) {
+  const { slug } = await params;
+  const path = slug.join("/");
+  const user = await getCurrentUser();
+  const targetUrls = getTargetUrls(path);
+
+  const cookieHeader = request.headers.get("cookie") || "";
+  let effectiveUserId = user?.id;
+  const rawCookieToken = request.cookies.get("nexum_session")?.value || "";
+  if (!effectiveUserId && (rawCookieToken || cookieHeader)) {
+    const rawVal = rawCookieToken || (cookieHeader.match(/nexum_session=([^;]+)/)?.[1] ?? "");
+    if (rawVal) {
+      try {
+        const decoded = decodeURIComponent(rawVal);
+        const [payloadEncoded] = decoded.split(".");
+        if (payloadEncoded) {
+          const raw = Buffer.from(payloadEncoded, "base64url").toString("utf-8");
+          const parsed = JSON.parse(raw);
+          if (parsed?.userId) {
+            effectiveUserId = parsed.userId;
+          }
+        }
+      } catch {}
+    }
+  }
+
+  const originHeader =
+    request.headers.get("origin") ||
+    request.headers.get("referer") ||
+    "http://localhost:3000";
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    for (const targetUrl of targetUrls) {
+      try {
+        const res = await fetch(targetUrl, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: originHeader,
+            "x-nexum-internal": "true",
+            ...(effectiveUserId ? { "x-user-id": effectiveUserId } : {}),
+            ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+          },
+          body: JSON.stringify(body),
+          cache: "no-store",
+          signal: AbortSignal.timeout(35000),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (res.ok || res.status < 500) {
+          return NextResponse.json(data, { status: res.status });
+        }
+      } catch (err) {
+        console.warn(`[Freelancer Proxy PATCH] Failed for ${targetUrl}:`, err);
+      }
+    }
+    return NextResponse.json(
+      { success: false, error: "Backend service temporarily unavailable" },
+      { status: 502 }
+    );
+  } catch (err) {
+    console.error(`[Freelancer Proxy PATCH] Error:`, err);
     return NextResponse.json(
       { success: false, error: "Backend service temporarily unavailable" },
       { status: 502 }
@@ -282,30 +387,63 @@ export async function DELETE(
   const { slug } = await params;
   const path = slug.join("/");
   const user = await getCurrentUser();
-  const targetUrl = `${BACKEND_URL}/api/freelancer/${path}${request.nextUrl.search}`;
+  const search = request.nextUrl.search;
+  const targetUrls = getTargetUrls(`${path}${search}`);
 
   const cookieHeader = request.headers.get("cookie") || "";
+  let effectiveUserId = user?.id;
+  const rawCookieToken = request.cookies.get("nexum_session")?.value || "";
+  if (!effectiveUserId && (rawCookieToken || cookieHeader)) {
+    const rawVal = rawCookieToken || (cookieHeader.match(/nexum_session=([^;]+)/)?.[1] ?? "");
+    if (rawVal) {
+      try {
+        const decoded = decodeURIComponent(rawVal);
+        const [payloadEncoded] = decoded.split(".");
+        if (payloadEncoded) {
+          const raw = Buffer.from(payloadEncoded, "base64url").toString("utf-8");
+          const parsed = JSON.parse(raw);
+          if (parsed?.userId) {
+            effectiveUserId = parsed.userId;
+          }
+        }
+      } catch {}
+    }
+  }
+
   const originHeader =
     request.headers.get("origin") ||
     request.headers.get("referer") ||
     "http://localhost:3000";
 
   try {
-    const res = await fetch(targetUrl, {
-      method: "DELETE",
-      headers: {
-        "Origin": originHeader,
-        "x-nexum-internal": "true",
-        ...(user?.id ? { "x-user-id": user.id } : {}),
-        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-      },
-      cache: "no-store",
-    });
+    for (const targetUrl of targetUrls) {
+      try {
+        const res = await fetch(targetUrl, {
+          method: "DELETE",
+          headers: {
+            Origin: originHeader,
+            "x-nexum-internal": "true",
+            ...(effectiveUserId ? { "x-user-id": effectiveUserId } : {}),
+            ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+          },
+          cache: "no-store",
+          signal: AbortSignal.timeout(35000),
+        });
 
-    const data = await res.json().catch(() => ({}));
-    return NextResponse.json(data, { status: res.status });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok || res.status < 500) {
+          return NextResponse.json(data, { status: res.status });
+        }
+      } catch (err) {
+        console.warn(`[Freelancer Proxy DELETE] Failed for ${targetUrl}:`, err);
+      }
+    }
+    return NextResponse.json(
+      { success: false, error: "Backend service temporarily unavailable" },
+      { status: 502 }
+    );
   } catch (err) {
-    console.error(`[Freelancer Proxy DELETE] Error forwarding to ${targetUrl}:`, err);
+    console.error(`[Freelancer Proxy DELETE] Error:`, err);
     return NextResponse.json(
       { success: false, error: "Backend service temporarily unavailable" },
       { status: 502 }

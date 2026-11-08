@@ -28,10 +28,9 @@ const upload = multer({
 
 const router = Router();
 
-// Enforce authentication, role boundary & onboarded check across all freelancer routes
+// Enforce authentication & role boundary across all freelancer routes
 router.use(requireAuth);
 router.use(requireRole(Role.FREELANCER));
-router.use(requireOnboarded);
 
 // Magic byte validation for attachments: PDF, PNG, JPG, DOCX
 function validateAttachmentMagicBytes(buffer: Buffer): { valid: boolean; mime: string } {
@@ -87,6 +86,14 @@ function validateAttachmentMagicBytes(buffer: Buffer): { valid: boolean; mime: s
 router.get("/summary", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const freelancerId = req.user!.id;
+    const freelancerEmail = req.user!.email;
+
+    const userWhere: any = {
+      OR: [
+        { freelancerId },
+        ...(freelancerEmail ? [{ freelancer: { email: { equals: freelancerEmail, mode: "insensitive" } } }] : []),
+      ],
+    };
 
     const [
       allCount,
@@ -100,16 +107,16 @@ router.get("/summary", async (req: Request, res: Response, next: NextFunction): 
       rejectedCount,
       withdrawnCount,
     ] = await Promise.all([
-      prisma.proposal.count({ where: { freelancerId } }),
-      prisma.proposal.count({ where: { freelancerId, status: ProposalStatus.DRAFT } }),
-      prisma.proposal.count({ where: { freelancerId, status: ProposalStatus.SUBMITTED } }),
-      prisma.proposal.count({ where: { freelancerId, status: ProposalStatus.UNDER_REVIEW } }),
-      prisma.proposal.count({ where: { freelancerId, status: ProposalStatus.SHORTLISTED } }),
-      prisma.proposal.count({ where: { freelancerId, status: ProposalStatus.INTERVIEW_DISCUSSION } }),
-      prisma.proposal.count({ where: { freelancerId, status: ProposalStatus.COUNTEROFFER_RECEIVED } }),
-      prisma.proposal.count({ where: { freelancerId, status: ProposalStatus.ACCEPTED } }),
-      prisma.proposal.count({ where: { freelancerId, status: ProposalStatus.REJECTED } }),
-      prisma.proposal.count({ where: { freelancerId, status: ProposalStatus.WITHDRAWN } }),
+      prisma.proposal.count({ where: userWhere }),
+      prisma.proposal.count({ where: { ...userWhere, status: ProposalStatus.DRAFT } }),
+      prisma.proposal.count({ where: { ...userWhere, status: ProposalStatus.SUBMITTED } }),
+      prisma.proposal.count({ where: { ...userWhere, status: ProposalStatus.UNDER_REVIEW } }),
+      prisma.proposal.count({ where: { ...userWhere, status: ProposalStatus.SHORTLISTED } }),
+      prisma.proposal.count({ where: { ...userWhere, status: ProposalStatus.INTERVIEW_DISCUSSION } }),
+      prisma.proposal.count({ where: { ...userWhere, status: ProposalStatus.COUNTEROFFER_RECEIVED } }),
+      prisma.proposal.count({ where: { ...userWhere, status: ProposalStatus.ACCEPTED } }),
+      prisma.proposal.count({ where: { ...userWhere, status: ProposalStatus.REJECTED } }),
+      prisma.proposal.count({ where: { ...userWhere, status: ProposalStatus.WITHDRAWN } }),
     ]);
 
     res.status(200).json({
@@ -232,39 +239,57 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
     } = parsed.data;
 
     const freelancerId = req.user!.id;
+    const freelancerEmail = req.user!.email;
 
-    const where: any = {
-      freelancerId,
+    const userWhere: any = {
+      OR: [
+        { freelancerId },
+        ...(freelancerEmail ? [{ freelancer: { email: { equals: freelancerEmail, mode: "insensitive" } } }] : []),
+      ],
     };
 
+    const andConditions: any[] = [userWhere];
+
     if (status) {
-      where.status = status;
+      if (status === "UNDER_REVIEW") {
+        andConditions.push({
+          status: { in: [ProposalStatus.UNDER_REVIEW, ProposalStatus.SUBMITTED] },
+        });
+      } else {
+        andConditions.push({ status });
+      }
     }
 
     if (category && category !== "ALL" && category !== "All Categories") {
-      where.project = {
-        ...where.project,
-        category: { equals: category, mode: "insensitive" },
-      };
+      andConditions.push({
+        project: {
+          category: { equals: category, mode: "insensitive" },
+        },
+      });
     }
 
     if (q && q.trim()) {
       const term = q.trim();
-      where.OR = [
-        { project: { title: { contains: term, mode: "insensitive" } } },
-        { project: { client: { name: { contains: term, mode: "insensitive" } } } },
-      ];
+      andConditions.push({
+        OR: [
+          { project: { title: { contains: term, mode: "insensitive" } } },
+          { project: { client: { name: { contains: term, mode: "insensitive" } } } },
+        ],
+      });
     }
 
     if (submittedFrom || submittedTo) {
-      where.submittedAt = {};
+      const dateCond: any = {};
       if (submittedFrom) {
-        where.submittedAt.gte = new Date(submittedFrom);
+        dateCond.gte = new Date(submittedFrom);
       }
       if (submittedTo) {
-        where.submittedAt.lte = new Date(submittedTo);
+        dateCond.lte = new Date(submittedTo);
       }
+      andConditions.push({ submittedAt: dateCond });
     }
+
+    const where: any = { AND: andConditions };
 
     let orderBy: any = { createdAt: "desc" };
     if (sort === "oldest") {
