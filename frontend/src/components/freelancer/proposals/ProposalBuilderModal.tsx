@@ -212,7 +212,7 @@ export default function ProposalBuilderModal({
                 <div
                   key={p.id}
                   onClick={() => setSelectedProjectId(p.id)}
-                  className={`p-4 rounded-xl border transition-all cursor-pointer relative ${
+                  className={`p-3 rounded-xl border transition-all cursor-pointer relative ${
                     isSelected
                       ? hasActiveProp
                         ? "bg-amber-50/60 border-amber-400 ring-2 ring-amber-500/20 shadow-xs"
@@ -222,84 +222,51 @@ export default function ProposalBuilderModal({
                       : "bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/50"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1.5 min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-extrabold text-slate-900 leading-snug line-clamp-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-extrabold text-slate-900 truncate">
                           {p.title}
                         </span>
 
-                        {/* Status Badges for Already Applied Projects */}
                         {hasActiveProp && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-300 shrink-0">
-                            <Clock className="w-3 h-3 text-amber-700" />
-                            <span>Already Applied • Under Review</span>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-full border border-amber-300 shrink-0">
+                            <Clock className="w-2.5 h-2.5 text-amber-700" />
+                            <span>Applied</span>
                           </span>
                         )}
 
                         {hasRejectedProp && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-800 bg-rose-100 px-2 py-0.5 rounded-full border border-rose-200 shrink-0">
-                            <RotateCcw className="w-3 h-3 text-rose-700" />
-                            <span>Declined • Revision Available</span>
+                            <RotateCcw className="w-2.5 h-2.5 text-rose-700" />
+                            <span>Declined</span>
                           </span>
                         )}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                        <span className="flex items-center gap-1 font-medium text-slate-700">
-                          <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate max-w-[180px]">{clientOrg}</span>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                        <span className="flex items-center gap-1 font-medium text-slate-600 truncate max-w-[160px]">
+                          <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate">{clientOrg}</span>
                         </span>
 
                         <span className="text-slate-300">•</span>
 
-                        <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60 font-mono">
-                          <DollarSign className="w-3 h-3 text-emerald-600 -mr-0.5" />
+                        <span className="inline-flex items-center gap-0.5 font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200/60 font-mono text-[10px]">
+                          <DollarSign className="w-2.5 h-2.5 text-emerald-600 -mr-0.5" />
                           <span>{budgetFormatted}</span>
                         </span>
 
                         {p.budgetType && (
                           <span className="text-[10px] text-slate-400 font-medium capitalize">
-                            {p.budgetType.toLowerCase()} escrow
+                            {p.budgetType.toLowerCase()} Escrow
                           </span>
                         )}
                       </div>
-
-                      {/* Information text if already applied */}
-                      {hasActiveProp && (
-                        <p className="text-[11px] text-amber-900 font-medium pt-0.5">
-                          You have an active proposal submitted ({existing.offer?.priceDisplay || "Fixed quote"}). The client is currently evaluating your offer.
-                        </p>
-                      )}
-
-                      {hasRejectedProp && (
-                        <p className="text-[11px] text-rose-800 font-medium pt-0.5">
-                          The client declined your prior proposal. You can address their feedback and submit an updated revision.
-                        </p>
-                      )}
-
-                      {/* Required skills */}
-                      {Array.isArray(p.skills) && p.skills.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1 pt-1">
-                          {p.skills.slice(0, 4).map((s: string) => (
-                            <span
-                              key={s}
-                              className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200/60"
-                            >
-                              {s}
-                            </span>
-                          ))}
-                          {p.skills.length > 4 && (
-                            <span className="text-[10px] text-slate-400 font-medium">
-                              +{p.skills.length - 4} more
-                            </span>
-                          )}
-                        </div>
-                      )}
                     </div>
 
                     {/* Selection Indicator */}
-                    <div className="shrink-0 mt-0.5">
+                    <div className="shrink-0">
                       <div
                         className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
                           isSelected
