@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
@@ -36,8 +36,10 @@ import { fetchProjectById, saveFreelancerProject, unsaveFreelancerProject } from
 function FreelancerProjectDetailsContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const projectId = params?.id as string;
+  const isJustSubmitted = searchParams?.get("submitted") === "true";
 
   const [project, setProject] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -124,7 +126,7 @@ function FreelancerProjectDetailsContent() {
   };
 
   const handleApply = () => {
-    router.push(`/freelancer/dashboard?tab=find_projects&applyId=${projectId}`);
+    router.push(`/freelancer/projects/${projectId}/apply`);
   };
 
   // Derive structured spec items
@@ -521,6 +523,27 @@ function FreelancerProjectDetailsContent() {
                 </div>
               )}
 
+              {/* Success Notification if just submitted */}
+              {isJustSubmitted && (
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold">Proposal Successfully Submitted to Client!</p>
+                      <p className="text-[11px] text-emerald-700">
+                        Your custom milestone breakdown and attached proposal document have been recorded in the consensus workspace.
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    href="/freelancer/dashboard?tab=proposals"
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shrink-0"
+                  >
+                    View My Proposals
+                  </Link>
+                </div>
+              )}
+
               {/* Bottom Sticky Action Bar */}
               <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
@@ -540,15 +563,15 @@ function FreelancerProjectDetailsContent() {
                   <button
                     type="button"
                     onClick={handleApply}
-                    disabled={project.isApplied}
+                    disabled={project.isApplied || isJustSubmitted}
                     className={`px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 active:scale-98 ${
-                      project.isApplied
+                      project.isApplied || isJustSubmitted
                         ? "bg-slate-100 text-slate-500 border border-slate-200 cursor-default"
                         : "bg-[#0f172a] hover:bg-[#4f46e5] text-white cursor-pointer"
                     }`}
                   >
-                    <span>{project.isApplied ? "Applied ✓" : "Apply / Submit Proposal"}</span>
-                    {!project.isApplied && <ArrowRight className="w-3.5 h-3.5" />}
+                    <span>{project.isApplied || isJustSubmitted ? "Applied ✓" : "Apply / Submit Proposal"}</span>
+                    {!project.isApplied && !isJustSubmitted && <ArrowRight className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>

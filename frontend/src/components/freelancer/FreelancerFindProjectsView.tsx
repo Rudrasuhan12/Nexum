@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   searchFreelancerProjects,
   saveFreelancerProject,
@@ -114,6 +115,7 @@ export default function FreelancerFindProjectsView({
   showToast,
   appliedProjectIds: parentAppliedIds,
 }: FreelancerFindProjectsViewProps) {
+  const router = useRouter();
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
@@ -269,8 +271,8 @@ export default function FreelancerFindProjectsView({
       showToast(`You have already submitted a proposal for ${opp.title}.`);
       return;
     }
-    // Call parent handler to open modal/flow - do NOT prematurely mark as applied!
-    onApplyProject(opp);
+    // Navigate directly to dedicated proposal & counteroffer page
+    router.push(`/freelancer/projects/${opp.id}/apply`);
   };
 
   // Filter & Sort Logic
