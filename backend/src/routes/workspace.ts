@@ -191,12 +191,36 @@ router.get("/projects/:projectId/timeline", async (req: Request, res: Response) 
     const hasAcceptedProposalOrAgreement =
       Boolean(project.agreement) || project.proposals.length > 0;
 
-    if (!hasAcceptedProposalOrAgreement) {
+    const existingConv = await prisma.workspaceConversation.findUnique({
+      where: { projectId },
+      include: {
+        messages: {
+          select: { id: true, senderRole: true },
+          take: 5,
+        },
+      },
+    });
+
+    const hasClientInitiated = (existingConv?.messages || []).some(
+      (m) => m.senderRole === "CLIENT"
+    );
+
+    const isClientRequester =
+      req.headers["x-user-id"] === project.clientId ||
+      (req as any).user?.id === project.clientId ||
+      (req as any).user?.role === "CLIENT";
+
+    const isUnlocked =
+      hasAcceptedProposalOrAgreement ||
+      isClientRequester ||
+      hasClientInitiated;
+
+    if (!isUnlocked) {
       return res.status(403).json({
         success: false,
         error: {
           code: "FORBIDDEN",
-          message: "Workspace connection and chat are only available after a proposal is accepted by the client.",
+          message: "Workspace connection and chat unlock once the client starts a discussion or accepts your proposal.",
           details: { projectId },
         },
       });
@@ -262,15 +286,39 @@ router.post("/projects/:projectId/messages", async (req: Request, res: Response)
       });
     }
 
+    const isClientSender =
+      senderRole === "CLIENT" ||
+      senderId === project.clientId ||
+      (req as any).user?.id === project.clientId ||
+      (req as any).user?.role === "CLIENT";
+
     const hasAcceptedProposalOrAgreement =
       Boolean(project.agreement) || project.proposals.length > 0;
 
-    if (!hasAcceptedProposalOrAgreement) {
+    const existingConv = await prisma.workspaceConversation.findUnique({
+      where: { projectId },
+      include: {
+        messages: {
+          select: { id: true, senderRole: true },
+          take: 5,
+        },
+      },
+    });
+
+    const hasClientInitiated = (existingConv?.messages || []).some(
+      (m) => m.senderRole === "CLIENT"
+    );
+
+    // Approval requirement applies to freelancer initiating messages.
+    // Client can always initiate messages; once client initiates, workspace messaging is open for both!
+    const canSend = isClientSender || hasAcceptedProposalOrAgreement || hasClientInitiated;
+
+    if (!canSend) {
       return res.status(403).json({
         success: false,
         error: {
           code: "FORBIDDEN",
-          message: "Cannot send messages: workspace chat is only unlocked after a proposal is accepted by the client.",
+          message: "Direct messaging unlocks once the client initiates a discussion or accepts your proposal.",
           details: { projectId },
         },
       });

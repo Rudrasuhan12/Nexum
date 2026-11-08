@@ -478,12 +478,6 @@ export default function FreelancerProposalsView({
                     proposal={selectedProposal}
                     onEditProposal={() => setShowEditModal(true)}
                     onReviewCounteroffer={() => setShowCounterofferModal(true)}
-                    onSendFollowUp={() => {
-                      setActiveTab("messages");
-                      showToast(
-                        `Opened discussion thread for ${selectedProposal.client.companyName}.`
-                      );
-                    }}
                     showToast={showToast}
                   />
                 )}

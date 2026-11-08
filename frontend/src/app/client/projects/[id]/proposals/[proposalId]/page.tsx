@@ -21,6 +21,8 @@ import {
   Star,
   Check,
   User,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import DashboardTopHeader from "@/components/DashboardTopHeader";
@@ -84,6 +86,9 @@ function ProposalReviewContent() {
   const [declineReasonPreset, setDeclineReasonPreset] = useState("Budget exceeds project allocation");
   const [declineCustomFeedback, setDeclineCustomFeedback] = useState("");
   const [isDeclining, setIsDeclining] = useState(false);
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [clientMessageText, setClientMessageText] = useState("");
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -257,6 +262,32 @@ function ProposalReviewContent() {
       showToast(msg);
     } finally {
       setIsDeclining(false);
+    }
+  };
+
+  // Send Message to Candidate to Start Discussion
+  const handleSendMessage = async () => {
+    if (!clientMessageText.trim() || isSendingMessage || !proposal) return;
+    try {
+      setIsSendingMessage(true);
+      showToast("Sending message to candidate & activating workspace discussions...");
+      await fetch(`/api/workspace/projects/${projectId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senderId: "client",
+          senderRole: "CLIENT",
+          content: clientMessageText.trim(),
+        }),
+      });
+
+      showToast("Message sent! Workspace discussions are now open for both parties.");
+      setShowMessageModal(false);
+      setClientMessageText("");
+    } catch {
+      showToast("Failed to send message. Please try again.");
+    } finally {
+      setIsSendingMessage(false);
     }
   };
 
@@ -621,6 +652,19 @@ function ProposalReviewContent() {
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
+                    onClick={() => {
+                      setClientMessageText(`Hi ${proposal.freelancerName}, `);
+                      setShowMessageModal(true);
+                    }}
+                    disabled={isAccepting || isDeclining}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition shadow-2xs cursor-pointer disabled:opacity-50"
+                  >
+                    <MessageSquare className="w-4 h-4 text-indigo-600" />
+                    <span>Message Candidate</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleOpenDeclineModal}
                     disabled={isAccepting || isDeclining}
                     className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition cursor-pointer disabled:opacity-50"
@@ -643,6 +687,71 @@ function ProposalReviewContent() {
           </div>
         </main>
       </div>
+
+      {/* Message Candidate & Start Discussion Modal */}
+      {showMessageModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200/80 flex items-center justify-center">
+                  <MessageSquare className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Message Candidate: {proposal.freelancerName}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Sending a message opens workspace discussions for both parties immediately.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMessageModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              <label className="text-xs font-bold text-slate-800">
+                Inquiry / Discussion Topic
+              </label>
+              <textarea
+                rows={4}
+                value={clientMessageText}
+                onChange={(e) => setClientMessageText(e.target.value)}
+                placeholder={`Ask a question or request technical clarification from ${proposal.freelancerName}...`}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition"
+              />
+              <p className="text-[11px] text-slate-400">
+                All communications are mediated through Nexum AI and logged to the project audit ledger.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowMessageModal(false)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200/60 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSendMessage}
+                disabled={!clientMessageText.trim() || isSendingMessage}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-xs disabled:opacity-50 cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{isSendingMessage ? "Sending..." : "Send & Open Workspace"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Decline Proposal with Rejection Feedback Modal */}
       {showDeclineModal && (

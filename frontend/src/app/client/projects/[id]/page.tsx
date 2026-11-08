@@ -1344,6 +1344,18 @@ function ProjectWorkspaceContent() {
                             <span>Review Details</span>
                           </button>
 
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab("workspace");
+                              showToast(`Workspace discussions opened. Send a message to start talking with ${prop.freelancerName}.`);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100 text-xs font-bold text-indigo-700 transition shadow-2xs cursor-pointer"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>Message</span>
+                          </button>
+
                           {prop.status !== "ACCEPTED" && prop.status !== "DECLINED" && (
                             <>
                               <button

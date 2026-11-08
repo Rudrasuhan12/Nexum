@@ -305,9 +305,35 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
         include: {
           project: {
             include: {
-              client: { select: { id: true, name: true } },
+              client: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  createdAt: true,
+                  preferences: true,
+                  avatarUrl: true,
+                  clientAgreements: { select: { id: true } },
+                },
+              },
               briefVersions: { orderBy: { version: "desc" }, take: 1 },
               projectMilestones: { orderBy: { orderIndex: "asc" } },
+              workspaceConversation: {
+                include: {
+                  messages: {
+                    orderBy: { createdAt: "asc" },
+                    take: 20,
+                    select: {
+                      id: true,
+                      senderId: true,
+                      senderRole: true,
+                      originalContent: true,
+                      mediatedContent: true,
+                      createdAt: true,
+                    },
+                  },
+                },
+              },
             },
           },
           versions: {
@@ -353,40 +379,65 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
         }
       }
 
-      return {
-        id: p.id,
-        projectId: p.projectId,
-        projectTitle: p.project.title,
-        clientName: p.project.client.name,
-        skills: p.project.skills || [],
-        amountDisplay,
-        amountMinor,
-        currency: currentVer?.currency || p.project.currency || "USD",
-        durationWeeks: currentVer?.estimatedDurationWeeks || null,
-        status: p.status,
-        statusLabel: getStatusLabel(p.status),
-        statusBadgeColor: getStatusBadgeColor(p.status),
-        rejectionFeedback: p.rejectionFeedback || null,
-        categoryIcon: getCategoryIcon(p.project.category),
-        submittedAt: p.submittedAt ? p.submittedAt.toISOString() : null,
-        submittedDate: p.submittedAt ? new Date(p.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Draft",
-        submittedTime: p.submittedAt ? new Date(p.submittedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "",
-        lastActivityAt: p.lastActivityAt.toISOString(),
-        currentVersionNumber: currentVer?.versionNumber ?? currentVer?.version ?? 1,
-        nextAction: nextAct,
-        client: {
-          id: p.project.client.id,
-          name: p.project.client.name,
-          companyName: `${p.project.client.name} Corp`,
-          verified: true,
-          industry: p.project.category || "Technology",
-          companySize: "10–50 employees",
-          location: p.project.location || "Remote",
-          postedDate: p.project.createdAt ? new Date(p.project.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recently",
-          totalHires: 12,
-          avatarLetter: p.project.client.name ? p.project.client.name[0].toUpperCase() : "C",
-          avatarBg: "bg-indigo-600 text-white",
-        },
+        const convMessages = ((p.project as any).workspaceConversation?.messages || []) as any[];
+        const hasClientInitiated = convMessages.some((m: any) => m.senderRole === "CLIENT");
+
+        return {
+          id: p.id,
+          projectId: p.projectId,
+          projectTitle: p.project.title,
+          clientName: p.project.client.name,
+          skills: p.project.skills || [],
+          amountDisplay,
+          amountMinor,
+          currency: currentVer?.currency || p.project.currency || "USD",
+          durationWeeks: currentVer?.estimatedDurationWeeks || null,
+          status: p.status,
+          statusLabel: getStatusLabel(p.status),
+          statusBadgeColor: getStatusBadgeColor(p.status),
+          rejectionFeedback: p.rejectionFeedback || null,
+          categoryIcon: getCategoryIcon(p.project.category),
+          submittedAt: p.submittedAt ? p.submittedAt.toISOString() : null,
+          submittedDate: p.submittedAt ? new Date(p.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Draft",
+          submittedTime: p.submittedAt ? new Date(p.submittedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "",
+          lastActivityAt: p.lastActivityAt.toISOString(),
+          currentVersionNumber: currentVer?.versionNumber ?? currentVer?.version ?? 1,
+          nextAction: nextAct,
+          hasClientInitiated: hasClientInitiated || p.status === ProposalStatus.INTERVIEW_DISCUSSION || p.status === ProposalStatus.ACCEPTED,
+          messagesCount: convMessages.length,
+          conversationMessages: convMessages.map((m: any) => ({
+            id: m.id,
+            senderId: m.senderId,
+            senderRole: m.senderRole,
+            content: m.mediatedContent || m.originalContent || "",
+            timestamp: new Date(m.createdAt).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            }),
+          })),
+        client: (() => {
+          const clientPrefs = (p.project.client.preferences as any) || {};
+          const clientName = p.project.client.name || "Client";
+          const companyName = clientPrefs.companyName || clientPrefs.company || clientName;
+          const memberSince = p.project.client.createdAt ? new Date(p.project.client.createdAt).getFullYear() : 2026;
+          const totalHires = Array.isArray(p.project.client.clientAgreements) ? p.project.client.clientAgreements.length : 0;
+          return {
+            id: p.project.client.id,
+            name: clientName,
+            companyName: companyName,
+            verified: Boolean(clientPrefs.verified || p.project.client.email),
+            industry: p.project.category || "General",
+            companySize: clientPrefs.companySize || "",
+            location: p.project.location || clientPrefs.location || "Remote",
+            postedDate: p.project.createdAt ? new Date(p.project.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recently",
+            totalHires: totalHires,
+            memberSince: memberSince,
+            avatarLetter: clientName ? clientName[0].toUpperCase() : "C",
+            avatarBg: "bg-indigo-600 text-white",
+          };
+        })(),
         clientBrief: (() => {
           const brief = (p.project.briefVersions?.[0]?.structuredBrief as any) || {};
           const technicalRequirements = Array.isArray(brief.scopeOfWork) && brief.scopeOfWork.length > 0
@@ -432,14 +483,15 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
             name: a.file.originalName,
             fileType: a.file.mime,
             fileSize: `${Math.round(a.file.sizeBytes / 1024)} KB`,
-            uploadDate: "Recently",
+            uploadDate: a.file.createdAt ? new Date(a.file.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Recently",
+            downloadUrl: `/api/freelancer/files/${a.file.id}`,
           })),
           milestones: (Array.isArray(currentVer?.milestonesJson) ? (currentVer.milestonesJson as any[]) : []).map((m: any, idx: number) => ({
             id: `m-${idx + 1}`,
             orderIndex: idx + 1,
             title: m.title || `Milestone ${idx + 1}`,
-            amount: m.amountMinor ? `$${(m.amountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "$0",
-            duration: "2 weeks",
+            amount: m.amountMinor ? `$${(m.amountMinor / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}` : (m.amount ? (String(m.amount).startsWith("$") ? m.amount : `$${parseFloat(m.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}`) : "$0.00"),
+            duration: m.durationWeeks ? `${m.durationWeeks} weeks` : (m.days ? `${Math.ceil(m.days / 7)} weeks` : "2 weeks"),
             acceptanceCriteria: m.criteria || [],
           })),
         },
@@ -454,15 +506,178 @@ router.get("/", async (req: Request, res: Response, next: NextFunction): Promise
           expiresAt: "Open for review",
         } : undefined,
         techTags: p.project.skills || [],
-        messagesCount: 0,
-        activityTrail: ((p as any).events || []).map((e: any) => ({
-          id: e.id,
-          title: e.type,
-          description: `Proposal event: ${e.toStatus || e.type}`,
-          actor: e.actorRole === Role.CLIENT ? p.project.client.name : "Freelancer",
-          timestamp: new Date(e.createdAt).toLocaleDateString(),
-          type: (e.toStatus === "ACCEPTED" ? "ACCEPTED" : e.toStatus === "REJECTED" ? "REJECTED" : "SUBMITTED") as any,
-        })),
+        activityTrail: (() => {
+          const eventsList = (p.events || []) as any[];
+          const trail: any[] = [];
+          const clientName = p.project.client.name || "Client";
+
+          // Format existing DB events
+          for (const e of eventsList) {
+            const actor = e.actorRole === Role.CLIENT ? clientName : "Freelancer";
+            const dateStr = new Date(e.createdAt).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            });
+
+            if (e.type === "CREATED") {
+              trail.push({
+                id: e.id,
+                title: "Draft Proposal Created",
+                description: "Initial proposal draft initialized with scope and milestone estimate.",
+                actor,
+                timestamp: dateStr,
+                type: "CREATED",
+              });
+            } else if (e.type === "SUBMITTED" || e.toStatus === ProposalStatus.SUBMITTED) {
+              trail.push({
+                id: e.id,
+                title: "Proposal Submitted to Client",
+                description: `Formal candidate proposal (${amountDisplay}) submitted for client review.`,
+                actor,
+                timestamp: dateStr,
+                type: "SUBMITTED",
+              });
+            } else if (e.type === "COUNTEROFFER" || e.toStatus === ProposalStatus.COUNTEROFFER_RECEIVED) {
+              trail.push({
+                id: e.id,
+                title: "Client Counteroffer Received",
+                description: "Client proposed adjusted scope and milestone terms.",
+                actor,
+                timestamp: dateStr,
+                type: "COUNTEROFFER",
+              });
+            } else if (e.toStatus === ProposalStatus.SHORTLISTED) {
+              trail.push({
+                id: e.id,
+                title: "Proposal Shortlisted",
+                description: "Client shortlisted your proposal for final selection.",
+                actor,
+                timestamp: dateStr,
+                type: "SHORTLISTED",
+              });
+            } else if (e.toStatus === ProposalStatus.ACCEPTED) {
+              trail.push({
+                id: e.id,
+                title: "Proposal Accepted & Contract Ratified",
+                description: "Client approved your proposal terms. Project workspace activated.",
+                actor,
+                timestamp: dateStr,
+                type: "ACCEPTED",
+              });
+            } else if (e.toStatus === ProposalStatus.REJECTED) {
+              trail.push({
+                id: e.id,
+                title: "Proposal Declined",
+                description: p.rejectionFeedback ? `Declined: "${p.rejectionFeedback}"` : "Client declined this proposal.",
+                actor,
+                timestamp: dateStr,
+                type: "REJECTED",
+              });
+            } else {
+              trail.push({
+                id: e.id,
+                title: e.type.replace(/_/g, " "),
+                description: `Proposal event: ${e.toStatus || e.type}`,
+                actor,
+                timestamp: dateStr,
+                type: e.toStatus || "SUBMITTED",
+              });
+            }
+          }
+
+          // If the proposal is SUBMITTED or UNDER_REVIEW, synthesize missing progression entries
+          const hasSubmitted = trail.some((t) => t.type === "SUBMITTED");
+          if (!hasSubmitted && (p.submittedAt || p.status !== ProposalStatus.DRAFT)) {
+            const subDate = p.submittedAt ? new Date(p.submittedAt) : new Date(p.createdAt);
+            trail.push({
+              id: `ev-sub-${p.id}`,
+              title: "Proposal Formally Submitted",
+              description: `Candidate terms and quote of ${amountDisplay} submitted to client for bilateral review.`,
+              actor: "Freelancer",
+              timestamp: subDate.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              }),
+              type: "SUBMITTED",
+            });
+          }
+
+          if (p.status === ProposalStatus.UNDER_REVIEW) {
+            trail.push({
+              id: `ev-review-${p.id}`,
+              title: "Under Client Review",
+              description: `${clientName} opened and is evaluating your proposed milestones and technical approach.`,
+              actor: clientName,
+              timestamp: new Date(p.lastActivityAt || p.submittedAt || p.createdAt).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              }),
+              type: "VIEWED",
+            });
+          } else if (p.status === ProposalStatus.SHORTLISTED) {
+            trail.push({
+              id: `ev-shortlist-${p.id}`,
+              title: "Candidate Shortlisted",
+              description: `${clientName} shortlisted this proposal for final agreement.`,
+              actor: clientName,
+              timestamp: new Date(p.lastActivityAt || p.createdAt).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              }),
+              type: "SHORTLISTED",
+            });
+          } else if (p.status === ProposalStatus.ACCEPTED) {
+            const hasAccepted = trail.some((t) => t.type === "ACCEPTED");
+            if (!hasAccepted) {
+              trail.push({
+                id: `ev-accepted-${p.id}`,
+                title: "Proposal Accepted & Contract Ratified",
+                description: `${clientName} approved your proposal terms. Project workspace activated.`,
+                actor: clientName,
+                timestamp: new Date(p.lastActivityAt || p.createdAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                }),
+                type: "ACCEPTED",
+              });
+            }
+          } else if (p.status === ProposalStatus.REJECTED) {
+            const hasRejected = trail.some((t) => t.type === "REJECTED");
+            if (!hasRejected) {
+              trail.push({
+                id: `ev-rejected-${p.id}`,
+                title: "Proposal Declined",
+                description: p.rejectionFeedback ? `Declined with feedback: "${p.rejectionFeedback}"` : `${clientName} declined this proposal.`,
+                actor: clientName,
+                timestamp: new Date(p.lastActivityAt || p.createdAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                }),
+                type: "REJECTED",
+              });
+            }
+          }
+
+          return trail;
+        })(),
       };
     });
 
@@ -650,13 +865,29 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction): Prom
   try {
     const { id } = req.params;
     const freelancerId = req.user!.id;
+    const userWhere = {
+      OR: [
+        { freelancerId },
+        ...(req.user!.email ? [{ freelancer: { email: { equals: req.user!.email, mode: "insensitive" as const } } }] : []),
+      ],
+    };
 
     const proposal = await prisma.proposal.findFirst({
-      where: { id, freelancerId },
+      where: { id, ...userWhere },
       include: {
         project: {
           include: {
-            client: { select: { id: true, name: true } },
+            client: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                createdAt: true,
+                preferences: true,
+                avatarUrl: true,
+                clientAgreements: { select: { id: true } },
+              },
+            },
             briefVersions: { orderBy: { version: "desc" }, take: 1 },
             projectMilestones: { orderBy: { orderIndex: "asc" } },
           },
