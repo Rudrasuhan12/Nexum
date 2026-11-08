@@ -10,47 +10,79 @@ import {
   Briefcase,
   DollarSign,
   Building2,
-  Sparkles,
-  Layers,
   Clock,
+  RotateCcw,
+  Eye,
+  Layers,
+  AlertCircle,
 } from "lucide-react";
 import { FreelancerProposalItem } from "@/lib/freelancer-proposals-types";
-import { searchFreelancerProjects } from "@/lib/api-client";
+import { searchFreelancerProjects, fetchFreelancerProposals } from "@/lib/api-client";
 
 interface ProposalBuilderModalProps {
+  existingProposals?: FreelancerProposalItem[];
+  onSelectExistingProposal?: (proposalId: string) => void;
   onClose: () => void;
   onSubmitNewProposal?: (newProposal: FreelancerProposalItem) => void;
 }
 
 export default function ProposalBuilderModal({
+  existingProposals: propExistingProposals,
+  onSelectExistingProposal,
   onClose,
 }: ProposalBuilderModalProps) {
   const router = useRouter();
   const [availableProjects, setAvailableProjects] = useState<any[]>([]);
+  const [existingProposals, setExistingProposals] = useState<FreelancerProposalItem[]>(
+    propExistingProposals || []
+  );
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
 
   useEffect(() => {
     let mounted = true;
-    async function loadOpportunities() {
+    async function loadData() {
       try {
-        const res = await searchFreelancerProjects({ limit: 50 });
-        if (mounted && res.success && res.projects && res.projects.length > 0) {
-          setAvailableProjects(res.projects);
-          setSelectedProjectId(res.projects[0].id);
+        const [projRes, propRes] = await Promise.all([
+          searchFreelancerProjects({ limit: 50 }),
+          propExistingProposals && propExistingProposals.length > 0
+            ? Promise.resolve({ success: true, proposals: propExistingProposals })
+            : fetchFreelancerProposals({ pageSize: 50 }),
+        ]);
+
+        if (mounted && projRes.success && projRes.projects && projRes.projects.length > 0) {
+          setAvailableProjects(projRes.projects);
+          setSelectedProjectId(projRes.projects[0].id);
+        }
+
+        if (mounted && propRes.success && propRes.proposals) {
+          setExistingProposals(propRes.proposals as any as FreelancerProposalItem[]);
         }
       } catch (err) {
-        console.warn("Could not fetch available opportunities", err);
+        console.warn("Could not fetch available opportunities or proposals", err);
       } finally {
         if (mounted) setIsLoadingProjects(false);
       }
     }
-    loadOpportunities();
+    loadData();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [propExistingProposals]);
+
+  const proposalMap = useMemo(() => {
+    const map = new Map<string, FreelancerProposalItem>();
+    for (const p of existingProposals) {
+      if (p.projectId) {
+        // Prioritize non-withdrawn proposals
+        if (!map.has(p.projectId) || p.status !== "WITHDRAWN") {
+          map.set(p.projectId, p);
+        }
+      }
+    }
+    return map;
+  }, [existingProposals]);
 
   const filteredProjects = useMemo(() => {
     if (!searchQuery.trim()) return availableProjects;
@@ -68,8 +100,43 @@ export default function ProposalBuilderModal({
     return availableProjects.find((p) => p.id === selectedProjectId) || null;
   }, [availableProjects, selectedProjectId]);
 
-  const handleContinue = () => {
+  const selectedExistingProposal = useMemo(() => {
+    if (!selectedProjectId) return null;
+    return proposalMap.get(selectedProjectId) || null;
+  }, [proposalMap, selectedProjectId]);
+
+  const isSelectedActiveSubmitted =
+    selectedExistingProposal &&
+    selectedExistingProposal.status !== "WITHDRAWN" &&
+    selectedExistingProposal.status !== "REJECTED";
+
+  const isSelectedRejected =
+    selectedExistingProposal && selectedExistingProposal.status === "REJECTED";
+
+  const handleAction = () => {
     if (!selectedProjectId) return;
+
+    if (isSelectedActiveSubmitted) {
+      // Direct user to view their existing proposal without allowing duplicate draft
+      onClose();
+      if (onSelectExistingProposal) {
+        onSelectExistingProposal(selectedExistingProposal.id);
+      } else {
+        router.push(`/freelancer/dashboard?tab=proposals&id=${selectedExistingProposal.id}`);
+      }
+      return;
+    }
+
+    if (isSelectedRejected) {
+      // Route user to revise their rejected proposal with feedback
+      onClose();
+      router.push(
+        `/freelancer/projects/${selectedProjectId}/apply?revisionOf=${selectedExistingProposal.id}`
+      );
+      return;
+    }
+
+    // Normal application
     onClose();
     router.push(`/freelancer/projects/${selectedProjectId}/apply`);
   };
@@ -136,22 +203,46 @@ export default function ProposalBuilderModal({
                 : (p.budgetDisplay || "Negotiable");
               const clientOrg = p.client?.company || p.client?.name || "Client Organization";
 
+              const existing = proposalMap.get(p.id);
+              const hasActiveProp =
+                existing && existing.status !== "WITHDRAWN" && existing.status !== "REJECTED";
+              const hasRejectedProp = existing && existing.status === "REJECTED";
+
               return (
                 <div
                   key={p.id}
                   onClick={() => setSelectedProjectId(p.id)}
                   className={`p-4 rounded-xl border transition-all cursor-pointer relative ${
                     isSelected
-                      ? "bg-indigo-50/60 border-indigo-400 ring-2 ring-indigo-500/20 shadow-xs"
+                      ? hasActiveProp
+                        ? "bg-amber-50/60 border-amber-400 ring-2 ring-amber-500/20 shadow-xs"
+                        : hasRejectedProp
+                        ? "bg-rose-50/60 border-rose-400 ring-2 ring-rose-500/20 shadow-xs"
+                        : "bg-indigo-50/60 border-indigo-400 ring-2 ring-indigo-500/20 shadow-xs"
                       : "bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/50"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1.5 min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs font-extrabold text-slate-900 leading-snug line-clamp-1">
                           {p.title}
                         </span>
+
+                        {/* Status Badges for Already Applied Projects */}
+                        {hasActiveProp && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-300 shrink-0">
+                            <Clock className="w-3 h-3 text-amber-700" />
+                            <span>Already Applied • Under Review</span>
+                          </span>
+                        )}
+
+                        {hasRejectedProp && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-800 bg-rose-100 px-2 py-0.5 rounded-full border border-rose-200 shrink-0">
+                            <RotateCcw className="w-3 h-3 text-rose-700" />
+                            <span>Declined • Revision Available</span>
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
@@ -174,6 +265,19 @@ export default function ProposalBuilderModal({
                         )}
                       </div>
 
+                      {/* Information text if already applied */}
+                      {hasActiveProp && (
+                        <p className="text-[11px] text-amber-900 font-medium pt-0.5">
+                          You have an active proposal submitted ({existing.offer?.priceDisplay || "Fixed quote"}). The client is currently evaluating your offer.
+                        </p>
+                      )}
+
+                      {hasRejectedProp && (
+                        <p className="text-[11px] text-rose-800 font-medium pt-0.5">
+                          The client declined your prior proposal. You can address their feedback and submit an updated revision.
+                        </p>
+                      )}
+
                       {/* Required skills */}
                       {Array.isArray(p.skills) && p.skills.length > 0 && (
                         <div className="flex flex-wrap items-center gap-1 pt-1">
@@ -194,16 +298,30 @@ export default function ProposalBuilderModal({
                       )}
                     </div>
 
-                    {/* Radio Selection Indicator */}
+                    {/* Selection Indicator */}
                     <div className="shrink-0 mt-0.5">
                       <div
                         className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
                           isSelected
-                            ? "bg-[#4f46e5] text-white"
+                            ? hasActiveProp
+                              ? "bg-amber-600 text-white"
+                              : hasRejectedProp
+                              ? "bg-rose-600 text-white"
+                              : "bg-[#4f46e5] text-white"
                             : "border-2 border-slate-300 bg-white"
                         }`}
                       >
-                        {isSelected && <CheckCircle2 className="w-4 h-4 fill-[#4f46e5] text-white" />}
+                        {isSelected && (
+                          <CheckCircle2
+                            className={`w-4 h-4 fill-current ${
+                              hasActiveProp
+                                ? "text-amber-600 fill-white"
+                                : hasRejectedProp
+                                ? "text-rose-600 fill-white"
+                                : "text-indigo-600 fill-white"
+                            }`}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -214,7 +332,7 @@ export default function ProposalBuilderModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between pt-3 border-t border-slate-100 mt-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100 mt-auto">
           <div className="text-xs text-slate-500 truncate max-w-[280px]">
             {selectedProject ? (
               <span>
@@ -225,7 +343,7 @@ export default function ProposalBuilderModal({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
               type="button"
               onClick={onClose}
@@ -234,15 +352,35 @@ export default function ProposalBuilderModal({
               Cancel
             </button>
 
-            <button
-              type="button"
-              disabled={!selectedProjectId}
-              onClick={handleContinue}
-              className="py-2 px-4 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-xs font-bold text-white transition shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <span>Continue to Proposal Application</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            {isSelectedActiveSubmitted ? (
+              <button
+                type="button"
+                onClick={handleAction}
+                className="py-2 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white transition shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>View Submitted Proposal</span>
+              </button>
+            ) : isSelectedRejected ? (
+              <button
+                type="button"
+                onClick={handleAction}
+                className="py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white transition shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Address Feedback & Reapply</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={!selectedProjectId}
+                onClick={handleAction}
+                className="py-2 px-4 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-xs font-bold text-white transition shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <span>Continue to Proposal Application</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
       </div>

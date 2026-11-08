@@ -531,6 +531,11 @@ export default function FreelancerProposalsView({
 
       {showBuilderModal && (
         <ProposalBuilderModal
+          existingProposals={proposals}
+          onSelectExistingProposal={(propId) => {
+            setSelectedProposalId(propId);
+            setShowBuilderModal(false);
+          }}
           onClose={() => setShowBuilderModal(false)}
           onSubmitNewProposal={handleAddNewProposal}
         />

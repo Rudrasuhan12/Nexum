@@ -51,6 +51,7 @@ function FreelancerApplyContent() {
   const searchParams = useSearchParams();
   const revisionOf = searchParams.get("revisionOf");
   const [revisionFeedback, setRevisionFeedback] = useState<string | null>(null);
+  const [existingActiveProposal, setExistingActiveProposal] = useState<any | null>(null);
 
   // Project state
   const [project, setProject] = useState<any>(null);
@@ -119,6 +120,33 @@ function FreelancerApplyContent() {
     }
     loadPastProposal();
   }, [revisionOf]);
+
+  // Check if freelancer already has an active submitted proposal for this project
+  useEffect(() => {
+    if (!projectId || revisionOf) return;
+    async function checkExisting() {
+      try {
+        const res = await fetch("/api/freelancer/proposals", { credentials: "include" });
+        if (res.ok) {
+          const json = await res.json();
+          if (Array.isArray(json.proposals)) {
+            const active = json.proposals.find(
+              (p: any) =>
+                p.projectId === projectId &&
+                p.status !== "WITHDRAWN" &&
+                p.status !== "REJECTED"
+            );
+            if (active) {
+              setExistingActiveProposal(active);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Could not check existing proposal for project:", err);
+      }
+    }
+    checkExisting();
+  }, [projectId, revisionOf]);
 
   // Fetch project details
   useEffect(() => {
@@ -277,6 +305,11 @@ function FreelancerApplyContent() {
       return;
     }
 
+    if (existingActiveProposal && !revisionOf) {
+      showToast("You already have an active proposal submitted for this project.");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       const priceMinor = Math.round(cleanQuote * 100);
@@ -410,6 +443,36 @@ function FreelancerApplyContent() {
               <span>Back to Project Overview</span>
             </Link>
           </div>
+
+          {/* Active Proposal Notice Banner if already applied without rejection */}
+          {existingActiveProposal && !revisionOf && (
+            <div className="p-5 rounded-2xl bg-amber-50/90 border border-amber-300 shadow-2xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  <h3 className="text-xs font-bold text-amber-950 uppercase tracking-wider">
+                    Proposal Already Submitted & Under Client Review
+                  </h3>
+                </div>
+                <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300">
+                  Status: {existingActiveProposal.statusLabel || existingActiveProposal.status}
+                </span>
+              </div>
+              <p className="text-xs text-amber-900 leading-relaxed font-medium">
+                You have already submitted an active proposal for this project ({existingActiveProposal.offer?.priceDisplay || existingActiveProposal.amountDisplay || "Fixed quote"}). 
+                The client is currently reviewing your offer. Clients accept one active proposal per freelancer at a time.
+              </p>
+              <div className="pt-1 flex items-center justify-end">
+                <Link
+                  href="/freelancer/dashboard?tab=proposals"
+                  className="py-1.5 px-3.5 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5"
+                >
+                  <span>View in My Proposals</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+          )}
 
           {/* Reapplication Notice Banner */}
           {revisionOf && (
@@ -937,13 +1000,18 @@ function FreelancerApplyContent() {
                 <div className="flex items-center gap-3 w-full sm:w-auto">
                   <button
                     type="submit"
-                    disabled={isSubmitting || !isSumMatching}
+                    disabled={isSubmitting || !isSumMatching || Boolean(existingActiveProposal && !revisionOf)}
                     className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-2 cursor-pointer active:scale-98"
                   >
                     {isSubmitting ? (
                       <>
                         <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         <span>Submitting Proposal to Client...</span>
+                      </>
+                    ) : existingActiveProposal && !revisionOf ? (
+                      <>
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        <span>Proposal Already Submitted (Under Review)</span>
                       </>
                     ) : (
                       <>
