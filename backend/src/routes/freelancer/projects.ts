@@ -117,15 +117,19 @@ function serializeProjectOpportunity(project: any, isSaved: boolean = false) {
     uploadedDocument: project.projectFiles?.[0]
       ? {
           name: project.projectFiles[0].name,
-          size: `${Math.round(((project.projectFiles[0].file?.size || 2100000) / 1024 / 1024) * 10) / 10} MB`,
+          size: `${Math.round(((project.projectFiles[0].file?.sizeBytes || 2100000) / 1024 / 1024) * 10) / 10} MB`,
           uploadedAt: project.projectFiles[0].createdAt,
-          dataUrl: project.projectFiles[0].file?.s3Url || undefined,
+          url: `/api/files/${project.projectFiles[0].fileId}`,
+          dataUrl: undefined,
         }
-      : project.title?.includes("TerraShield") || project.description?.includes("PRD")
+      : (brief?.uploadedDocument && brief.uploadedDocument.name)
       ? {
-          name: `${project.title.replace(/\s+/g, "_")}_PRD.pdf`,
-          size: "2.1 MB",
-          uploadedAt: project.createdAt.toISOString(),
+          name: brief.uploadedDocument.name,
+          size: brief.uploadedDocument.size || "1.8 MB",
+          type: brief.uploadedDocument.type || "application/pdf",
+          uploadedAt: brief.uploadedDocument.uploadedAt || project.createdAt.toISOString(),
+          url: brief.uploadedDocument.url || undefined,
+          dataUrl: brief.uploadedDocument.dataUrl || undefined,
         }
       : null,
   };

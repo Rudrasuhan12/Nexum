@@ -89,11 +89,7 @@ function FreelancerProjectDetailsContent() {
             scopeOfWork: generic.scopeOfWork || [],
             detailedRequirements: generic.detailedRequirements || generic.briefAndPrd?.functionalRequirements?.join("\n") || null,
             milestones: generic.milestones || [],
-            uploadedDocument: generic.briefAndPrd?.uploadedDocument || (generic.title?.includes("TerraShield") ? {
-              name: "TerraShield_-_AI-Driven_Multi-Hazard_Risk_and_Relocation_Decision-Support_System_PRD.pdf",
-              size: "2.1 MB",
-              uploadedAt: "2026-11-07T08:51:08.468Z",
-            } : null),
+            uploadedDocument: generic.uploadedDocument || generic.briefAndPrd?.uploadedDocument || null,
           });
           setIsLoading(false);
           return;
@@ -325,8 +321,8 @@ function FreelancerProjectDetailsContent() {
                 </div>
               </div>
 
-              {/* Original Client Specification Document (PRD / Intake Doc) */}
-              {project.uploadedDocument && (
+              {/* Original Client Specification Document (PRD / Intake Doc) - Only shown if uploaded by client */}
+              {project.uploadedDocument && Boolean(project.uploadedDocument.name) && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <h2 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">

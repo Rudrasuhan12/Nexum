@@ -523,8 +523,16 @@ function PostNewProjectContent() {
         body: formData,
       });
       const json = await res.json();
-      if (json.success && json.data) {
-        const d = json.data;
+      if (json.success) {
+        if (json.uploadedDocument) {
+          setUploadedDocAttachment((prev) => ({
+            ...fileMeta,
+            ...(prev?.dataUrl ? { dataUrl: prev.dataUrl } : {}),
+            ...json.uploadedDocument,
+          }));
+        }
+        if (json.data) {
+          const d = json.data;
         const isGarbled = (s: string) => /[\uFFFD]|^PK|\[Content_Types\]|\.xml/i.test(s);
 
         if (d.title && !isGarbled(d.title)) {
@@ -622,6 +630,7 @@ function PostNewProjectContent() {
           setBudgetType("FIXED");
         }
         showToast("PRD parsed! Fields auto-filled below. You can freely edit any details manually.");
+        }
       } else {
         showToast(json.error?.message || "Could not parse document. You can type manually.");
       }
