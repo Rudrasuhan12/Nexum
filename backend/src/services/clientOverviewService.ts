@@ -2267,6 +2267,11 @@ export class ClientOverviewService {
                 orderBy: { version: "desc" },
                 take: 1,
               },
+              attachments: {
+                include: {
+                  file: true,
+                },
+              },
             },
           },
           changeRequests: true,
@@ -2310,6 +2315,14 @@ export class ClientOverviewService {
               latestVersion?.coverLetter ||
               "Experienced developer ready to execute deliverables with automated test assert logs.",
             milestones: dbProj.projectMilestones,
+            attachments: (prop.attachments || []).map((att: any) => ({
+              id: att.id,
+              name: att.file?.originalName || "Proposal Attachment",
+              size: `${Math.round(((att.file?.sizeBytes || 1024) / 1024 / 1024) * 10) / 10} MB`,
+              sizeBytes: att.file?.sizeBytes || 0,
+              type: att.file?.mime || "application/pdf",
+              url: `/api/files/${att.fileId}`,
+            })),
           };
         });
 

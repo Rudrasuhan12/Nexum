@@ -40,6 +40,12 @@ export interface ProposalItem {
   coverLetter: string;
   status: "ACCEPTED" | "UNDER_REVIEW" | "DECLINED";
   submittedDate: string;
+  attachments?: Array<{
+    id: string;
+    name: string;
+    size?: string;
+    url: string;
+  }>;
 }
 
 export interface ScopeChangeItem {

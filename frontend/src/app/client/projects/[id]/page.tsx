@@ -271,6 +271,7 @@ function ProjectWorkspaceContent() {
               coverLetter: p.coverLetter || "Experienced developer ready to execute deliverables with automated test assert logs.",
               status: p.status === "ACCEPTED" ? "ACCEPTED" : (p.status === "REJECTED" || p.status === "DECLINED") ? "DECLINED" : "UNDER_REVIEW",
               submittedDate: "Recent",
+              attachments: p.attachments || [],
             })),
             workspaceQuestions: live.workspaceQuestions || [],
             changes: live.changeRequests || [],
@@ -1193,6 +1194,42 @@ function ProjectWorkspaceContent() {
                       <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed">
                         {prop.coverLetter}
                       </p>
+
+                      {/* Attached Proposal Document (Object Storage) */}
+                      {prop.attachments && prop.attachments.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>Attached Proposal Document</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {prop.attachments.map((att: any) => (
+                              <div
+                                key={att.id}
+                                className="flex items-center gap-3 px-3 py-2 bg-indigo-50/70 border border-indigo-100/80 rounded-xl"
+                              >
+                                <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                                <div className="text-xs">
+                                  <div className="font-semibold text-slate-800 line-clamp-1 max-w-[200px]">
+                                    {att.name}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-mono">{att.size}</div>
+                                </div>
+                                <a
+                                  href={att.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={att.name}
+                                  className="ml-2 inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-indigo-600 shadow-2xs transition"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  <span>Download</span>
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Proposal Action Controls for Client */}
                       <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">

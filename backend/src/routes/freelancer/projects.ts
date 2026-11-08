@@ -250,7 +250,7 @@ async function handleSearchProjects(req: Request, res: Response, next: NextFunct
 
     const skip = (page - 1) * limit;
 
-    const [total, projects, userBookmarks] = await Promise.all([
+    const [total, projects, userBookmarks, freelancerProfile, submittedProposals] = await Promise.all([
       prisma.project.count({ where }),
       prisma.project.findMany({
         where,
@@ -266,13 +266,38 @@ async function handleSearchProjects(req: Request, res: Response, next: NextFunct
         where: { freelancerId },
         select: { projectId: true },
       }),
+      prisma.freelancerProfile.findUnique({
+        where: { userId: freelancerId },
+        select: { skills: true },
+      }),
+      prisma.proposal.findMany({
+        where: { freelancerId, status: { not: "WITHDRAWN" } },
+        select: { projectId: true },
+      }),
     ]);
 
     const bookmarkedSet = new Set(userBookmarks.map((b) => b.projectId));
+    const appliedSet = new Set(submittedProposals.map((pr) => pr.projectId));
+    const freelancerSkills = (freelancerProfile?.skills || []).map((s: string) => s.toLowerCase());
 
-    const serializedProjects = projects.map((p) =>
-      serializeProjectOpportunity(p, bookmarkedSet.has(p.id))
-    );
+    const serializedProjects = projects.map((p) => {
+      const serialized = serializeProjectOpportunity(p, bookmarkedSet.has(p.id));
+      let matchScore = 0;
+      const projectSkills = (p.skills || []).map((s: string) => s.toLowerCase());
+      if (projectSkills.length > 0 && freelancerSkills.length > 0) {
+        const matched = projectSkills.filter((ps: string) =>
+          freelancerSkills.some((fs: string) => fs.includes(ps) || ps.includes(fs))
+        );
+        if (matched.length > 0) {
+          matchScore = Math.round((matched.length / projectSkills.length) * 100);
+        }
+      }
+      return {
+        ...serialized,
+        matchScore,
+        isApplied: appliedSet.has(p.id),
+      };
+    });
 
     res.status(200).json({
       success: true,

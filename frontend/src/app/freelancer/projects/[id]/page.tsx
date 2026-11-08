@@ -540,10 +540,15 @@ function FreelancerProjectDetailsContent() {
                   <button
                     type="button"
                     onClick={handleApply}
-                    className="px-5 py-2.5 rounded-xl bg-[#0f172a] hover:bg-[#4f46e5] text-white font-bold text-xs transition cursor-pointer shadow-xs flex items-center gap-1.5 active:scale-98"
+                    disabled={project.isApplied}
+                    className={`px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 active:scale-98 ${
+                      project.isApplied
+                        ? "bg-slate-100 text-slate-500 border border-slate-200 cursor-default"
+                        : "bg-[#0f172a] hover:bg-[#4f46e5] text-white cursor-pointer"
+                    }`}
                   >
-                    <span>Apply / Submit Proposal</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>{project.isApplied ? "Applied ✓" : "Apply / Submit Proposal"}</span>
+                    {!project.isApplied && <ArrowRight className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>

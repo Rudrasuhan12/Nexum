@@ -13,6 +13,8 @@ import {
 } from "../../lib/errors.js";
 import { appendAuditEvent } from "../../lib/audit.js";
 import { defaultStorage } from "../../lib/files.js";
+import { s3Client, S3_BUCKET } from "../../lib/storage.js";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { canonicalJson, hashVersion } from "../../domain/proposals/canonicalJson.js";
 import { transitionProposal } from "../../domain/proposals/stateMachine.js";
 import { getNextAction } from "../../domain/proposals/nextAction.js";
@@ -1535,7 +1537,24 @@ router.post(
       const storageKey = `proposals/${id}/${Date.now()}_${crypto.randomBytes(6).toString("hex")}${fileExt}`;
       const sha256 = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
 
-      await defaultStorage.save(storageKey, req.file.buffer);
+      // Persist to S3 Object Storage if configured, or default storage adapter
+      if (s3Client) {
+        try {
+          await s3Client.send(
+            new PutObjectCommand({
+              Bucket: S3_BUCKET,
+              Key: storageKey,
+              Body: req.file.buffer,
+              ContentType: magic.mime,
+            })
+          );
+        } catch (err) {
+          console.warn("[Proposals] S3 upload failed, falling back to disk:", err);
+          await defaultStorage.save(storageKey, req.file.buffer);
+        }
+      } else {
+        await defaultStorage.save(storageKey, req.file.buffer);
+      }
 
       const [fileRecord, attachment] = await prisma.$transaction(async (tx) => {
         const f = await tx.file.create({

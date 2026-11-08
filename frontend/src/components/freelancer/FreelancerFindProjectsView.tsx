@@ -106,11 +106,13 @@ function loadLocalOpportunities(): ProjectOpportunity[] {
 interface FreelancerFindProjectsViewProps {
   onApplyProject: (project: ProjectOpportunity) => void;
   showToast: (msg: string) => void;
+  appliedProjectIds?: string[];
 }
 
 export default function FreelancerFindProjectsView({
   onApplyProject,
   showToast,
+  appliedProjectIds: parentAppliedIds,
 }: FreelancerFindProjectsViewProps) {
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -130,7 +132,11 @@ export default function FreelancerFindProjectsView({
 
   // Interaction state - initialized with real published client projects
   const [savedProjectIds, setSavedProjectIds] = useState<string[]>([]);
-  const [appliedProjectIds, setAppliedProjectIds] = useState<string[]>([]);
+  const [internalAppliedIds, setInternalAppliedIds] = useState<string[]>([]);
+  const appliedProjectIds = useMemo(() => {
+    return Array.from(new Set([...(parentAppliedIds || []), ...internalAppliedIds]));
+  }, [parentAppliedIds, internalAppliedIds]);
+
   const [backendProjects, setBackendProjects] = useState<ProjectOpportunity[]>(() => loadLocalOpportunities());
   const [isLoading, setIsLoading] = useState(true);
   const [isLiveLoaded, setIsLiveLoaded] = useState(false);
@@ -177,7 +183,7 @@ export default function FreelancerFindProjectsView({
               hiringState:
                 (p.proposalsCount || 0) > 10 ? "Urgent Need" : (p.proposalsCount || 0) > 5 ? "1 Interviewing" : "Still Selecting",
               postedTime: p.postedAt ? new Date(p.postedAt).toLocaleDateString() : "Recently",
-              matchScore: 92,
+              matchScore: typeof (p as any).matchScore === "number" ? (p as any).matchScore : 0,
               description: p.description || "",
               skills: Array.isArray(p.skills) ? p.skills : [],
               isVerified: Boolean(p.client?.isVerified),
@@ -195,6 +201,10 @@ export default function FreelancerFindProjectsView({
         setBackendProjects(Array.from(map.values()));
         if (res.success && res.projects) {
           setSavedProjectIds(res.projects.filter((p) => p.isSaved).map((p) => p.id));
+          const serverApplied = res.projects.filter((p: any) => p.isApplied).map((p: any) => p.id);
+          if (serverApplied.length > 0) {
+            setInternalAppliedIds((prev) => Array.from(new Set([...prev, ...serverApplied])));
+          }
         }
         setIsLiveLoaded(true);
       })
@@ -214,6 +224,19 @@ export default function FreelancerFindProjectsView({
       isCurrent = false;
     };
   }, [searchQuery, locationQuery, selectedCategory, sortBy]);
+
+  // Support deep linking to apply modal from /freelancer/projects/[id]
+  useEffect(() => {
+    if (typeof window === "undefined" || !isLiveLoaded) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const applyId = urlParams.get("applyId");
+    if (applyId) {
+      const target = backendProjects.find((p) => p.id === applyId);
+      if (target) {
+        onApplyProject(target);
+      }
+    }
+  }, [backendProjects, isLiveLoaded, onApplyProject]);
 
   // Reset all filters
   const handleResetFilters = () => {
@@ -246,10 +269,8 @@ export default function FreelancerFindProjectsView({
       showToast(`You have already submitted a proposal for ${opp.title}.`);
       return;
     }
-    // Call parent handler to open modal/flow
+    // Call parent handler to open modal/flow - do NOT prematurely mark as applied!
     onApplyProject(opp);
-    // Mark as applied
-    setAppliedProjectIds((prev) => [...prev, opp.id]);
   };
 
   // Filter & Sort Logic
@@ -758,10 +779,12 @@ export default function FreelancerFindProjectsView({
                         <span className="px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-slate-100 text-slate-700 border border-slate-200/80">
                           {opp.experienceLevel}
                         </span>
-                        <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
-                          <Sparkles className="w-2.5 h-2.5 text-purple-600" />
-                          <span>{opp.matchScore}% Match</span>
-                        </span>
+                        {opp.matchScore > 0 && (
+                          <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
+                            <Sparkles className="w-2.5 h-2.5 text-purple-600" />
+                            <span>{opp.matchScore}% Match</span>
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2 text-slate-400 text-[11px]">
@@ -904,10 +927,12 @@ export default function FreelancerFindProjectsView({
                           <span className="px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-slate-100 text-slate-700 border border-slate-200/80">
                             {opp.experienceLevel}
                           </span>
-                          <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
-                            <Sparkles className="w-2.5 h-2.5 text-purple-600" />
-                            <span>{opp.matchScore}% Match</span>
-                          </span>
+                          {opp.matchScore > 0 && (
+                            <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
+                              <Sparkles className="w-2.5 h-2.5 text-purple-600" />
+                              <span>{opp.matchScore}% Match</span>
+                            </span>
+                          )}
                           <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md text-[10px] border border-emerald-200/80">
                             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                             <span>Verified Client</span>
