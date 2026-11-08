@@ -10,11 +10,39 @@ const BACKEND_URL =
 const FALLBACK_RENDER_URL = "https://nexum-79g2.onrender.com";
 
 function getTargetUrls(pathWithQuery: string): string[] {
+
+  const isCloudOrProd =
+    process.env.VERCEL === "1" ||
+    process.env.NODE_ENV === "production" ||
+    typeof window === "undefined" && Boolean(process.env.AWS_REGION);
+
+  const isLocalhost =
+    !BACKEND_URL ||
+    BACKEND_URL.includes("localhost") ||
+    BACKEND_URL.includes("127.0.0.1");
+
+  // In production / Vercel cloud serverless, never block on unreachable localhost
+  if (isCloudOrProd && isLocalhost) {
+    return [`${FALLBACK_RENDER_URL}/api/freelancer/${pathWithQuery}`];
+  }
+
+  const isCloudOrProd =
+    process.env.VERCEL === "1" ||
+    process.env.NODE_ENV === "production" ||
+    typeof window === "undefined" && Boolean(process.env.AWS_REGION);
+
+  const isLocalhost =
+    !BACKEND_URL ||
+    BACKEND_URL.includes("localhost") ||
+    BACKEND_URL.includes("127.0.0.1");
+
+  // In production / Vercel cloud serverless, never block on unreachable localhost
+  if (isCloudOrProd && isLocalhost) {
+    return [`${FALLBACK_RENDER_URL}/api/freelancer/${pathWithQuery}`];
+  }
+
   const primary = `${BACKEND_URL}/api/freelancer/${pathWithQuery}`;
-  if (
-    !BACKEND_URL.includes("onrender.com") &&
-    (BACKEND_URL.includes("localhost") || BACKEND_URL.includes("127.0.0.1") || !BACKEND_URL)
-  ) {
+  if (isLocalhost && !BACKEND_URL.includes("onrender.com")) {
     return [primary, `${FALLBACK_RENDER_URL}/api/freelancer/${pathWithQuery}`];
   }
   return [primary];
@@ -81,6 +109,8 @@ export async function GET(
           ...(cookieHeader ? { Cookie: cookieHeader } : {}),
         },
         cache: "no-store",
+        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(35000),
       });
 
       if (res.ok) {
@@ -162,6 +192,8 @@ export async function POST(
           headers: forwardHeaders,
           body: forwardBody,
           cache: "no-store",
+          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.timeout(35000),
         });
 
         const data = await res.json().catch(() => ({}));
