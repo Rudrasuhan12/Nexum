@@ -222,9 +222,10 @@ export default function BilateralContractModal({
             .split("|")
             .map((c) => c.trim())
             .filter((c, idx, arr) => idx > 0 && idx < arr.length - 1)
-        );
+        )
+        .filter((r) => r.length > 0);
 
-      if (rows.length === 0) return null;
+      if (rows.length === 0 || !rows[0] || !Array.isArray(rows[0])) return null;
       const [headerRow, ...bodyRows] = rows;
 
       return (
