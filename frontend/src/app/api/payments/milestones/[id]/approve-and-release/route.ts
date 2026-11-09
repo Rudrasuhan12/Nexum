@@ -13,12 +13,21 @@ export async function POST(
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const cookieHeader = request.headers.get("cookie") || "";
+    const authHeader = request.headers.get("authorization") || "";
+    const originHeader =
+      request.headers.get("origin") ||
+      request.headers.get("referer") ||
+      "http://localhost:3000";
 
     const res = await fetch(`${BACKEND_URL}/api/payments/milestones/${id}/approve-and-release`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Origin": originHeader,
+        "Referer": originHeader,
+        "x-nexum-internal": "true",
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+        ...(authHeader ? { Authorization: authHeader } : {}),
       },
       body: JSON.stringify(body),
     });
@@ -30,4 +39,3 @@ export async function POST(
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
-

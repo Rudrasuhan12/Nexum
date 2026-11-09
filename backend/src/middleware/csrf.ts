@@ -79,14 +79,27 @@ export function csrfProtection(
     );
   }
 
-  const allowedOrigins = env.CORS_ORIGIN
+  const defaultAllowed = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:4000",
+    "http://127.0.0.1:4000",
+  ];
+  const configuredOrigins = env.CORS_ORIGIN
     ? env.CORS_ORIGIN.split(",").map((o) => o.trim().toLowerCase())
-    : ["http://localhost:3000", "http://127.0.0.1:3000"];
+    : [];
+  const allowedOrigins = Array.from(new Set([...defaultAllowed, ...configuredOrigins]));
 
   const candidateLower = candidateHeader.toLowerCase();
   const isAllowed =
     allowedOrigins.includes("*") ||
-    allowedOrigins.some((allowed) => candidateLower === allowed || candidateLower.endsWith(".vercel.app"));
+    allowedOrigins.some(
+      (allowed) =>
+        candidateLower === allowed ||
+        candidateLower.endsWith(".vercel.app") ||
+        candidateLower.includes("localhost") ||
+        candidateLower.includes("127.0.0.1")
+    );
 
   if (!isAllowed) {
     return next(
