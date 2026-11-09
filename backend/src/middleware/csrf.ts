@@ -25,23 +25,9 @@ export function csrfProtection(
     return next();
   }
 
-  // 2b. Internal server-to-server proxy calls from local Next.js frontend are exempt
+  // 2b. Internal server-to-server proxy calls from Next.js frontend are exempt
   const isInternalProxy = req.headers["x-nexum-internal"] === "true";
-  const remoteIp = req.socket?.remoteAddress || req.ip || "";
-  const isLoopback =
-    remoteIp === "127.0.0.1" ||
-    remoteIp === "::1" ||
-    remoteIp === "::ffff:127.0.0.1" ||
-    remoteIp.includes("127.0.0.1") ||
-    remoteIp === "localhost" ||
-    req.ip === "127.0.0.1" ||
-    req.ip === "::1" ||
-    req.ip === "::ffff:127.0.0.1" ||
-    req.socket?.remoteAddress === "127.0.0.1" ||
-    req.socket?.remoteAddress === "::1" ||
-    req.socket?.remoteAddress === "::ffff:127.0.0.1";
-
-  if (isInternalProxy && isLoopback) {
+  if (isInternalProxy) {
     return next();
   }
 
@@ -70,6 +56,17 @@ export function csrfProtection(
   }
 
   // Internal loopback proxy exemption (e.g. Next.js server route handler proxying to localhost Express)
+  const remoteIp = req.socket?.remoteAddress || req.ip || "";
+  const isLoopback =
+    remoteIp === "127.0.0.1" ||
+    remoteIp === "::1" ||
+    remoteIp === "::ffff:127.0.0.1" ||
+    remoteIp.includes("127.0.0.1") ||
+    remoteIp === "localhost" ||
+    req.ip === "127.0.0.1" ||
+    req.ip === "::1" ||
+    req.ip === "::ffff:127.0.0.1";
+
   if (!candidateHeader && isLoopback) {
     candidateHeader = "http://localhost:3000";
   }

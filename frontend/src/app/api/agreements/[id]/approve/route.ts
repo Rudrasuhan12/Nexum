@@ -14,11 +14,18 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const cookieHeader = request.headers.get("cookie") || "";
     const authHeader = request.headers.get("authorization") || "";
+    const originHeader =
+      request.headers.get("origin") ||
+      request.headers.get("referer") ||
+      "https://nexum-six-swart.vercel.app";
 
     const res = await fetch(`${BACKEND_URL}/api/agreements/${id}/approve`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Origin": originHeader,
+        "Referer": originHeader,
+        "x-nexum-internal": "true",
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
         ...(authHeader ? { Authorization: authHeader } : {}),
       },

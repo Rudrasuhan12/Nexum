@@ -141,8 +141,9 @@ export default function FreelancerWorkspaceChatsMode({
 
   const timelineEndRef = useRef<HTMLDivElement | null>(null);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
+  const showToast = (msg: any) => {
+    const text = typeof msg === "object" ? msg?.message || JSON.stringify(msg) : String(msg ?? "");
+    setToastMessage(text);
     setTimeout(() => setToastMessage(null), 3500);
   };
 

@@ -67,7 +67,11 @@ export default function BilateralContractModal({
             "";
           setContractMarkdown(md);
         } else {
-          setErrorMsg(res.error || "Failed to load agreement document");
+          const errText =
+            typeof res.error === "object"
+              ? (res.error as any)?.message || JSON.stringify(res.error)
+              : res.error || "Failed to load agreement document";
+          setErrorMsg(errText);
         }
       })
       .catch((err) => {
@@ -185,7 +189,11 @@ export default function BilateralContractModal({
           });
         }, 500);
       } else {
-        setErrorMsg(data.error || "Failed to sign contract");
+        const errText =
+          typeof data.error === "object"
+            ? (data.error as any)?.message || JSON.stringify(data.error)
+            : data.error || "Failed to sign contract";
+        setErrorMsg(errText);
       }
     } catch {
       setErrorMsg("Signature submission failed");

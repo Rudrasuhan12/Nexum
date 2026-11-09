@@ -13,9 +13,16 @@ export async function GET(
     const { id } = await context.params;
     const cookieHeader = request.headers.get("cookie") || "";
     const authHeader = request.headers.get("authorization") || "";
+    const originHeader =
+      request.headers.get("origin") ||
+      request.headers.get("referer") ||
+      "https://nexum-six-swart.vercel.app";
 
     const res = await fetch(`${BACKEND_URL}/api/agreements/${id}`, {
       headers: {
+        "Origin": originHeader,
+        "Referer": originHeader,
+        "x-nexum-internal": "true",
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
         ...(authHeader ? { Authorization: authHeader } : {}),
       },
