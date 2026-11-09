@@ -37,6 +37,7 @@ import {
 } from "@/lib/api-client";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import DashboardTopHeader from "@/components/DashboardTopHeader";
+import ProjectUploadedDocumentCard from "@/components/ProjectUploadedDocumentCard";
 
 interface MilestoneState {
   title: string;
@@ -407,7 +408,7 @@ function FreelancerApplyContent() {
       />
 
       {/* 2. Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 pb-28">
+      <div className="flex-1 flex flex-col min-w-0 pb-12">
         <DashboardTopHeader
           roleLabel="Freelancer Workspace"
           title="Submit Proposal & Counteroffer"
@@ -635,33 +636,39 @@ function FreelancerApplyContent() {
                       <label className="text-xs font-bold text-slate-700 block mb-2">
                         Client Technical Intake Document
                       </label>
-                      <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-100 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
-                            <FileText className="w-4 h-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-900 truncate">
-                              {project.uploadedDocument.name}
-                            </p>
-                            <p className="text-[10px] text-slate-500 font-mono">
-                              {project.uploadedDocument.size} · Client PRD Attached
-                            </p>
-                          </div>
-                        </div>
-
-                        {project.uploadedDocument.url && (
-                          <a
-                            href={project.uploadedDocument.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-indigo-600 shadow-2xs transition"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>View</span>
-                          </a>
-                        )}
-                      </div>
+                      <ProjectUploadedDocumentCard
+                        document={project.uploadedDocument}
+                        projectTitle={project.title || "Project Specification"}
+                        category={project.category || "Development"}
+                        budget={proposalQuote || project.budgetDisplay || "$6,000.00"}
+                        timeline={project.timelineDuration || `${proposalDurationWeeks} weeks`}
+                        overview={project.description || "Project specification and requirements."}
+                        objectives={
+                          Array.isArray(project.objectives) && project.objectives.length > 0
+                            ? project.objectives
+                            : Array.isArray(project.milestones)
+                            ? project.milestones.map((m: any) => m.title)
+                            : []
+                        }
+                        technicalArchitecture={Array.isArray(project.skills) ? project.skills.join(", ") : ""}
+                        functionalRequirements={
+                          Array.isArray(project.functionalRequirements) && project.functionalRequirements.length > 0
+                            ? project.functionalRequirements
+                            : Array.isArray(project.milestones)
+                            ? project.milestones.map((m: any) => `${m.title}: ${m.deliverablesSummary || "Deliverable specification"}`)
+                            : []
+                        }
+                        acceptanceCriteria={
+                          Array.isArray(project.acceptanceCriteria) && project.acceptanceCriteria.length > 0
+                            ? project.acceptanceCriteria
+                            : [
+                                "All features and workflows pass documented test verification",
+                                "Full source code and deployment runbook delivered",
+                                "Milestone deliverable review accepted by client",
+                              ]
+                        }
+                        clientName={project.client?.name || project.clientName || "Client"}
+                      />
                     </div>
                   )}
 
@@ -970,18 +977,18 @@ function FreelancerApplyContent() {
               </div>
             </div>
 
-            {/* Sticky Bottom Bar */}
-            <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-lg py-3 px-4 sm:px-8">
-              <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="flex items-center gap-3 text-xs">
+            {/* Form Actions Footer */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs mt-6">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3 text-xs w-full sm:w-auto justify-between sm:justify-start">
                   <Link
                     href={`/freelancer/projects/${projectId}`}
-                    className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition"
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition"
                   >
                     Discard & Cancel
                   </Link>
 
-                  <div className="hidden sm:flex items-center gap-3 text-slate-500 font-medium pl-2 border-l border-slate-200">
+                  <div className="hidden sm:flex items-center gap-3 text-slate-500 font-medium pl-3 border-l border-slate-200">
                     <span>
                       Total Quote:{" "}
                       <strong className="text-slate-900 font-mono">${cleanQuote.toLocaleString()}</strong>
