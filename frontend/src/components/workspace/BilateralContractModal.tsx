@@ -605,22 +605,60 @@ export default function BilateralContractModal({
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                 Agreement is active and legally binding under Nexum Protocol.
               </span>
-            ) : userRole === "FREELANCER" && !freelancerApproved ? (
-              <span className="font-semibold text-indigo-700 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-indigo-600" />
-                Client has signed. Please review and sign to activate the contract.
-              </span>
-            ) : userRole === "CLIENT" && !freelancerApproved ? (
-              <span className="font-semibold text-amber-700 flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-amber-600" />
-                Signed by you. Awaiting freelancer signature to unlock Milestone #1 escrow deposit.
-              </span>
+            ) : userRole === "CLIENT" ? (
+              !clientApproved ? (
+                <span className="font-semibold text-indigo-700 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-indigo-600" />
+                  Please review and sign the bilateral agreement to approve the contract.
+                </span>
+              ) : (
+                <span className="font-semibold text-amber-700 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                  Signed by you. Awaiting freelancer signature to unlock Milestone #1 escrow deposit.
+                </span>
+              )
+            ) : userRole === "FREELANCER" ? (
+              !freelancerApproved ? (
+                <span className="font-semibold text-indigo-700 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-indigo-600" />
+                  {clientApproved
+                    ? "Client has signed. Please review and sign to activate the contract."
+                    : "Please review and sign to ratify the contract agreement."}
+                </span>
+              ) : (
+                <span className="font-semibold text-amber-700 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                  Signed by you. Awaiting client signature to activate agreement.
+                </span>
+              )
             ) : (
               <span>Review full agreement terms and milestone schedule.</span>
             )}
           </div>
 
           <div className="flex items-center gap-2.5">
+            {/* If Client and pending signature */}
+            {userRole === "CLIENT" && !clientApproved && (
+              <button
+                type="button"
+                onClick={handleSignContract}
+                disabled={isApproving}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {isApproving ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Signing Contract...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Sign & Approve Contract</span>
+                  </>
+                )}
+              </button>
+            )}
+
             {/* If Freelancer and pending signature */}
             {userRole === "FREELANCER" && !freelancerApproved && (
               <button

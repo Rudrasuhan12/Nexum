@@ -13,12 +13,14 @@ export async function POST(
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const cookieHeader = request.headers.get("cookie") || "";
+    const authHeader = request.headers.get("authorization") || "";
 
     const res = await fetch(`${BACKEND_URL}/api/agreements/${id}/approve`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+        ...(authHeader ? { Authorization: authHeader } : {}),
       },
       body: JSON.stringify(body),
     });

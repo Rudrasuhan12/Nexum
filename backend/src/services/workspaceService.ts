@@ -339,7 +339,16 @@ export class WorkspaceService {
           effectiveSenderId = project.clientId;
         } else if (params.senderRole === "FREELANCER" && project.agreement?.freelancerId) {
           effectiveSenderId = project.agreement.freelancerId;
+        } else {
+          effectiveSenderId = project.clientId || project.agreement?.freelancerId || params.senderId;
         }
+      }
+
+      // Final defensive check against database User table
+      const checkUser = await prisma.user.findUnique({ where: { id: effectiveSenderId } });
+      if (!checkUser) {
+        const fallbackUser = await prisma.user.findFirst();
+        if (fallbackUser) effectiveSenderId = fallbackUser.id;
       }
     }
 

@@ -1620,6 +1620,13 @@ export default function WorkspaceChatsMode({
                 if (item.type === "CONTRACT_DRAFT") {
                   const meta = (item as any).metadata || {};
                   const totalFormatted = meta.totalAmountMinor ? `$${(meta.totalAmountMinor / 100).toFixed(2)} USD` : "";
+                  const clientHasApproved =
+                    Boolean(meta.clientApproved) ||
+                    timeline.some(
+                      (t) =>
+                        t.type === "AGREEMENT_APPROVAL_PENDING" &&
+                        (t.metadata?.approvedRole === "CLIENT" || (t as any).senderRole === "CLIENT")
+                    );
                   return (
                     <div
                       key={item.id}
@@ -1782,11 +1789,39 @@ export default function WorkspaceChatsMode({
                               <span>Lock Entire Project {totalFormatted ? `(${totalFormatted})` : ""} in Escrow</span>
                             </button>
                           </div>
-                        ) : (
+                        ) : clientHasApproved ? (
                           <div className="px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-semibold text-xs flex items-center gap-1.5 shadow-2xs">
                             <Clock className="w-3.5 h-3.5 text-amber-600" />
                             <span>Signed by you · Awaiting Freelancer Signature</span>
                           </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                showToast("Signing and approving Contract Agreement v1.0...");
+                                const targetAgId = meta.agreementId || selectedProjectId;
+                                const res = await fetch(`/api/agreements/${targetAgId}/approve`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ versionNumber: meta.versionNumber || 1, role: "CLIENT" }),
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                  showToast(data.message || "Contract signed and approved! Awaiting freelancer ratification.");
+                                  setRefreshTrigger((n) => n + 1);
+                                } else {
+                                  showToast(data.error || "Failed to approve agreement");
+                                }
+                              } catch {
+                                showToast("Approval request failed.");
+                              }
+                            }}
+                            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Sign & Approve Agreement</span>
+                          </button>
                         )}
                       </div>
                     </div>

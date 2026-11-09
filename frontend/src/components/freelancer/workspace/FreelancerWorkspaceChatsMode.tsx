@@ -1147,6 +1147,13 @@ export default function FreelancerWorkspaceChatsMode({
                 if (item.type === "CONTRACT_DRAFT") {
                   const meta = (item as any).metadata || {};
                   const totalFormatted = meta.totalAmountMinor ? `$${(meta.totalAmountMinor / 100).toFixed(2)} USD` : "";
+                  const freelancerHasApproved =
+                    Boolean(meta.freelancerApproved) ||
+                    timeline.some(
+                      (t) =>
+                        t.type === "AGREEMENT_APPROVAL_PENDING" &&
+                        (t.metadata?.approvedRole === "FREELANCER" || (t as any).senderRole === "FREELANCER")
+                    );
                   return (
                     <div
                       key={item.id}
@@ -1213,9 +1220,14 @@ export default function FreelancerWorkspaceChatsMode({
                         </button>
 
                         {timeline.some((t) => t.type === "AGREEMENT_RATIFIED") ? (
-                          <div className="px-3.5 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 font-semibold text-xs flex items-center gap-1.5 shadow-2xs">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Signed by you · Awaiting Client Escrow Deposit</span>
+                          <div className="px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-semibold text-xs flex items-center gap-1.5 shadow-2xs">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Both Parties Signed · Awaiting Client Escrow Deposit</span>
+                          </div>
+                        ) : freelancerHasApproved ? (
+                          <div className="px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-semibold text-xs flex items-center gap-1.5 shadow-2xs">
+                            <Clock className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Signed by you · Awaiting Client Signature</span>
                           </div>
                         ) : (
                           <button

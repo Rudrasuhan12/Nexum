@@ -12,10 +12,12 @@ export async function GET(
   try {
     const { id } = await context.params;
     const cookieHeader = request.headers.get("cookie") || "";
+    const authHeader = request.headers.get("authorization") || "";
 
     const res = await fetch(`${BACKEND_URL}/api/agreements/${id}`, {
       headers: {
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+        ...(authHeader ? { Authorization: authHeader } : {}),
       },
     });
 

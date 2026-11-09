@@ -870,18 +870,7 @@ router.post("/proposals/:id/accept", async (req: Request, res: Response) => {
       });
       agreementVersionId = agreementVer.id;
 
-      // 8. Record Client's Ratification Approval Decision
-      await tx.agreementApproval.create({
-        data: {
-          agreementVersionId: agreementVer.id,
-          partyRole: Role.CLIENT,
-          userId: effectiveClientId,
-          decision: ApprovalDecision.APPROVED,
-          contentHash,
-        },
-      });
-
-      // 9. Record Append-only Audit Event
+      // 8. Record Append-only Audit Event
       await tx.auditEvent.create({
         data: {
           actorId: effectiveClientId,
@@ -902,7 +891,7 @@ router.post("/proposals/:id/accept", async (req: Request, res: Response) => {
       }).catch(() => {});
     });
 
-    // 10. Automatically Post Interactive Contract Draft Message into Shared Project Workspace
+    // 9. Automatically Post Interactive Contract Draft Message into Shared Project Workspace
     const firstAmountFormatted = `$${(firstMilestoneAmountMinor / 100).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -913,7 +902,7 @@ router.post("/proposals/:id/accept", async (req: Request, res: Response) => {
       senderId: effectiveClientId,
       senderRole: "OPERATOR",
       type: "CONTRACT_DRAFT",
-      content: `📜 Nexum AI has synthesized Bilateral Contract Agreement v1.0 based on the approved proposal terms and synchronized milestones.\n\nClient has initiated approval. Once the freelancer ratifies, the client will be prompted to securely lock Milestone #1 escrow funds (${firstAmountFormatted}) via PayPal REST v2 Orders API to begin development.\n\nThe formal contract file has been permanently archived in the Project Files vault for both parties.`,
+      content: `📜 Nexum AI has synthesized Bilateral Contract Agreement v1.0 based on the accepted proposal terms and synchronized milestones.\n\nPlease review the bilateral agreement terms. Once both parties ratify and sign the agreement, client will be prompted to deposit Milestone #1 escrow funds (${firstAmountFormatted}) via PayPal REST v2 Orders API to authorize development kickoff.\n\nThe formal contract file has been permanently archived in the Project Files vault for both parties.`,
       metadata: {
         type: "CONTRACT_DRAFT",
         agreementId: createdAgreementId,
@@ -923,7 +912,7 @@ router.post("/proposals/:id/accept", async (req: Request, res: Response) => {
         fileId: savedContractFileId,
         totalAmountMinor,
         milestonesCount: createdMilestonesCount,
-        clientApproved: true,
+        clientApproved: false,
         freelancerApproved: false,
         badgeText: "Contract v1.0 Synthesized",
         badgeType: "purple",
