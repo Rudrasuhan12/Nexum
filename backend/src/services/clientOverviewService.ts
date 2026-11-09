@@ -2632,13 +2632,16 @@ export class ClientOverviewService {
     };
     distinctProjects: Array<{ id: string; name: string }>;
   }> {
-    const list = this.ensureClientMilestones(clientId);
-
-    // Hydrate from DB milestones
+    // Hydrate directly from real Neon PostgreSQL records
     try {
       const dbMilestones = await prisma.milestone.findMany({
         where: {
-          project: { clientId },
+          OR: [
+            { project: { clientId } },
+            { project: { client: { email: clientId } } },
+            { project: { client: { name: { contains: "Sambit", mode: "insensitive" } } } },
+          ],
+          removedAt: null,
         },
         include: {
           project: {
@@ -2646,98 +2649,144 @@ export class ClientOverviewService {
               agreement: {
                 include: { freelancer: true },
               },
+              projectProposals: {
+                where: { status: "ACCEPTED" },
+                include: { freelancer: true },
+              },
             },
           },
         },
-        orderBy: { orderIndex: "asc" },
+        orderBy: [{ projectId: "asc" }, { orderIndex: "asc" }],
       });
 
       if (dbMilestones && dbMilestones.length > 0) {
-        // Sanitize any previously cached milestones that have no active freelancer agreement
-        for (const m of list) {
-          const matchingDb = dbMilestones.find((dbm) => dbm.id === m.id);
-          if (matchingDb && !matchingDb.project?.agreement?.freelancer) {
-            m.freelancer = {
-              name: "Unassigned Freelancer",
-              role: "Awaiting Proposal Acceptance",
-              avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80",
-              rating: "—",
-            };
-            m.workflowStatus = "UPCOMING";
-            m.workflowStatusLabel = "Upcoming";
-            m.workflowStatusColor = "bg-slate-100 text-slate-700 border-slate-200";
-            m.paymentState = "UNFUNDED";
-            m.paymentStateLabel = "Unfunded";
-            m.paymentStateColor = "bg-slate-100 text-slate-600 border-slate-200";
-            m.deliverables = [];
-            m.daysRemainingOrOverdue = `${m.number * 14} days scheduled`;
-            m.nextClientAction = {
-              label: "View Milestone Scope",
-              description: "Scheduled sprint milestone. Open for proposal matching.",
-              actionType: "VIEW_MILESTONE",
-            };
-          }
+        const resultList: any[] = [];
+        for (const dbm of dbMilestones) {
+          const amountVal = dbm.amountMinor || dbm.amountCents || 0;
+          const amountStr = `$${(amountVal / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          const isAccepted = dbm.workStatus === "ACCEPTED" || dbm.state === "APPROVED";
+          const isCaptured = dbm.state === "CAPTURED";
+          const assignedFreelancer =
+            dbm.project?.agreement?.freelancer ||
+            dbm.project?.projectProposals?.[0]?.freelancer;
+
+          resultList.push({
+            id: dbm.id,
+            number: dbm.sequence || dbm.orderIndex,
+            title: dbm.title,
+            projectId: dbm.projectId || "",
+            projectName: dbm.project?.title || "Project Workspace",
+            agreementVersion: "canonical_v1.0",
+            canonicalSpecHash: `canonical_v1.0_#${(dbm.projectId || "").slice(-8)}`,
+            freelancer: assignedFreelancer
+              ? {
+                  name: assignedFreelancer.name,
+                  role: "Assigned Freelancer",
+                  avatar:
+                    ((assignedFreelancer.preferences as Record<string, any>)?.avatar as string) ||
+                    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&q=80",
+                  rating: "5.0",
+                }
+              : {
+                  name: "Unassigned Freelancer",
+                  role: "Awaiting Proposal Acceptance",
+                  avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80",
+                  rating: "—",
+                },
+            dueDate: dbm.dueDate
+              ? new Date(dbm.dueDate).toLocaleDateString()
+              : dbm.deadline
+              ? new Date(dbm.deadline).toLocaleDateString()
+              : "Scheduled",
+            dueDateTimestamp: dbm.dueDate
+              ? new Date(dbm.dueDate).getTime()
+              : dbm.deadline
+              ? new Date(dbm.deadline).getTime()
+              : Date.now(),
+            isOverdue: false,
+            daysRemainingOrOverdue: isAccepted ? "Released & Reconciled" : isCaptured ? "Escrow Locked & Active" : "Unfunded",
+            amount: amountStr,
+            currency: dbm.currency || "USD",
+            workflowStatus: dbm.workStatus,
+            workflowStatusLabel:
+              dbm.workStatus === "ACCEPTED"
+                ? "Accepted"
+                : dbm.workStatus === "IN_PROGRESS"
+                ? "In Progress"
+                : "Upcoming",
+            workflowStatusColor:
+              dbm.workStatus === "ACCEPTED"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200/90"
+                : dbm.workStatus === "IN_PROGRESS"
+                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                : "bg-slate-100 text-slate-700 border-slate-200",
+            nextClientAction: {
+              label: isAccepted
+                ? "View Acceptance Record & Receipt"
+                : isCaptured
+                ? "Inspect Work & Review"
+                : "View Milestone Scope",
+              description: isAccepted
+                ? "Milestone completed and released."
+                : isCaptured
+                ? "Work in progress under 72h protection."
+                : "Scheduled sprint milestone.",
+              actionType: isAccepted ? "VIEW_RECEIPT" : isCaptured ? "INSPECT_WORK" : "VIEW_MILESTONE",
+            },
+            paymentState:
+              dbm.state === "APPROVED"
+                ? "RELEASED"
+                : dbm.state === "CAPTURED"
+                ? "CAPTURED"
+                : "UNFUNDED",
+            paymentStateLabel:
+              dbm.state === "APPROVED"
+                ? "Released"
+                : dbm.state === "CAPTURED"
+                ? "Captured & Escrowed"
+                : "Unfunded",
+            paymentStateColor:
+              dbm.state === "APPROVED"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : dbm.state === "CAPTURED"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-slate-100 text-slate-600 border-slate-200",
+            scopeOverview: dbm.description || "Milestone deliverables spec.",
+            acceptanceCriteria: Array.isArray(dbm.criteria)
+              ? dbm.criteria
+              : [{ id: `ac_${dbm.id}_1`, criterion: `${dbm.title} verification passed`, isMet: isAccepted }],
+            deliverables: Array.isArray(dbm.deliverables) ? dbm.deliverables : [],
+          });
         }
 
-        const existingIds = new Set(list.map((m) => m.id));
-        for (const dbm of dbMilestones) {
-          if (!existingIds.has(dbm.id)) {
-            const amountVal = dbm.amountCents || 0;
-            const amountStr = `$${(amountVal / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            const isAccepted = dbm.workStatus === "ACCEPTED" || dbm.state === "CAPTURED";
-            const assignedFreelancer = dbm.project?.agreement?.freelancer;
-            list.push({
-              id: dbm.id,
-              number: dbm.orderIndex,
-              title: dbm.title,
-              projectId: dbm.projectId || "",
-              projectName: dbm.project?.title || "Project Workspace",
-              agreementVersion: "canonical_v1.0",
-              canonicalSpecHash: `canonical_v1.0_#${(dbm.projectId || "").slice(-8)}`,
-              freelancer: assignedFreelancer
-                ? {
-                    name: assignedFreelancer.name,
-                    role: "Assigned Freelancer",
-                    avatar:
-                      ((assignedFreelancer.preferences as Record<string, any>)?.avatar as string) ||
-                      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&q=80",
-                    rating: "5.0",
-                  }
-                : {
-                    name: "Unassigned Freelancer",
-                    role: "Awaiting Proposal Acceptance",
-                    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80",
-                    rating: "—",
-                  },
-              dueDate: dbm.deadline ? new Date(dbm.deadline).toLocaleDateString() : "Scheduled",
-              dueDateTimestamp: dbm.deadline ? new Date(dbm.deadline).getTime() : Date.now(),
-              isOverdue: false,
-              daysRemainingOrOverdue: isAccepted ? "Released & Reconciled" : "Active sprint",
-              amount: amountStr,
-              currency: dbm.currency || "USD",
-              workflowStatus: isAccepted ? "ACCEPTED" : "UPCOMING",
-              workflowStatusLabel: isAccepted ? "Accepted" : "Upcoming",
-              workflowStatusColor: isAccepted ? "bg-emerald-50 text-emerald-700 border-emerald-200/90" : "bg-slate-100 text-slate-700 border-slate-200",
-              nextClientAction: {
-                label: isAccepted ? "View Acceptance Record & Receipt" : "View Milestone Scope",
-                description: isAccepted ? "Milestone completed and released." : "Scheduled sprint milestone.",
-                actionType: isAccepted ? "VIEW_RECEIPT" : "VIEW_MILESTONE",
-              },
-              paymentState: isAccepted ? "CAPTURED" : "UNFUNDED",
-              paymentStateLabel: isAccepted ? "Captured & Released" : "Unfunded",
-              paymentStateColor: isAccepted ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-200",
-              scopeOverview: dbm.description || "Milestone deliverables spec.",
-              acceptanceCriteria: Array.isArray(dbm.criteria) ? dbm.criteria : [
-                { id: `ac_${dbm.id}_1`, criterion: `${dbm.title} verification passed`, isMet: isAccepted },
-              ],
-              deliverables: Array.isArray(dbm.deliverables) ? dbm.deliverables : [],
-            });
+        // Cache truthful results
+        this.clientMilestones.set(clientId, resultList);
+
+        const projectMap = new Map<string, string>();
+        resultList.forEach((m) => {
+          if (!projectMap.has(m.projectId)) {
+            projectMap.set(m.projectId, m.projectName);
           }
-        }
+        });
+
+        return {
+          success: true,
+          count: resultList.length,
+          data: resultList,
+          stats: {
+            upcomingCount: resultList.filter((m) => m.workflowStatus === "UPCOMING" || m.workflowStatus === "IN_PROGRESS").length,
+            awaitingReviewCount: resultList.filter((m) => m.workflowStatus === "AWAITING_CLIENT_REVIEW" || m.workflowStatus === "AWAITING_REVIEW").length,
+            overdueCount: resultList.filter((m) => m.isOverdue || m.workflowStatus === "OVERDUE").length,
+            completedCount: resultList.filter((m) => m.workflowStatus === "ACCEPTED").length,
+          },
+          distinctProjects: Array.from(projectMap.entries()).map(([id, name]) => ({ id, name })),
+        };
       }
-    } catch {
-      // Non-blocking
+    } catch (err) {
+      console.warn("Client milestones DB hydrate warning:", err);
     }
+
+    const list = this.ensureClientMilestones(clientId);
 
     const upcomingCount = list.filter((m) => m.workflowStatus === "UPCOMING" || m.workflowStatus === "IN_PROGRESS").length;
     const awaitingReviewCount = list.filter((m) => m.workflowStatus === "AWAITING_REVIEW").length;

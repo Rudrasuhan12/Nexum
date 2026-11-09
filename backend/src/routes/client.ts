@@ -732,10 +732,11 @@ router.post("/proposals/:id/accept", async (req: Request, res: Response) => {
       }
       createdAgreementId = agreement.id;
 
-      // 4. Synchronize Project Milestones with Approved Proposal Milestones
-      // Delete existing placeholder brief milestones for clean synchronization
-      await tx.milestone.deleteMany({
+      // 4. Synchronize & Renew Project Milestones with Approved Proposal Milestones
+      // RENEW existing milestones in-place so they are updated rather than duplicated
+      const existingMilestones = await tx.milestone.findMany({
         where: { projectId: proposal.projectId },
+        orderBy: { orderIndex: "asc" },
       });
 
       const milestoneRecordsToCreate = parsedMilestones.length > 0
@@ -755,26 +756,61 @@ router.post("/proposals/:id/accept", async (req: Request, res: Response) => {
       createdMilestonesCount = milestoneRecordsToCreate.length;
       firstMilestoneAmountMinor = milestoneRecordsToCreate[0]?.amountMinor || totalAmountMinor;
 
+      // Renew existing milestones in-place or create additional ones if proposal increased count
       for (let i = 0; i < milestoneRecordsToCreate.length; i++) {
         const m = milestoneRecordsToCreate[i];
-        await tx.milestone.create({
-          data: {
-            projectId: proposal.projectId,
-            agreementId: agreement.id,
-            orderIndex: i + 1,
-            sequence: i + 1,
-            milestoneKey: `m_${i + 1}`,
-            title: m.title,
-            description: m.description,
-            amountMinor: m.amountMinor,
-            amountCents: m.amountMinor,
-            currency: proposal.project.currency || "USD",
-            criteria: m.criteria,
-            deliverables: m.deliverables,
-            workStatus: MilestoneWorkStatus.UPCOMING,
-            state: PaymentState.NOT_STARTED,
-            dueDate: new Date(Date.now() + (m.durationWeeks || 2) * 7 * 24 * 60 * 60 * 1000),
-          },
+        const existing = existingMilestones[i];
+
+        if (existing) {
+          // Renew in-place!
+          await tx.milestone.update({
+            where: { id: existing.id },
+            data: {
+              agreementId: agreement.id,
+              orderIndex: i + 1,
+              sequence: i + 1,
+              milestoneKey: `m_${i + 1}`,
+              title: m.title,
+              description: m.description,
+              amountMinor: m.amountMinor,
+              amountCents: m.amountMinor,
+              currency: proposal.project.currency || "USD",
+              criteria: m.criteria,
+              deliverables: m.deliverables,
+              workStatus: MilestoneWorkStatus.UPCOMING,
+              state: PaymentState.NOT_STARTED,
+              dueDate: new Date(Date.now() + (m.durationWeeks || 2) * 7 * 24 * 60 * 60 * 1000),
+            },
+          });
+        } else {
+          // Create additional milestone
+          await tx.milestone.create({
+            data: {
+              projectId: proposal.projectId,
+              agreementId: agreement.id,
+              orderIndex: i + 1,
+              sequence: i + 1,
+              milestoneKey: `m_${i + 1}`,
+              title: m.title,
+              description: m.description,
+              amountMinor: m.amountMinor,
+              amountCents: m.amountMinor,
+              currency: proposal.project.currency || "USD",
+              criteria: m.criteria,
+              deliverables: m.deliverables,
+              workStatus: MilestoneWorkStatus.UPCOMING,
+              state: PaymentState.NOT_STARTED,
+              dueDate: new Date(Date.now() + (m.durationWeeks || 2) * 7 * 24 * 60 * 60 * 1000),
+            },
+          });
+        }
+      }
+
+      // If existing had more milestones than accepted proposal, remove excess
+      if (existingMilestones.length > milestoneRecordsToCreate.length) {
+        const excessIds = existingMilestones.slice(milestoneRecordsToCreate.length).map((em) => em.id);
+        await tx.milestone.deleteMany({
+          where: { id: { in: excessIds } },
         });
       }
 
