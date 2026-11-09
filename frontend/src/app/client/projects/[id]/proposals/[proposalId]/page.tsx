@@ -214,19 +214,47 @@ function ProposalReviewContent() {
     setShowDeclineModal(true);
   };
 
+  const [isResetting, setIsResetting] = useState(false);
+
+  // Reset TerraShield to Unapproved Stage for Prod Testing
+  const handleResetTerraShield = async () => {
+    if (isResetting) return;
+    setIsResetting(true);
+    showToast("Resetting project to unapproved stage in database...");
+
+    try {
+      const res = await fetch("/api/client/reset-terrashield", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast("Project successfully reset to unapproved stage! Proposal returned to SUBMITTED.");
+        setProposal((prev) => (prev ? { ...prev, status: "SUBMITTED" } : null));
+      } else {
+        showToast(data.error || "Failed to reset project.");
+      }
+    } catch {
+      showToast("Reset request failed. Please check network connection.");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   // Accept Proposal
   const handleAccept = async () => {
     if (!proposal || isAccepting) return;
     setIsAccepting(true);
-    showToast("Processing proposal acceptance and initializing bilateral agreement...");
+    showToast("Processing proposal acceptance, synchronizing milestones & synthesizing contract v1.0...");
 
     try {
       const res = await acceptClientProposal(proposal.id);
       if (res.success) {
         setProposal((prev) => (prev ? { ...prev, status: "ACCEPTED" } : null));
-        showToast("Proposal approved and bilateral agreement initialized!");
+        showToast("Proposal approved! Milestones synchronized and Bilateral Contract v1.0 synthesized!");
         setTimeout(() => {
-          router.push(`/client/projects/${projectId}?accepted=true`);
+          router.push(`/client/workspace`);
         }, 1200);
       } else {
         showToast(res.error || "Failed to accept proposal.");
@@ -648,7 +676,25 @@ function ProposalReviewContent() {
                 Close / Back to Workspace
               </Link>
 
-              {proposal.status !== "ACCEPTED" && proposal.status !== "DECLINED" && proposal.status !== "REJECTED" && (
+              {proposal.status === "ACCEPTED" ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleResetTerraShield}
+                    disabled={isResetting}
+                    className="px-4 py-2.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold transition cursor-pointer disabled:opacity-50"
+                  >
+                    {isResetting ? "Resetting Project..." : "Reset to Unapproved Stage (Prod Test)"}
+                  </button>
+                  <Link
+                    href="/client/workspace"
+                    className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-xs"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Open Workspace & Escrow</span>
+                  </Link>
+                </div>
+              ) : proposal.status !== "DECLINED" && proposal.status !== "REJECTED" ? (
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
@@ -679,10 +725,10 @@ function ProposalReviewContent() {
                     className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-98 disabled:opacity-50"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>{isAccepting ? "Initializing Agreement..." : "Approve & Accept Proposal"}</span>
+                    <span>{isAccepting ? "Synthesizing Contract v1.0..." : "Approve & Accept Proposal"}</span>
                   </button>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </main>

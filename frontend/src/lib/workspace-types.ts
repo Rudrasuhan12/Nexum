@@ -62,7 +62,11 @@ export type TimelineItemType =
   | "milestone_postponement_card"
   | "deliverable_card"
   | "notetaker_summary_card"
-  | "system_event_card";
+  | "system_event_card"
+  | "CONTRACT_DRAFT"
+  | "AGREEMENT_RATIFIED"
+  | "ESCROW_LOCKED"
+  | string;
 
 export interface WorkspaceTaskItem {
   id: string;
