@@ -48,6 +48,7 @@ import ProposeMeetingModal from "@/components/client/workspace/ProposeMeetingMod
 import SubmitDeliverableModal from "./SubmitDeliverableModal";
 import ProjectHandoverBanner from "@/components/handover/ProjectHandoverBanner";
 import HandoverChecklistView from "@/components/handover/HandoverChecklistView";
+import BilateralContractModal from "@/components/workspace/BilateralContractModal";
 import {
   getWorkspaceTimeline,
   sendWorkspaceMessage,
@@ -104,6 +105,8 @@ export default function FreelancerWorkspaceChatsMode({
     | "activity"
     | "meetings"
   >("chat");
+
+  const [isContractModalOpen, setIsContractModalOpen] = useState(false);
 
   // Handover Protocol State
   const [handoverData, setHandoverData] = useState<ProjectHandoverData | null>(null);
@@ -301,6 +304,7 @@ export default function FreelancerWorkspaceChatsMode({
                 deliverableDetails: meta.deliverableDetails,
                 notetakerDetails: meta.notetakerDetails,
                 actions: meta.actions,
+                metadata: meta,
               };
             });
             setTimeline(mapped);
@@ -360,6 +364,7 @@ export default function FreelancerWorkspaceChatsMode({
                 deliverableDetails: meta.deliverableDetails,
                 notetakerDetails: meta.notetakerDetails,
                 actions: meta.actions,
+                metadata: meta,
               };
             });
 
@@ -1157,17 +1162,28 @@ export default function FreelancerWorkspaceChatsMode({
                         </span>
                       </div>
 
-                      <div className="p-4 rounded-xl bg-white border border-indigo-100 space-y-2 text-xs shadow-2xs">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs border border-indigo-100 shrink-0">
-                            MD
-                          </div>
-                          <div>
-                            <div className="font-bold text-slate-900">{meta.contractName || "Contract_Agreement_v1.0.md"}</div>
-                            <div className="text-[11px] text-slate-500">
-                              Synchronized {meta.milestonesCount || "all"} milestones {totalFormatted && `· Total Value: ${totalFormatted}`}
+                      <div
+                        onClick={() => setIsContractModalOpen(true)}
+                        className="p-4 rounded-xl bg-white border border-indigo-100 hover:border-indigo-300 transition space-y-2 text-xs shadow-2xs cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs border border-indigo-100 shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition">
+                              MD
+                            </div>
+                            <div>
+                              <div className="font-bold text-slate-900 group-hover:text-indigo-600 transition flex items-center gap-1.5">
+                                <span>{meta.contractName || "Contract_Agreement_v1.0.md"}</span>
+                                <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 transition" />
+                              </div>
+                              <div className="text-[11px] text-slate-500">
+                                Synchronized {meta.milestonesCount || "all"} milestones {totalFormatted && `· Total Value: ${totalFormatted}`}
+                              </div>
                             </div>
                           </div>
+                          <span className="hidden sm:inline-flex text-[11px] font-semibold text-indigo-600 group-hover:underline">
+                            Read Agreement →
+                          </span>
                         </div>
                         <p className="text-slate-700 leading-relaxed pt-1 whitespace-pre-line">
                           {item.bubbleText || item.summaryText}
@@ -1177,13 +1193,22 @@ export default function FreelancerWorkspaceChatsMode({
                       <div className="flex flex-wrap items-center gap-2.5 pt-1">
                         <button
                           type="button"
+                          onClick={() => setIsContractModalOpen(true)}
+                          className="px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition cursor-pointer border border-indigo-200/90 shadow-2xs flex items-center gap-1.5"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>View Complete Agreement</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => {
                             setActiveTab("files");
                             showToast("Opened Project Files tab with synthesized contract.");
                           }}
                           className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer shadow-2xs flex items-center gap-1.5"
                         >
-                          <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                          <FileText className="w-3.5 h-3.5 text-slate-500" />
                           <span>View in Files Vault</span>
                         </button>
 
@@ -2570,6 +2595,18 @@ export default function FreelancerWorkspaceChatsMode({
           </div>
         </div>
       )}
+
+      {/* Bilateral Complete Agreement & Escrow Governance Modal */}
+      <BilateralContractModal
+        isOpen={isContractModalOpen}
+        onClose={() => setIsContractModalOpen(false)}
+        projectId={selectedProjectId}
+        userRole="FREELANCER"
+        onAgreementRatified={() => {
+          setRefreshTrigger((n) => n + 1);
+          showToast("Bilateral agreement ratified! Awaiting client escrow deposit.");
+        }}
+      />
     </div>
   );
 }

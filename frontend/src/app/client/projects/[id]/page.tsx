@@ -72,6 +72,7 @@ function ProjectWorkspaceContent() {
   const [isLoading, setIsLoading] = useState(!isStaticMock);
   const [isLiveLoaded, setIsLiveLoaded] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
 
   // Fetch live project data from database/backend API
   React.useEffect(() => {
@@ -319,7 +320,7 @@ function ProjectWorkspaceContent() {
     return () => {
       isMounted = false;
     };
-  }, [projectId, isStaticMock, user?.name]);
+  }, [projectId, isStaticMock, user?.name, reloadTrigger]);
 
   // Milestone 2 approval / release simulation state
   const [isCapturing, setIsCapturing] = useState(false);
@@ -374,30 +375,13 @@ function ProjectWorkspaceContent() {
 
   const handleAcceptProposal = async (proposalId: string) => {
     setActionLoadingProposalId(proposalId);
-    showToast("Processing proposal acceptance and initializing bilateral agreement...");
+    showToast("Processing proposal acceptance, synchronizing milestones & synthesizing contract v1.0...");
 
     try {
       const res = await acceptClientProposal(proposalId, { clientId: user?.id });
       if (res.success) {
-        setProjectData((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            status: "IN_PROGRESS" as ProjectLifecycleStatus,
-            statusLabel: "In Progress",
-            statusColor: "bg-blue-50 text-blue-700 border-blue-200/80",
-            proposals: prev.proposals.map((p) =>
-              p.id === proposalId
-                ? { ...p, status: "ACCEPTED" }
-                : {
-                    ...p,
-                    status: "DECLINED",
-                    rejectionFeedback: "Another candidate was selected for this project.",
-                  }
-            ),
-          };
-        });
-        showToast("Proposal approved and bilateral agreement initialized!");
+        showToast("Proposal approved! Milestones synchronized and bilateral contract v1.0 synthesized!");
+        setReloadTrigger((n) => n + 1);
       } else {
         showToast(res.error || "Failed to accept proposal.");
       }

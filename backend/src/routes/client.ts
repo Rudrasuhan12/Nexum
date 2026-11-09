@@ -910,8 +910,8 @@ router.post("/proposals/:id/accept", async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/client/reset-terrashield - resets TerraShield project back to unapproved stage for clean testing
-router.post("/reset-terrashield", async (req: Request, res: Response) => {
+// Helper handler: resets TerraShield project back to unapproved stage for clean testing
+async function handleResetTerraShieldProject(req: Request, res: Response) {
   try {
     const project = await prisma.project.findFirst({
       where: {
@@ -1029,11 +1029,11 @@ router.post("/reset-terrashield", async (req: Request, res: Response) => {
         });
       }
 
-      // G. Reset project state to ACTIVE
+      // G. Reset project state to MATCHING (Awaiting candidate review)
       await tx.project.update({
         where: { id: projectId },
         data: {
-          state: ProjectState.ACTIVE,
+          state: ProjectState.MATCHING,
         },
       });
 
@@ -1063,7 +1063,11 @@ router.post("/reset-terrashield", async (req: Request, res: Response) => {
     console.error("Reset TerraShield error:", err);
     res.status(500).json({ success: false, error: msg });
   }
-});
+}
+
+// Support both POST and GET for effortless execution via curl, postman, or browser URL bar
+router.post("/reset-terrashield", handleResetTerraShieldProject);
+router.get("/reset-terrashield", handleResetTerraShieldProject);
 
 // POST /api/client/proposals/:id/reject - client declines a freelancer proposal
 router.post("/proposals/:id/reject", async (req: Request, res: Response) => {

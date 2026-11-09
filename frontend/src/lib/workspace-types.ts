@@ -120,6 +120,7 @@ export interface TimelineItem {
   badgeText?: string;
   badgeType?: "amber" | "gray" | "green" | "purple";
   sha256Seal?: string;
+  metadata?: Record<string, any>;
   metrics?: MediationMetric;
   counterofferDetails?: {
     title: string;

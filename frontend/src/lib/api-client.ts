@@ -1888,6 +1888,29 @@ export async function fetchFreelancerAgreement(id: string): Promise<{
   }
 }
 
+/**
+ * Fetch full bilateral service and escrow agreement with active version markdown and approvals
+ */
+export async function fetchAgreementDetails(idOrProjectId: string): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/agreements/${idOrProjectId}`, {
+      method: "GET",
+      cache: "no-store",
+    });
+    const json = await res.json();
+    return json;
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch agreement details",
+    };
+  }
+}
+
 export async function fetchAgreementDiff(
   id: string,
   from: number | string,

@@ -189,11 +189,11 @@ export async function revokeSession(rawToken: string): Promise<boolean> {
   const tokenHash = hashSessionToken(rawToken);
 
   try {
-    await prisma.session.update({
-      where: { tokenHash },
+    const res = await prisma.session.updateMany({
+      where: { tokenHash, revokedAt: null },
       data: { revokedAt: new Date() },
     });
-    return true;
+    return res.count > 0;
   } catch {
     return false;
   }
