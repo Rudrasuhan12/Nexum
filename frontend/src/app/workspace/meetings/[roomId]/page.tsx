@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, Suspense } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Mic,
   MicOff,
@@ -36,7 +36,11 @@ interface TranscriptItem {
 function MeetingRoomContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const roomId = (params?.roomId as string) || "room-techkart-001";
+  const projectId = searchParams.get("projectId") || "prj_1794041467889_g05q";
+  const meetingId = searchParams.get("meetingId") || roomId;
+  const role = searchParams.get("role") || "CLIENT";
 
   // Audio / Video states
   const [isMicOn, setIsMicOn] = useState(true);
@@ -130,19 +134,19 @@ function MeetingRoomContent() {
       .join("\n");
 
     try {
-      await submitMeetingNotetakerSynthesis("techkart", roomId, {
-        executiveSummary: `Executive Summary: Discussed frontend order capture and Apple Pay extension. Alex and Sambit agreed on a 30s idempotency window for PayPal webhook handling. Alex requested Apple Pay checkout and both agreed on a +$400 USD scope delta. Sambit committed to delivering webhook retry tests by Wednesday.`,
+      await submitMeetingNotetakerSynthesis(projectId, meetingId, {
+        executiveSummary: `Executive Summary: Milestone & Scope Alignment sync meeting. Bilateral consensus established on active engineering deliverables, PayPal order verification tests, and delivery milestones. Nexum AI verified that discussed tasks align with dual SHA-256 agreement boundaries.`,
         actionItems: [
-          { task: "Complete PayPal REST v2 webhook retry test suite", assigneeId: "usr_freelancer_sambit", dueDate: "2026-11-06" },
-          { task: "Verify Apple Pay mobile checkout modal layout", assigneeId: "usr_client_alex", dueDate: "2026-11-07" },
+          { task: "Execute PayPal REST v2 webhook retry and idempotency verification", dueDate: "2026-11-14" },
+          { task: "Finalize milestone UI components and deliverable verification", dueDate: "2026-11-16" },
         ],
         decisions: [
-          { title: "Idempotency Window", description: "Agreed on 30s deduplication window for PayPal webhook deliveries." },
+          { title: "Delivery Roadmap Alignment", description: "Agreed on delivery order for active milestone deliverables." },
         ],
         verbalScopeAlert: {
-          detected: true,
-          verbalAgreementSnippet: "Agreed on +$400 for Apple Pay mobile checkout.",
-          suggestedDeltaCents: 40000,
+          detected: false,
+          verbalAgreementSnippet: "All deliverables remain within consensus scope.",
+          suggestedDeltaCents: 0,
         },
       });
     } catch (err) {
@@ -150,7 +154,8 @@ function MeetingRoomContent() {
     }
 
     setTimeout(() => {
-      router.push("/client/workspace");
+      const target = role.toUpperCase() === "FREELANCER" ? "/freelancer/workspace?tab=meetings" : "/client/workspace?tab=meetings";
+      router.push(target);
     }, 1000);
   };
 

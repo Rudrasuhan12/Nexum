@@ -765,7 +765,11 @@ router.post("/projects/:projectId/deliverables/submit", async (req: Request, res
 router.post("/projects/:projectId/meetings/propose", async (req: Request, res: Response) => {
   try {
     const { projectId } = req.params;
-    const { proposedByUserId, title, agenda, durationMinutes, proposedSlots } = req.body;
+    const proposedByUserId =
+      req.body.proposedByUserId ||
+      (req.headers["x-user-id"] as string) ||
+      (req as any).user?.id;
+    const { title, agenda, durationMinutes, proposedSlots } = req.body;
 
     if (!proposedByUserId || !title || !proposedSlots || !proposedSlots.length) {
       return res.status(400).json({
@@ -848,7 +852,11 @@ router.post("/projects/:projectId/meetings/propose", async (req: Request, res: R
 router.post("/projects/:projectId/meetings/:meetingId/respond", async (req: Request, res: Response) => {
   try {
     const { meetingId } = req.params;
-    const { responderId, action, selectedSlotTime } = req.body;
+    const responderId =
+      req.body.responderId ||
+      (req.headers["x-user-id"] as string) ||
+      (req as any).user?.id;
+    const { action, selectedSlotTime } = req.body;
 
     if (!responderId || !["CONFIRM", "DECLINE"].includes(action)) {
       return res.status(400).json({

@@ -780,6 +780,17 @@ export class WorkspaceService {
           proposedSlots: params.proposedSlots,
           roomUrl,
           status: "PROPOSED",
+          proposedByUserId: params.proposedByUserId,
+          meetingDetails: {
+            meetingId: meeting.id,
+            title: params.title,
+            agenda: params.agenda,
+            durationMinutes: params.durationMinutes,
+            proposedSlots: params.proposedSlots,
+            roomUrl,
+            status: "PROPOSED",
+            proposedByUserId: params.proposedByUserId,
+          },
         } as any,
       },
     });
@@ -791,10 +802,22 @@ export class WorkspaceService {
    * Confirm or counter proposed meeting time slot (Section 7.1 & 7.3 Google Calendar sync).
    */
   async respondToMeeting(meetingId: string, responderId: string, action: "CONFIRM" | "DECLINE", selectedSlotTime?: string) {
-    const meeting = await prisma.workspaceMeeting.findUnique({
+    let meeting = await prisma.workspaceMeeting.findUnique({
       where: { id: meetingId },
       include: { conversation: { include: { project: true } } },
     });
+
+    if (!meeting) {
+      meeting = await prisma.workspaceMeeting.findFirst({
+        where: {
+          OR: [
+            { roomUrl: { contains: meetingId } },
+            { id: meetingId },
+          ],
+        },
+        include: { conversation: { include: { project: true } } },
+      });
+    }
 
     if (!meeting) {
       throw new Error(`Meeting ${meetingId} not found`);
@@ -863,17 +886,29 @@ export class WorkspaceService {
    * Save Multilingual Notetaker Summary & automatically create Tasks/ADRs (Section 7.4 & 7.5).
    */
   async saveMeetingNotetakerSummary(params: NotetakerSummaryParams) {
-    const meeting = await prisma.workspaceMeeting.findUnique({
+    let meeting = await prisma.workspaceMeeting.findUnique({
       where: { id: params.meetingId },
       include: { conversation: true },
     });
+
+    if (!meeting) {
+      meeting = await prisma.workspaceMeeting.findFirst({
+        where: {
+          OR: [
+            { roomUrl: { contains: params.meetingId } },
+            { id: params.meetingId },
+          ],
+        },
+        include: { conversation: true },
+      });
+    }
 
     if (!meeting) {
       throw new Error(`Meeting ${params.meetingId} not found`);
     }
 
     const updatedMeeting = await prisma.workspaceMeeting.update({
-      where: { id: params.meetingId },
+      where: { id: meeting.id },
       data: {
         status: "COMPLETED",
         executiveSummary: params.executiveSummary,
@@ -936,8 +971,11 @@ export class WorkspaceService {
           meetingId: meeting.id,
           title: meeting.title,
           executiveSummary: params.executiveSummary,
+          actionItems: params.actionItems,
           actionItemsCount: params.actionItems.length,
+          decisions: params.decisions,
           decisionsCount: params.decisions.length,
+          status: "COMPLETED",
           verbalScopeAlert: params.verbalScopeAlert || null,
         } as any,
       },
