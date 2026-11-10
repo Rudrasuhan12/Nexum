@@ -11,8 +11,6 @@ import {
 } from "@/lib/ai/conversation-types";
 import { generateGeminiResponse } from "@/lib/ai/gemini";
 
-export const dynamic = "force-dynamic";
-
 export async function POST(request: Request) {
   try {
     let user = await getCurrentUser();
