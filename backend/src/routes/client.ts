@@ -358,8 +358,75 @@ router.post("/talent/invite", async (req: Request, res: Response) => {
     if (!freelancerId || !projectId) {
       return res.status(400).json({
         success: false,
-        error: "Missing required freelancerId or projectId",
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Missing required freelancerId or projectId",
+          details: null,
+        },
       });
+    }
+
+    // 1. Verify project existence and check for existing active assignee/agreement
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        client: { select: { id: true, name: true, email: true } },
+        agreement: {
+          include: {
+            freelancer: { select: { id: true, name: true, email: true } },
+          },
+        },
+        projectProposals: {
+          where: { status: "ACCEPTED" },
+          include: {
+            freelancer: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: "NOT_FOUND",
+          message: "Project not found",
+          details: { projectId },
+        },
+      });
+    }
+
+    // 2. Reject invitation if project already has an active contract or assigned freelancer
+    const activeAgreement = project.agreement;
+    const activeProposal = project.projectProposals?.[0];
+    const assignedFreelancer = activeAgreement?.freelancer || activeProposal?.freelancer;
+
+    if (
+      (activeAgreement && ["PENDING_APPROVAL", "ACTIVE"].includes(activeAgreement.status)) ||
+      activeProposal
+    ) {
+      const assignedId = activeAgreement?.freelancerId || activeProposal?.freelancerId;
+      const assignedEmail = assignedFreelancer?.email;
+
+      // Check if invite is targeting someone other than the current assignee
+      const isSameAssignee =
+        (Boolean(assignedId) && assignedId === freelancerId) ||
+        (Boolean(assignedEmail) && assignedEmail === freelancerId);
+
+      if (!isSameAssignee) {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: "PROJECT_ALREADY_ASSIGNED",
+            message: `Project "${project.title}" already has an active contract assigned to ${assignedFreelancer?.name || "another freelancer"}. You cannot invite another freelancer until the current contract is terminated or completed.`,
+            details: {
+              projectId,
+              assignedFreelancerName: assignedFreelancer?.name,
+              agreementStatus: activeAgreement?.status || "ACTIVE",
+            },
+          },
+        });
+      }
     }
 
     const result = await clientOverviewService.inviteTalent({
@@ -369,7 +436,7 @@ router.post("/talent/invite", async (req: Request, res: Response) => {
       freelancerAvatar,
       freelancerTitle,
       projectId,
-      projectName,
+      projectName: projectName || project.title,
       proposedRate,
       customNote,
     });
@@ -377,7 +444,14 @@ router.post("/talent/invite", async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to invite talent";
-    res.status(500).json({ success: false, error: msg });
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "INTERNAL_ERROR",
+        message: msg,
+        details: null,
+      },
+    });
   }
 });
 

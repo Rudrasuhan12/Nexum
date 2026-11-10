@@ -17,6 +17,55 @@ const upload = multer({
 
 const router = Router();
 
+export interface ProjectParticipantCheck {
+  isAuthorized: boolean;
+  isClient: boolean;
+  isFreelancer: boolean;
+  effectiveRole: "CLIENT" | "FREELANCER";
+  effectiveUserId: string;
+}
+
+export function checkProjectParticipant(
+  project: {
+    clientId: string;
+    client?: { id: string; email: string; name?: string | null } | null;
+    agreement?: { freelancerId: string; freelancer?: { id: string; email: string; name?: string | null } | null } | null;
+    projectProposals?: Array<{ freelancerId: string; freelancer?: { id: string; email: string; name?: string | null } | null }>;
+  },
+  requesterId?: string,
+  requesterEmail?: string
+): ProjectParticipantCheck {
+  const normId = (requesterId || "").trim().toLowerCase();
+  const normEmail = (requesterEmail || "").trim().toLowerCase();
+
+  const isClient =
+    (Boolean(project.clientId) && (project.clientId.toLowerCase() === normId || project.clientId.toLowerCase() === normEmail)) ||
+    (Boolean(project.client?.id) && (project.client!.id.toLowerCase() === normId || project.client!.id.toLowerCase() === normEmail)) ||
+    (Boolean(project.client?.email) && (project.client!.email.toLowerCase() === normEmail || project.client!.email.toLowerCase() === normId));
+
+  const assignedFreelancerId =
+    project.agreement?.freelancerId ||
+    project.agreement?.freelancer?.id ||
+    project.projectProposals?.[0]?.freelancerId ||
+    project.projectProposals?.[0]?.freelancer?.id ||
+    "";
+
+  const assignedFreelancerEmail =
+    project.agreement?.freelancer?.email ||
+    project.projectProposals?.[0]?.freelancer?.email ||
+    "";
+
+  const isFreelancer =
+    (Boolean(assignedFreelancerId) && (assignedFreelancerId.toLowerCase() === normId || assignedFreelancerId.toLowerCase() === normEmail)) ||
+    (Boolean(assignedFreelancerEmail) && (assignedFreelancerEmail.toLowerCase() === normEmail || assignedFreelancerEmail.toLowerCase() === normId));
+
+  const isAuthorized = isClient || isFreelancer;
+  const effectiveRole = isClient ? "CLIENT" : "FREELANCER";
+  const effectiveUserId = isClient ? project.clientId : assignedFreelancerId;
+
+  return { isAuthorized, isClient, isFreelancer, effectiveRole, effectiveUserId };
+}
+
 /**
  * GET /api/workspace/projects
  * Fetches real active projects for the authenticated user (Client or Freelancer).
@@ -25,42 +74,45 @@ const router = Router();
 router.get("/projects", async (req: Request, res: Response) => {
   try {
     const sessionUser = (req as any).user;
-    const requestedUserId = (req.query.userId as string) || sessionUser?.id || sessionUser?.email;
+    const requestedUserId = (req.query.userId as string) || (req.headers["x-user-id"] as string) || sessionUser?.id || sessionUser?.email;
     const role = (req.query.role as string) || sessionUser?.role || "CLIENT";
     const explicitEmpty = req.query.empty === "true";
 
-    if (explicitEmpty) {
+    if (explicitEmpty || !requestedUserId) {
       return res.json({ success: true, count: 0, data: [] });
     }
 
-    let clientCondition: any = { clientId: { not: "" } };
-    if (requestedUserId && requestedUserId !== "usr_client_alex") {
-      clientCondition = {
+    // Resolve user if exists in DB to support querying by either ID or Email
+    const user = await prisma.user.findFirst({
+      where: {
         OR: [
-          { clientId: requestedUserId },
-          { client: { email: requestedUserId } },
-          { client: { name: { contains: "Sambit", mode: "insensitive" } } },
+          { id: requestedUserId },
+          { email: requestedUserId },
         ],
-      };
-    }
+      },
+      select: { id: true, email: true },
+    });
 
-    let freelancerCondition: any = {
+    const candidateIds = user ? [user.id, requestedUserId] : [requestedUserId];
+    const candidateEmails = user ? [user.email, requestedUserId] : [requestedUserId];
+
+    const clientCondition = {
       OR: [
-        { agreement: { status: { in: ["PENDING_APPROVAL", "ACTIVE", "COMPLETED"] } } },
-        { projectProposals: { some: { status: "ACCEPTED" } } },
+        { clientId: { in: candidateIds } },
+        { client: { id: { in: candidateIds } } },
+        { client: { email: { in: candidateEmails } } },
       ],
     };
-    if (requestedUserId && requestedUserId !== "usr_freelancer_rohan") {
-      freelancerCondition = {
-        OR: [
-          { agreement: { freelancerId: requestedUserId, status: { in: ["PENDING_APPROVAL", "ACTIVE", "COMPLETED"] } } },
-          { projectProposals: { some: { freelancerId: requestedUserId, status: "ACCEPTED" } } },
-          { agreement: { freelancer: { email: requestedUserId }, status: { in: ["PENDING_APPROVAL", "ACTIVE", "COMPLETED"] } } },
-          { projectProposals: { some: { freelancer: { email: requestedUserId }, status: "ACCEPTED" } } },
-          { agreement: { freelancer: { name: { contains: "Sambit", mode: "insensitive" } } } },
-        ],
-      };
-    }
+
+    const freelancerCondition = {
+      OR: [
+        { agreement: { freelancerId: { in: candidateIds }, status: { in: ["PENDING_APPROVAL", "ACTIVE", "COMPLETED"] } } },
+        { agreement: { freelancer: { id: { in: candidateIds } }, status: { in: ["PENDING_APPROVAL", "ACTIVE", "COMPLETED"] } } },
+        { agreement: { freelancer: { email: { in: candidateEmails } }, status: { in: ["PENDING_APPROVAL", "ACTIVE", "COMPLETED"] } } },
+        { projectProposals: { some: { freelancerId: { in: candidateIds }, status: "ACCEPTED" } } },
+        { projectProposals: { some: { freelancer: { email: { in: candidateEmails } }, status: "ACCEPTED" } } },
+      ],
+    };
 
     const statusCondition = {
       OR: [
@@ -71,10 +123,9 @@ router.get("/projects", async (req: Request, res: Response) => {
 
     // Query Prisma database - strictly only projects with an accepted proposal or agreement
     const dbProjects = await prisma.project.findMany({
-      where:
-        role === "FREELANCER"
-          ? { AND: [freelancerCondition, statusCondition] }
-          : { AND: [clientCondition, statusCondition] },
+      where: (role === "FREELANCER"
+        ? { AND: [freelancerCondition, statusCondition] }
+        : { AND: [clientCondition, statusCondition] }) as any,
       include: {
         client: { select: { id: true, name: true, email: true } },
         projectMilestones: { orderBy: { orderIndex: "asc" } },
@@ -188,13 +239,29 @@ router.get("/projects/:projectId/timeline", async (req: Request, res: Response) 
   try {
     const { projectId } = req.params;
 
+    const sessionUser = (req as any).user;
+    const reqUserId =
+      (req.query.userId as string) ||
+      (req.headers["x-user-id"] as string) ||
+      sessionUser?.id ||
+      sessionUser?.email;
+    const reqUserEmail = sessionUser?.email || (req.headers["x-user-email"] as string);
+
     // Verify whether this project has an accepted proposal or agreement
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
-        agreement: true,
+        client: { select: { id: true, name: true, email: true } },
+        agreement: {
+          include: {
+            freelancer: { select: { id: true, name: true, email: true } },
+          },
+        },
         projectProposals: {
           where: { status: "ACCEPTED" },
+          include: {
+            freelancer: { select: { id: true, name: true, email: true } },
+          },
         },
       },
     });
@@ -208,6 +275,21 @@ router.get("/projects/:projectId/timeline", async (req: Request, res: Response) 
           details: { projectId },
         },
       });
+    }
+
+    // Strict bilateral workspace participant enforcement
+    if (reqUserId) {
+      const participant = checkProjectParticipant(project, reqUserId, reqUserEmail);
+      if (!participant.isAuthorized) {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: "FORBIDDEN",
+            message: "Access denied. Only the client and assigned freelancer of this project can access this workspace.",
+            details: { projectId, userId: reqUserId },
+          },
+        });
+      }
     }
 
     const hasAcceptedProposalOrAgreement =
@@ -286,13 +368,29 @@ router.post("/projects/:projectId/messages", async (req: Request, res: Response)
       });
     }
 
+    const sessionUser = (req as any).user;
+    const effectiveSenderId =
+      senderId ||
+      (req.headers["x-user-id"] as string) ||
+      sessionUser?.id ||
+      sessionUser?.email;
+    const senderEmail = sessionUser?.email || (req.headers["x-user-email"] as string);
+
     // Verify whether this project has an accepted proposal or active agreement
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
-        agreement: true,
-        proposals: {
+        client: { select: { id: true, name: true, email: true } },
+        agreement: {
+          include: {
+            freelancer: { select: { id: true, name: true, email: true } },
+          },
+        },
+        projectProposals: {
           where: { status: "ACCEPTED" },
+          include: {
+            freelancer: { select: { id: true, name: true, email: true } },
+          },
         },
       },
     });
@@ -308,48 +406,23 @@ router.post("/projects/:projectId/messages", async (req: Request, res: Response)
       });
     }
 
-    const isClientSender =
-      senderRole === "CLIENT" ||
-      senderId === project.clientId ||
-      (req as any).user?.id === project.clientId ||
-      (req as any).user?.role === "CLIENT";
-
-    const hasAcceptedProposalOrAgreement =
-      Boolean(project.agreement) || project.proposals.length > 0;
-
-    const existingConv = await prisma.workspaceConversation.findUnique({
-      where: { projectId },
-      include: {
-        messages: {
-          select: { id: true, senderRole: true },
-          take: 5,
-        },
-      },
-    });
-
-    const hasClientInitiated = (existingConv?.messages || []).some(
-      (m) => m.senderRole === "CLIENT"
-    );
-
-    // Approval requirement applies to freelancer initiating messages.
-    // Client can always initiate messages; once client initiates, workspace messaging is open for both!
-    const canSend = isClientSender || hasAcceptedProposalOrAgreement || hasClientInitiated;
-
-    if (!canSend) {
+    // Strict bilateral workspace participant enforcement
+    const participant = checkProjectParticipant(project, effectiveSenderId, senderEmail);
+    if (!participant.isAuthorized) {
       return res.status(403).json({
         success: false,
         error: {
           code: "FORBIDDEN",
-          message: "Direct messaging unlocks once the client initiates a discussion or accepts your proposal.",
-          details: { projectId },
+          message: "Only the project client and assigned freelancer are authorized to send messages in this workspace.",
+          details: { projectId, senderId: effectiveSenderId },
         },
       });
     }
 
     const result = await workspaceService.sendMessage({
       projectId,
-      senderId,
-      senderRole: senderRole || "CLIENT",
+      senderId: effectiveSenderId,
+      senderRole: participant.effectiveRole,
       content,
       type,
       origin: origin || "WEB",
@@ -400,8 +473,18 @@ router.post(
       const project = await prisma.project.findUnique({
         where: { id: projectId },
         include: {
-          agreement: true,
-          client: true,
+          client: { select: { id: true, name: true, email: true } },
+          agreement: {
+            include: {
+              freelancer: { select: { id: true, name: true, email: true } },
+            },
+          },
+          projectProposals: {
+            where: { status: "ACCEPTED" },
+            include: {
+              freelancer: { select: { id: true, name: true, email: true } },
+            },
+          },
         },
       });
 
@@ -418,19 +501,28 @@ router.post(
 
       const sessionUser = (req as any).user;
       const requestedSenderId = (req.body.senderId as string) || (req.headers["x-user-id"] as string) || sessionUser?.id;
-      const requestedRole = (req.body.senderRole as string) || sessionUser?.role || (requestedSenderId === project.clientId ? "CLIENT" : "FREELANCER");
+      const uploaderEmail = sessionUser?.email || (req.headers["x-user-email"] as string);
+
+      // Strict bilateral workspace participant enforcement
+      const participant = checkProjectParticipant(project, requestedSenderId, uploaderEmail);
+      if (!participant.isAuthorized) {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: "FORBIDDEN",
+            message: "Only the project client and assigned freelancer are authorized to upload files in this workspace.",
+            details: { projectId, uploaderId: requestedSenderId },
+          },
+        });
+      }
+
+      const requestedRole = participant.effectiveRole;
       const note = (req.body.note as string) || "";
 
-      // Ensure uploaderId is a valid user ID in DB for FK constraints
-      let uploaderId = requestedSenderId;
+      let uploaderId = participant.effectiveUserId;
       let validUser = uploaderId ? await prisma.user.findUnique({ where: { id: uploaderId } }) : null;
       if (!validUser) {
-        if (requestedRole === "CLIENT") {
-          validUser = await prisma.user.findFirst({ where: { role: "CLIENT" } });
-        } else {
-          validUser = await prisma.user.findFirst({ where: { role: "FREELANCER" } });
-        }
-        uploaderId = validUser ? validUser.id : project.clientId;
+        uploaderId = participant.isClient ? project.clientId : (project.agreement?.freelancerId || project.clientId);
       }
 
       const sha256 = crypto.createHash("sha256").update(file.buffer).digest("hex");
@@ -678,7 +770,52 @@ router.post("/projects/:projectId/meetings/propose", async (req: Request, res: R
     if (!proposedByUserId || !title || !proposedSlots || !proposedSlots.length) {
       return res.status(400).json({
         success: false,
-        error: "proposedByUserId, title, and at least 1 proposedSlot are required",
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "proposedByUserId, title, and at least 1 proposedSlot are required",
+          details: null,
+        },
+      });
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        client: { select: { id: true, name: true, email: true } },
+        agreement: {
+          include: {
+            freelancer: { select: { id: true, name: true, email: true } },
+          },
+        },
+        projectProposals: {
+          where: { status: "ACCEPTED" },
+          include: {
+            freelancer: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: "NOT_FOUND",
+          message: "Project not found",
+          details: { projectId },
+        },
+      });
+    }
+
+    const participant = checkProjectParticipant(project, proposedByUserId);
+    if (!participant.isAuthorized) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: "FORBIDDEN",
+          message: "Only the project client and assigned freelancer are authorized to propose meetings.",
+          details: { projectId, proposedByUserId },
+        },
       });
     }
 
@@ -798,8 +935,58 @@ router.post("/projects/:projectId/tasks", async (req: Request, res: Response) =>
     if (!title) {
       return res.status(400).json({
         success: false,
-        error: "title is required",
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "title is required",
+          details: null,
+        },
       });
+    }
+
+    const sessionUser = (req as any).user;
+    const creatorId = (req.body.creatorId as string) || (req.headers["x-user-id"] as string) || sessionUser?.id;
+
+    if (creatorId) {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          client: { select: { id: true, name: true, email: true } },
+          agreement: {
+            include: {
+              freelancer: { select: { id: true, name: true, email: true } },
+            },
+          },
+          projectProposals: {
+            where: { status: "ACCEPTED" },
+            include: {
+              freelancer: { select: { id: true, name: true, email: true } },
+            },
+          },
+        },
+      });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: "NOT_FOUND",
+            message: "Project not found",
+            details: { projectId },
+          },
+        });
+      }
+
+      const participant = checkProjectParticipant(project, creatorId);
+      if (!participant.isAuthorized) {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: "FORBIDDEN",
+            message: "Only the project client and assigned freelancer are authorized to create tasks.",
+            details: { projectId, creatorId },
+          },
+        });
+      }
     }
 
     const task = await workspaceService.createTask({
