@@ -51,6 +51,7 @@ import freelancerAssistantRouter from "./routes/freelancer/assistant.js";
 import workspaceRouter from "./routes/workspace.js";
 import telegramRouter from "./routes/telegram.js";
 import { telegramService } from "./services/telegramService.js";
+import { attachSignalingServer } from "./signaling/rtcSignalingServer.js";
 import clientPaymentsRouter from "./routes/clientPayments.js";
 import milestonesVerifierRouter from "./routes/milestonesVerifier.js";
 import handoverRouter from "./routes/handover.js";
@@ -221,6 +222,9 @@ if (env.NODE_ENV !== "test") {
       console.error("Server listen error:", err);
     }
   });
+
+  // Attach WebRTC Signaling WebSocket Server on the same HTTP server
+  attachSignalingServer(server);
 
   // Start persistent PostgreSQL-backed background job worker unless explicitly disabled (e.g. in test suites)
   if (process.env.DISABLE_BACKGROUND_WORKER !== "true") {

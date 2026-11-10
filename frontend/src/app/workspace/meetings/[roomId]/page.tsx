@@ -3,941 +3,543 @@
 import React, { useState, useEffect, useRef, Suspense, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
-  Mic,
-  MicOff,
-  Video,
-  VideoOff,
-  ScreenShare,
-  PhoneOff,
-  Sparkles,
-  MessageSquare,
-  ShieldCheck,
-  Bot,
-  Users,
-  CheckCircle2,
-  AlertCircle,
-  Copy,
-  Check,
-  Send,
-  ArrowLeft,
-  Info,
-  Hand,
-  Smile,
-  X,
-  Maximize2,
-  Minimize2,
-  Lock,
-  Volume2,
-  VolumeX,
-  ExternalLink,
-  Plus,
+  Mic, MicOff, Video, VideoOff, ScreenShare, PhoneOff,
+  MessageSquare, Users, CheckCircle2, AlertCircle, Copy,
+  Check, Send, ArrowLeft, Info, Hand, Smile, X,
+  ShieldCheck, Bot, Lock,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useWebRTC } from "@/hooks/useWebRTC";
 import { submitMeetingNotetakerSynthesis } from "@/lib/api-client";
 
-interface TranscriptItem {
-  id: string;
-  speaker: string;
-  text: string;
-  timestamp: string;
-  isScopeAlert?: boolean;
-  isCommitment?: boolean;
-  suggestedDeltaCents?: number;
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-interface ChatMessage {
-  id: string;
-  sender: string;
-  text: string;
-  time: string;
-  isAi?: boolean;
-}
-
-interface FloatingEmoji {
-  id: number;
-  emoji: string;
-  x: number;
-}
-
-function MeetingRoomContent() {
-  const params = useParams();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const { user } = useAuth();
-
-  const roomId = (params?.roomId as string) || "room-techkart-001";
-  const projectId = searchParams.get("projectId") || "prj_1794041467889_g05q";
-  const meetingId = searchParams.get("meetingId") || roomId;
-  const initialRole = searchParams.get("role") || user?.role || "FREELANCER";
-
-  // Participant Identity (Dynamic from Auth and Project context)
-  const myRole = user?.role || initialRole;
-  const myName = user?.name || (myRole === "CLIENT" ? "Client" : "Freelancer");
-  const myAvatar = user?.avatar || "";
-  const myInitials = myName
+function initials(name: string) {
+  return name
     .split(" ")
     .map((w) => w[0])
     .filter(Boolean)
     .slice(0, 2)
     .join("")
-    .toUpperCase() || "ME";
+    .toUpperCase() || "??";
+}
 
-  // Counterpart dynamic resolution
-  const [counterpartName, setCounterpartName] = useState<string>(
-    myRole === "CLIENT" ? "Assigned Freelancer" : "Project Client"
+function AvatarCircle({
+  name, src, size = "lg", speaking = false,
+}: {
+  name: string; src?: string; size?: "sm" | "md" | "lg"; speaking?: boolean;
+}) {
+  const dim = size === "sm" ? "w-9 h-9 text-xs" : size === "md" ? "w-14 h-14 text-base" : "w-24 h-24 text-3xl";
+  return (
+    <div className={`relative ${dim}`}>
+      {speaking && (
+        <div className={`absolute inset-0 rounded-full bg-white/20 animate-ping`} />
+      )}
+      {src ? (
+        <img
+          src={src}
+          alt={name}
+          className={`${dim} rounded-full object-cover ring-2 ${speaking ? "ring-white" : "ring-transparent"} transition-all`}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      ) : (
+        <div
+          className={`${dim} rounded-full bg-[#444746] flex items-center justify-center font-semibold text-[#e3e3e3] ring-2 ${speaking ? "ring-white" : "ring-transparent"} transition-all`}
+        >
+          {initials(name)}
+        </div>
+      )}
+    </div>
   );
-  const [counterpartRole, setCounterpartRole] = useState<string>(
-    myRole === "CLIENT" ? "Freelancer" : "Client"
+}
+
+function NexumAIOrb({ speaking }: { speaking?: boolean }) {
+  return (
+    <div className="relative flex items-center justify-center w-24 h-24">
+      {speaking && <div className="absolute inset-0 rounded-full bg-[#8ab4f8]/20 animate-ping" />}
+      <img src="/logo.png" alt="Nexum AI" className="w-20 h-20 rounded-full object-cover ring-2 ring-[#8ab4f8]/60" />
+    </div>
   );
-  const [projectTitle, setProjectTitle] = useState<string>("Milestone & Scope Alignment Review");
+}
 
-  // Media States
-  const [isMicOn, setIsMicOn] = useState(true);
-  const [isVideoOn, setIsVideoOn] = useState(false);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [isCaptionsOn, setIsCaptionsOn] = useState(true);
-  const [isHandRaised, setIsHandRaised] = useState(false);
-  const [activeSidePanel, setActiveSidePanel] = useState<"none" | "info" | "people" | "chat" | "ai">("ai");
-  const [copiedLink, setCopiedLink] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
-  const [currentTimeStr, setCurrentTimeStr] = useState<string>("");
+// ─── Main Component ────────────────────────────────────────────────────────────
 
-  // Streams
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const screenVideoRef = useRef<HTMLVideoElement | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const screenStreamRef = useRef<MediaStream | null>(null);
+function MeetingRoomContent() {
+  const { roomId: rawRoomId } = useParams() as { roomId: string };
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
 
-  // Live Transcripts & Notetaker
-  const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
-  const [currentSubtitle, setCurrentSubtitle] = useState<string>("");
-  const [isSpeakingMe, setIsSpeakingMe] = useState(false);
-  const [isSpeakingCounterpart, setIsSpeakingCounterpart] = useState(false);
-  const [isEndingMeeting, setIsEndingMeeting] = useState(false);
+  const roomId = rawRoomId || "room-default";
+  const projectId = searchParams.get("projectId") || "";
+  const meetingId = searchParams.get("meetingId") || roomId;
+  const myRole = (user?.role || searchParams.get("role") || "FREELANCER").toUpperCase();
+  const myName = user?.name || (myRole === "CLIENT" ? "Client" : "Freelancer");
+  const myAvatar = user?.avatar || "";
+  const myId = user?.id || `${myRole}_${Date.now()}`;
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
-  // Chat
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  // ─── WebRTC hook ─────────────────────────────────────────────────────────────
+  const {
+    localStream, remoteStream, remotePeers, isConnected,
+    isMicOn, isVideoOn, isScreenSharing,
+    toggleMic, toggleVideo, toggleScreenShare, hangUp,
+    chatMessages, captions, liveCaption,
+    sendChat, sendCaption, sendReaction,
+  } = useWebRTC({
+    roomId, userId: myId, userName: myName, role: myRole, avatar: myAvatar, backendUrl,
+  });
+
+  // ─── Local video ref ─────────────────────────────────────────────────────────
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const captionsEndRef = useRef<HTMLDivElement>(null);
+
+  // ─── UI State ────────────────────────────────────────────────────────────────
+  const [sidePanel, setSidePanel] = useState<"none" | "people" | "chat" | "ai">("none");
   const [chatInput, setChatInput] = useState("");
-  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
-  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [isHandRaised, setIsHandRaised] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [floatingEmojis, setFloatingEmojis] = useState<{ id: number; emoji: string; x: number }[]>([]);
+  const [isCCOn, setIsCCOn] = useState(true);
+  const [isEndingMeeting, setIsEndingMeeting] = useState(false);
+  const [clockStr, setClockStr] = useState("");
+  const [projectTitle, setProjectTitle] = useState("Bilateral Sync Call");
+  const [counterpartName, setCounterpartName] = useState("Waiting for other participant...");
 
-  // 1. Clock timer
+  // ─── Clock ───────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTimeStr(
-        now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      );
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
+    const tick = () => setClockStr(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
   }, []);
 
-  // 2. Resolve Counterpart and Project Details dynamically from DB
+  // ─── Load project metadata ────────────────────────────────────────────────────
   useEffect(() => {
-    let isMounted = true;
-    async function loadProjectDetails() {
-      try {
-        const res = await fetch(`/api/workspace/projects?role=${myRole}`);
-        if (!res.ok) return;
-        const json = await res.json();
+    if (!projectId) return;
+    fetch(`/api/workspace/projects?role=${myRole}`)
+      .then((r) => r.json())
+      .then((json) => {
         if (json.success && Array.isArray(json.data)) {
-          const matched = json.data.find((p: any) => p.id === projectId) || json.data[0];
-          if (matched && isMounted) {
-            setProjectTitle(matched.name || "Milestone & Scope Alignment Review");
-            if (myRole === "CLIENT") {
-              setCounterpartName(matched.freelancerName || "Assigned Freelancer");
-              setCounterpartRole("Freelancer");
-            } else {
-              setCounterpartName(matched.clientName || "Project Client");
-              setCounterpartRole("Client");
-            }
+          const p = json.data.find((x: any) => x.id === projectId) || json.data[0];
+          if (p) {
+            setProjectTitle(p.name || "Bilateral Sync Call");
+            setCounterpartName(
+              myRole === "CLIENT" ? p.freelancerName : p.clientName
+            );
           }
         }
-      } catch (err) {
-        console.warn("Could not fetch project details for meeting room:", err);
-      }
-    }
-    loadProjectDetails();
-    return () => {
-      isMounted = false;
-    };
+      })
+      .catch(() => {});
   }, [projectId, myRole]);
 
-  // 3. Initialize default transcript seeds tailored to REAL participants
+  // ─── Update counterpart name from live WebRTC peers ─────────────────────────
   useEffect(() => {
-    const initialTranscripts: TranscriptItem[] = [
-      {
-        id: "t1",
-        speaker: counterpartName,
-        text: `Welcome to the sync call. Let's review the active milestone deliverable and confirm the API integration test suite.`,
-        timestamp: "00:05",
-      },
-      {
-        id: "t2",
-        speaker: myName,
-        text: `Thanks for hopping on. All test vectors and SHA-256 state machines for the active deliverable are ready for review.`,
-        timestamp: "00:20",
-      },
-      {
-        id: "t3",
-        speaker: counterpartName,
-        text: `Could we also add an additional verification webhook for PayPal instant order settlement before milestone release?`,
-        timestamp: "00:45",
-        isScopeAlert: true,
-        suggestedDeltaCents: 40000,
-      },
-      {
-        id: "t4",
-        speaker: myName,
-        text: `I can include the instant webhook verification as a formal scope amendment for +$400 USD and 3 days delivery timeline.`,
-        timestamp: "01:05",
-        isScopeAlert: true,
-        suggestedDeltaCents: 40000,
-      },
-      {
-        id: "t5",
-        speaker: counterpartName,
-        text: `Agreed. We'll proceed with the +$400 amendment. Let's make sure test coverage is completed by Wednesday.`,
-        timestamp: "01:30",
-        isCommitment: true,
-      },
-    ];
-    setTranscripts(initialTranscripts);
-    setCurrentSubtitle(
-      `[${counterpartName}]: "Agreed. We'll proceed with the +$400 amendment. Let's make sure test coverage is completed by Wednesday."`
-    );
+    if (remotePeers.size > 0) {
+      const first = Array.from(remotePeers.values())[0];
+      if (first.userName) setCounterpartName(first.userName);
+    }
+  }, [remotePeers]);
 
-    setChatMessages([
-      {
-        id: "m1",
-        sender: "Nexum System",
-        text: "Bilateral WebRTC room provisioned with dual SHA-256 cryptographic audit seal.",
-        time: "12:00",
-        isAi: false,
-      },
-      {
-        id: "m2",
-        sender: "Nexum AI Notetaker",
-        text: "🤖 Multilingual Notetaker connected (Groq Whisper v3 active). Real-time verbal commitments are being verified.",
-        time: "12:00",
-        isAi: true,
-      },
-    ]);
-  }, [myName, counterpartName]);
-
-  // 4. Handle Real Webcam Stream (with graceful fallback if device unavailable)
+  // ─── Wire local stream to <video> ────────────────────────────────────────────
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    if (isVideoOn) {
-      if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
-        navigator.mediaDevices
-          .getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: isMicOn })
-          .then((s) => {
-            stream = s;
-            localStreamRef.current = s;
-            if (localVideoRef.current) {
-              localVideoRef.current.srcObject = s;
-            }
-          })
-          .catch((err) => {
-            console.warn("Camera access denied or unavailable in current environment:", err);
-            setIsVideoOn(false);
-          });
-      }
-    } else {
-      if (localStreamRef.current) {
-        localStreamRef.current.getVideoTracks().forEach((track) => track.stop());
-      }
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = null;
-      }
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
     }
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, [isVideoOn, isMicOn]);
+  }, [localStream]);
 
-  // 5. Handle Real Screen Share
-  const toggleScreenShare = async () => {
-    if (isScreenSharing) {
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach((t) => t.stop());
-      }
-      setIsScreenSharing(false);
-      return;
-    }
-
-    try {
-      if (typeof navigator !== "undefined" && navigator.mediaDevices?.getDisplayMedia) {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-        screenStreamRef.current = stream;
-        setIsScreenSharing(true);
-        if (screenVideoRef.current) {
-          screenVideoRef.current.srcObject = stream;
-        }
-        stream.getVideoTracks()[0].onended = () => {
-          setIsScreenSharing(false);
-        };
-      }
-    } catch (err) {
-      console.warn("Screen share cancelled or not allowed:", err);
-      setIsScreenSharing(false);
-    }
-  };
-
-  // 6. Real Web Speech Recognition (if browser supports WebkitSpeechRecognition)
+  // ─── Wire remote stream to <video> ───────────────────────────────────────────
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
+
+  // ─── Auto-scroll chat and captions ───────────────────────────────────────────
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+  useEffect(() => { captionsEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [captions]);
+
+  // ─── Web Speech Recognition for live CC ──────────────────────────────────────
+  useEffect(() => {
+    if (!isMicOn || typeof window === "undefined") return;
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
 
-    if (!SpeechRecognition || !isMicOn) return;
-
-    let recognition: any = null;
+    let recognition: any;
     try {
       recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "en-US";
-
-      recognition.onstart = () => {
-        setIsSpeakingMe(true);
-      };
+      recognition.maxAlternatives = 1;
 
       recognition.onresult = (event: any) => {
-        let interimText = "";
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const transcriptChunk = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-            const lower = transcriptChunk.toLowerCase();
-            const isScope = lower.includes("cost") || lower.includes("dollar") || lower.includes("add") || lower.includes("amend");
-            const isCommit = lower.includes("commit") || lower.includes("agree") || lower.includes("will deliver") || lower.includes("by");
-
-            const newItem: TranscriptItem = {
-              id: `tr_${Date.now()}`,
-              speaker: myName,
-              text: transcriptChunk.trim(),
-              timestamp: time,
-              isScopeAlert: isScope,
-              isCommitment: isCommit,
-            };
-            setTranscripts((prev) => [...prev, newItem]);
-            setCurrentSubtitle(`[${myName}]: "${transcriptChunk.trim()}"`);
-          } else {
-            interimText += transcriptChunk;
-          }
-        }
-        if (interimText) {
-          setCurrentSubtitle(`[${myName}]: "${interimText}"`);
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript.trim();
+          const isFinal = event.results[i].isFinal;
+          const lower = transcript.toLowerCase();
+          const isScope = /cost|price|dollar|amend|add feature|change scope/.test(lower);
+          const isCommit = /commit|agree|will deliver|by wednesday|by friday|by monday/.test(lower);
+          sendCaption(transcript, isFinal, isScope, isCommit);
         }
       };
-
-      recognition.onerror = () => {
-        setIsSpeakingMe(false);
+      recognition.onerror = (e: any) => {
+        if (e.error === "not-allowed") {
+          console.warn("[CC] Speech recognition: microphone not allowed");
+        }
       };
-
-      recognition.onend = () => {
-        setIsSpeakingMe(false);
-      };
-
       recognition.start();
     } catch (err) {
-      console.warn("Speech recognition initialization note:", err);
+      console.warn("[CC] Speech recognition init failed:", err);
     }
-
     return () => {
-      if (recognition) {
-        try {
-          recognition.stop();
-        } catch {}
-      }
+      try { recognition?.stop(); } catch {}
     };
-  }, [isMicOn, myName]);
+  }, [isMicOn, sendCaption]);
 
-  // Periodic visual counterpart speaking activity simulation for realistic Google Meet atmosphere
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setIsSpeakingCounterpart((prev) => !prev);
-    }, 4500);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Scroll to bottom on new transcripts
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcripts]);
-
-  // Scroll to bottom on new chat
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
-
-  // Copy link
-  const handleCopyInvite = () => {
-    if (typeof window !== "undefined") {
-      navigator.clipboard.writeText(window.location.href);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2500);
-    }
-  };
-
-  // Trigger floating reaction emoji
+  // ─── Floating emoji ───────────────────────────────────────────────────────────
   const triggerEmoji = (emoji: string) => {
     const id = Date.now();
-    const x = Math.random() * 60 + 20; // 20% to 80% width
+    const x = 20 + Math.random() * 60;
     setFloatingEmojis((prev) => [...prev, { id, emoji, x }]);
-    setShowEmojiPicker(false);
-    setTimeout(() => {
-      setFloatingEmojis((prev) => prev.filter((item) => item.id !== id));
-    }, 2800);
+    sendReaction(emoji);
+    setShowEmoji(false);
+    setTimeout(() => setFloatingEmojis((prev) => prev.filter((e) => e.id !== id)), 2500);
   };
 
-  // Send In-Room Message
-  const handleSendChat = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
-    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const newMsg: ChatMessage = {
-      id: `m_${Date.now()}`,
-      sender: myName,
-      text: chatInput.trim(),
-      time: now,
-    };
-    setChatMessages((prev) => [...prev, newMsg]);
-    setChatInput("");
+  // ─── Copy invite link ─────────────────────────────────────────────────────────
+  const copyInvite = () => {
+    navigator.clipboard?.writeText(window.location.href);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
   };
 
-  // Add a spoken remark simulation directly into the call stream
-  const addSpokenRemark = (remarkText: string) => {
-    if (!remarkText.trim()) return;
-    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const lower = remarkText.toLowerCase();
-    const isScope = lower.includes("cost") || lower.includes("amend") || lower.includes("price") || lower.includes("add");
-    const isCommit = lower.includes("commit") || lower.includes("agree") || lower.includes("by");
-
-    const item: TranscriptItem = {
-      id: `tr_${Date.now()}`,
-      speaker: myName,
-      text: remarkText.trim(),
-      timestamp: time,
-      isScopeAlert: isScope,
-      isCommitment: isCommit,
-      suggestedDeltaCents: isScope ? 40000 : 0,
-    };
-    setTranscripts((prev) => [...prev, item]);
-    setCurrentSubtitle(`[${myName}]: "${remarkText.trim()}"`);
-  };
-
-  // End Call & Synthesize with Groq LLaMA 3.3 and Gemini
-  const handleEndMeetingAndSynthesize = async () => {
+  // ─── End call ────────────────────────────────────────────────────────────────
+  const endCall = async () => {
     setIsEndingMeeting(true);
-
-    // Stop streams
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-    }
-    if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((t) => t.stop());
-    }
-
-    const fullTranscript = transcripts
-      .map((t) => `[${t.speaker} (${t.timestamp})]: ${t.text}`)
-      .join("\n");
-
-    const scopeAlertFound = transcripts.find((t) => t.isScopeAlert);
-
-    try {
-      await submitMeetingNotetakerSynthesis(projectId, meetingId, {
-        executiveSummary: `Executive Summary: Real-time bilateral review between ${myName} (${myRole}) and ${counterpartName} (${counterpartRole}). Key deliverables, payment triggers, and PayPal verification testing were verified under dual consensus.`,
-        actionItems: [
-          {
-            task: `Verify REST v2 automated testing and idempotency cache`,
-            dueDate: new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0],
+    hangUp();
+    if (projectId && meetingId) {
+      try {
+        await submitMeetingNotetakerSynthesis(projectId, meetingId, {
+          executiveSummary: `Bilateral sync call between ${myName} and ${counterpartName} for project: ${projectTitle}.`,
+          actionItems: captions
+            .filter((c) => c.isCommitment)
+            .map((c) => ({ task: c.text, dueDate: new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0] })),
+          decisions: captions
+            .filter((c) => c.isScopeAlert)
+            .map((c) => ({ title: "Scope Discussion", description: c.text })),
+          transcriptSegments: captions.map((c) => ({
+            speaker: c.fromUserName,
+            timestamp: new Date(c.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            text: c.text,
+          })),
+          verbalScopeAlert: {
+            detected: captions.some((c) => c.isScopeAlert),
+            verbalAgreementSnippet: captions.find((c) => c.isScopeAlert)?.text || "No verbal scope changes detected.",
+            suggestedDeltaCents: 0,
           },
-          {
-            task: `Publish consensus deliverable package for active milestone review`,
-            dueDate: new Date(Date.now() + 4 * 86400000).toISOString().split("T")[0],
-          },
-        ],
-        decisions: [
-          {
-            title: `Bilateral Milestone Delivery Sequence Confirmed`,
-            description: `Both parties aligned on scope boundaries and verification criteria with cryptographic audit trail.`,
-          },
-        ],
-        transcriptSegments: transcripts.map((t) => ({
-          speaker: t.speaker,
-          timestamp: t.timestamp,
-          text: t.text,
-        })),
-        verbalScopeAlert: {
-          detected: !!scopeAlertFound,
-          verbalAgreementSnippet: scopeAlertFound
-            ? scopeAlertFound.text
-            : "All discussed deliverables remain strictly within canonical contract agreement.",
-          suggestedDeltaCents: scopeAlertFound?.suggestedDeltaCents || 0,
-        },
-      });
-    } catch (err) {
-      console.warn("Post-meeting synthesis fallback:", err);
+        });
+      } catch (err) {
+        console.warn("Post-call synthesis:", err);
+      }
     }
-
     setTimeout(() => {
-      const target =
-        myRole.toUpperCase() === "FREELANCER"
-          ? "/freelancer/workspace?tab=meetings"
-          : "/client/workspace?tab=meetings";
-      router.push(target);
-    }, 1200);
+      router.push(myRole === "FREELANCER" ? "/freelancer/workspace?tab=meetings" : "/client/workspace?tab=meetings");
+    }, 800);
   };
 
-  const counterpartInitials = counterpartName
-    .split(" ")
-    .map((w) => w[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase() || "CP";
+  // ─── Remote participant info ──────────────────────────────────────────────────
+  const remotePeerArr = Array.from(remotePeers.values());
+  const remotePeer = remotePeerArr[0] ?? null;
 
+  // ─── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="h-screen w-screen bg-[#202124] text-[#e8eaed] flex flex-col overflow-hidden select-none font-sans relative">
-      {/* Floating Animated Emojis */}
+    <div className="h-screen w-screen bg-[#202124] text-[#e3e3e3] flex flex-col overflow-hidden font-sans select-none">
+
+      {/* ── Floating Emoji Reactions ─────────────────────────────────────────── */}
       <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
         {floatingEmojis.map((item) => (
-          <div
+          <span
             key={item.id}
             style={{ left: `${item.x}%` }}
-            className="absolute bottom-24 text-4xl animate-bounce duration-1000 transition-all opacity-90 transform -translate-x-1/2"
+            className="absolute bottom-28 text-4xl animate-bounce pointer-events-none"
           >
             {item.emoji}
-          </div>
+          </span>
         ))}
       </div>
 
-      {/* TOP BAR: Clean Google Meet Style */}
-      <header className="h-14 px-4 sm:px-6 bg-[#202124] border-b border-[#3c4043]/50 flex items-center justify-between shrink-0 z-20">
+      {/* ══════════════════════════════════════════════════════════════════════
+          TOP BAR
+      ══════════════════════════════════════════════════════════════════════ */}
+      <header className="h-14 px-4 flex items-center justify-between shrink-0 z-20">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => router.push(myRole === "FREELANCER" ? "/freelancer/workspace" : "/client/workspace")}
-            className="p-2 rounded-full hover:bg-[#3c4043]/60 text-[#9aa0a6] hover:text-white transition cursor-pointer"
-            title="Leave room and return to workspace"
+            className="p-2 rounded-full hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white transition cursor-pointer"
+            title="Return to workspace"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-2.5">
-            <span className="font-semibold text-sm sm:text-base text-white tracking-tight truncate max-w-xs sm:max-w-md">
-              {projectTitle}
-            </span>
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-[#3c4043]/50 text-[#8ab4f8] border border-[#3c4043]">
-              <Lock className="w-3 h-3" />
-              <span>{roomId}</span>
-            </span>
-          </div>
+          <span className="font-medium text-sm text-white truncate max-w-xs md:max-w-md">
+            {projectTitle}
+          </span>
+          <span className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono text-[#9aa0a6] bg-[#3c4043]/50 border border-[#3c4043]">
+            <Lock className="w-3 h-3" />
+            {roomId}
+          </span>
         </div>
 
-        {/* AI Notetaker Status & Quick Share */}
-        <div className="flex items-center gap-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#3c4043]/40 border border-[#8ab4f8]/30 text-[#8ab4f8] text-xs font-medium">
-            <span className="w-2 h-2 rounded-full bg-[#8ab4f8] animate-pulse" />
-            <Bot className="w-3.5 h-3.5 text-[#8ab4f8]" />
-            <span className="hidden md:inline">Nexum AI Notetaker Active (Gemini & Groq Whisper)</span>
-            <span className="md:hidden">AI Notetaker</span>
+        <div className="flex items-center gap-2">
+          {/* Connection indicator */}
+          <div className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#3c4043]/40 text-xs font-medium">
+            <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-[#81c995]" : "bg-[#f28b82]"} animate-pulse`} />
+            <span className="text-[#9aa0a6]">{isConnected ? "Connected" : "Connecting..."}</span>
           </div>
 
           <button
             type="button"
-            onClick={handleCopyInvite}
-            className="px-3 py-1.5 rounded-full bg-[#3c4043] hover:bg-[#4a4d51] text-white text-xs font-medium transition cursor-pointer flex items-center gap-1.5"
-            title="Copy meeting join link"
+            onClick={copyInvite}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#3c4043] hover:bg-[#4a4d51] text-sm font-medium transition cursor-pointer"
           >
-            {copiedLink ? <Check className="w-3.5 h-3.5 text-[#81c995]" /> : <Copy className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">{copiedLink ? "Link Copied" : "Copy Invite"}</span>
+            {copiedLink ? <Check className="w-4 h-4 text-[#81c995]" /> : <Copy className="w-4 h-4" />}
+            <span className="hidden sm:inline text-sm">{copiedLink ? "Copied" : "Copy invite"}</span>
           </button>
         </div>
       </header>
 
-      {/* MAIN CONFERENCE STAGE */}
-      <div className="flex-1 flex overflow-hidden relative">
-        <div className="flex-1 p-3 sm:p-5 flex flex-col justify-between overflow-hidden relative">
-          {/* Active Screen Presentation Stage (if screen sharing) */}
-          {isScreenSharing ? (
-            <div className="flex-1 flex flex-col gap-3 min-h-0">
-              <div className="relative flex-1 rounded-2xl bg-[#171717] border border-[#3c4043] overflow-hidden flex items-center justify-center shadow-2xl">
-                <video ref={screenVideoRef} autoPlay playsInline muted className="w-full h-full object-contain" />
-                <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full text-xs font-medium text-white flex items-center gap-2 border border-white/10">
-                  <ScreenShare className="w-3.5 h-3.5 text-[#8ab4f8]" />
-                  <span>You are presenting to everyone</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={toggleScreenShare}
-                  className="absolute top-4 right-4 bg-[#ea4335] hover:bg-[#d93025] px-3.5 py-1.5 rounded-full text-xs font-semibold text-white transition cursor-pointer"
-                >
-                  Stop Presenting
-                </button>
-              </div>
+      {/* ══════════════════════════════════════════════════════════════════════
+          VIDEO STAGE
+      ══════════════════════════════════════════════════════════════════════ */}
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col p-2 md:p-4 gap-2 md:gap-3 overflow-hidden">
 
-              {/* Minimized participant strip below screen share */}
-              <div className="h-28 flex items-center gap-3 overflow-x-auto shrink-0 pb-1">
-                {/* Me */}
-                <div className="w-48 h-full rounded-xl bg-[#282a2d] border border-[#3c4043] relative flex items-center justify-center overflow-hidden shrink-0">
-                  {isVideoOn ? (
-                    <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-[#1a73e8] flex items-center justify-center font-bold text-sm text-white">
-                      {myInitials}
-                    </div>
-                  )}
-                  <span className="absolute bottom-1.5 left-2 text-[11px] font-medium text-white bg-black/60 px-2 py-0.5 rounded-md">
-                    {myName} (You)
-                  </span>
-                </div>
+          {/* ── Three-tile grid: Me | Counterpart | Nexum AI ──────────────────── */}
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3 min-h-0">
 
-                {/* Counterpart */}
-                <div className="w-48 h-full rounded-xl bg-[#282a2d] border border-[#3c4043] relative flex items-center justify-center overflow-hidden shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-[#137333] flex items-center justify-center font-bold text-sm text-white">
-                    {counterpartInitials}
-                  </div>
-                  <span className="absolute bottom-1.5 left-2 text-[11px] font-medium text-white bg-black/60 px-2 py-0.5 rounded-md">
-                    {counterpartName}
-                  </span>
+            {/* TILE 1: Me ───────────────────────────────────────────────────── */}
+            <div className={`relative rounded-2xl bg-[#282a2d] overflow-hidden flex flex-col border ${isMicOn ? "border-[#8ab4f8]/40" : "border-[#3c4043]"} transition-all duration-200`}>
+              {isVideoOn && localStream ? (
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                  style={{ transform: "scaleX(-1)" }}
+                />
+              ) : (
+                <div className="flex-1 flex items-center justify-center">
+                  <AvatarCircle name={myName} src={myAvatar} size="lg" speaking={isMicOn} />
                 </div>
+              )}
 
-                {/* AI Box */}
-                <div className="w-48 h-full rounded-xl bg-gradient-to-br from-[#282a2d] to-[#1e1a38] border border-[#8ab4f8]/40 relative flex items-center justify-center overflow-hidden shrink-0">
-                  <div className="flex items-center gap-1.5 text-xs text-[#8ab4f8] font-medium">
-                    <Sparkles className="w-4 h-4 animate-spin [animation-duration:8s]" />
-                    <span>AI Notetaker</span>
-                  </div>
-                  <span className="absolute bottom-1.5 left-2 text-[11px] font-medium text-[#c58af9] bg-black/60 px-2 py-0.5 rounded-md">
-                    Nexum AI
-                  </span>
+              {/* Bottom name pill */}
+              <div className="absolute bottom-3 left-3 flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-sm text-xs font-medium text-white">
+                  {!isMicOn && <MicOff className="w-3 h-3 text-[#f28b82]" />}
+                  <span>{myName} (You)</span>
                 </div>
+                {isHandRaised && (
+                  <span className="px-2 py-0.5 rounded-full bg-[#f29900] text-black text-xs font-semibold">
+                    ✋ Raised
+                  </span>
+                )}
               </div>
             </div>
-          ) : (
-            /* Google Meet Multi-Tile Conference Grid (3 Equal Tiles: You, Counterpart, AI Notetaker) */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 flex-1 items-stretch max-w-7xl mx-auto w-full min-h-0">
-              {/* TILE 1: Current User (You) */}
-              <div
-                className={`relative rounded-2xl sm:rounded-3xl bg-[#282a2d] border ${
-                  isSpeakingMe ? "border-[#8ab4f8] ring-2 ring-[#8ab4f8]/50" : "border-[#3c4043]"
-                } shadow-xl overflow-hidden flex flex-col justify-between p-4 transition-all duration-200 group aspect-video md:aspect-auto`}
-              >
-                {/* Top Status */}
-                <div className="flex items-center justify-between z-10">
-                  <span className="px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-md text-xs font-medium text-[#e8eaed] border border-white/10 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-[#81c995]" />
-                    <span>{myRole === "CLIENT" ? "Client Host" : "Freelancer Pro"}</span>
-                  </span>
-                  {isHandRaised && (
-                    <span className="px-2.5 py-1 rounded-full bg-[#f29900] text-black text-xs font-bold flex items-center gap-1 shadow-md">
-                      <Hand className="w-3.5 h-3.5" />
-                      <span>Hand Raised</span>
+
+            {/* TILE 2: Remote Participant ────────────────────────────────────── */}
+            <div className={`relative rounded-2xl bg-[#282a2d] overflow-hidden flex flex-col border ${remotePeer && remotePeer.micOn ? "border-white/30" : "border-[#3c4043]"} transition-all duration-200`}>
+              {remoteStream ? (
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="flex-1 flex items-center justify-center flex-col gap-3">
+                  <AvatarCircle
+                    name={remotePeer?.userName || counterpartName}
+                    src={remotePeer?.avatar}
+                    size="lg"
+                    speaking={remotePeer?.micOn}
+                  />
+                  {!remotePeer && (
+                    <span className="text-xs text-[#9aa0a6] text-center px-4">
+                      Waiting for {counterpartName === "Waiting for other participant..." ? "other participant" : counterpartName} to join...
                     </span>
                   )}
                 </div>
+              )}
 
-                {/* Center Content: Live Webcam Stream or Google Meet Avatar */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  {isVideoOn ? (
-                    <video
-                      ref={localVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-cover transform -scale-x-100"
-                    />
-                  ) : (
-                    <div className="relative flex items-center justify-center">
-                      {isSpeakingMe && (
-                        <div className="absolute w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-[#8ab4f8]/20 animate-ping" />
-                      )}
-                      <div
-                        className={`w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-gradient-to-tr from-[#1a73e8] to-[#174ea6] flex items-center justify-center text-2xl sm:text-4xl font-semibold text-white shadow-xl ${
-                          isSpeakingMe ? "ring-4 ring-[#8ab4f8]" : ""
-                        }`}
-                      >
-                        {myAvatar ? (
-                          <img
-                            src={myAvatar}
-                            alt={myName}
-                            className="w-full h-full rounded-full object-cover"
-                          />
-                        ) : (
-                          myInitials
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Bottom Left Badge & Mic Status */}
-                <div className="flex items-center justify-between z-10 mt-auto">
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-xs font-medium text-white border border-white/10">
-                    <span>{myName} (You)</span>
-                  </div>
-
-                  <div
-                    className={`w-7 h-7 rounded-full flex items-center justify-center ${
-                      isMicOn ? "bg-[#3c4043] text-[#81c995]" : "bg-[#ea4335] text-white"
-                    }`}
-                    title={isMicOn ? "Microphone active" : "Microphone muted"}
-                  >
-                    {isMicOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
-                  </div>
-                </div>
-              </div>
-
-              {/* TILE 2: Counterpart (Client or Freelancer) */}
-              <div
-                className={`relative rounded-2xl sm:rounded-3xl bg-[#282a2d] border ${
-                  isSpeakingCounterpart ? "border-[#81c995] ring-2 ring-[#81c995]/40" : "border-[#3c4043]"
-                } shadow-xl overflow-hidden flex flex-col justify-between p-4 transition-all duration-200 group aspect-video md:aspect-auto`}
-              >
-                {/* Top Status */}
-                <div className="flex items-center justify-between z-10">
-                  <span className="px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-md text-xs font-medium text-[#e8eaed] border border-white/10">
-                    {counterpartRole}
-                  </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#137333]/30 text-[#81c995] border border-[#137333]/50">
-                    HD 1080p
-                  </span>
-                </div>
-
-                {/* Center Content: Avatar & Speaking Visualizer */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="relative flex items-center justify-center">
-                    {isSpeakingCounterpart && (
-                      <div className="absolute w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-[#81c995]/20 animate-ping" />
-                    )}
-                    <div
-                      className={`w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-gradient-to-tr from-[#137333] to-[#0d652d] flex items-center justify-center text-2xl sm:text-4xl font-semibold text-white shadow-xl ${
-                        isSpeakingCounterpart ? "ring-4 ring-[#81c995]" : ""
-                      }`}
-                    >
-                      {counterpartInitials}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bottom Left Badge & Voice Activity */}
-                <div className="flex items-center justify-between z-10 mt-auto">
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-xs font-medium text-white border border-white/10">
-                    <span>{counterpartName}</span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-[11px] text-[#81c995]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#81c995] animate-pulse" />
-                    <span>Connected</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* TILE 3: Nexum AI Notetaker (A First-Class Participant Box In The Grid As Requested!) */}
-              <div className="relative rounded-2xl sm:rounded-3xl bg-gradient-to-br from-[#282a2d] via-[#1f1a30] to-[#161226] border border-[#8ab4f8]/40 shadow-xl overflow-hidden flex flex-col justify-between p-4 transition-all duration-200 group aspect-video md:aspect-auto">
-                {/* Top Status */}
-                <div className="flex items-center justify-between z-10">
-                  <span className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-xs font-medium text-[#c58af9] border border-[#c58af9]/30 flex items-center gap-1.5">
-                    <Bot className="w-3.5 h-3.5 text-[#c58af9]" />
-                    <span>AI Observer & Notetaker</span>
-                  </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#c58af9]/20 text-[#c58af9] border border-[#c58af9]/30">
-                    Groq Whisper v3
-                  </span>
-                </div>
-
-                {/* Center Content: Gemini / AI Neural Audio Orb & Frequency Wave */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center pointer-events-none">
-                  {/* Glowing AI Orb */}
-                  <div className="relative mb-3 flex items-center justify-center">
-                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-tr from-[#8ab4f8] via-[#c58af9] to-[#f28b82] blur-xl opacity-40 animate-pulse" />
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-tr from-[#1a73e8] via-[#9334e6] to-[#d93025] flex items-center justify-center text-white shadow-2xl relative">
-                      <Sparkles className="w-8 h-8 text-white animate-spin [animation-duration:12s]" />
-                    </div>
-                  </div>
-
-                  {/* Pulsing Voice Frequency Bars */}
-                  <div className="flex items-center gap-1 mb-2">
-                    <span className="w-1 h-3 bg-[#8ab4f8] rounded-full animate-bounce" />
-                    <span className="w-1 h-6 bg-[#c58af9] rounded-full animate-bounce [animation-delay:0.1s]" />
-                    <span className="w-1 h-8 bg-[#8ab4f8] rounded-full animate-bounce [animation-delay:0.2s]" />
-                    <span className="w-1 h-5 bg-[#81c995] rounded-full animate-bounce [animation-delay:0.3s]" />
-                    <span className="w-1 h-2 bg-[#c58af9] rounded-full animate-bounce [animation-delay:0.4s]" />
-                  </div>
-
-                  {/* Real-Time Live Transcribing Ticker inside the AI Box */}
-                  <div className="max-w-xs px-3 py-1.5 rounded-xl bg-black/60 border border-white/10 text-[11px] text-[#e8eaed] leading-snug line-clamp-2">
-                    {currentSubtitle || "Transcribing live voice commitments and scope boundaries..."}
-                  </div>
-                </div>
-
-                {/* Bottom Left Badge */}
-                <div className="flex items-center justify-between z-10 mt-auto">
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-xs font-medium text-[#c58af9] border border-[#c58af9]/30">
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#81c995]" />
-                    <span>Nexum AI Notetaker</span>
-                  </div>
-
-                  <span className="text-[10px] text-[#9aa0a6] font-mono bg-black/50 px-2 py-0.5 rounded-full">
-                    ADR Guard Active
-                  </span>
+              {/* Bottom name pill */}
+              <div className="absolute bottom-3 left-3">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-sm text-xs font-medium text-white">
+                  {remotePeer && !remotePeer.micOn && <MicOff className="w-3 h-3 text-[#f28b82]" />}
+                  <span>{remotePeer?.userName || counterpartName}</span>
                 </div>
               </div>
             </div>
-          )}
 
-          {/* GOOGLE MEET CLOSED CAPTIONS (CC) BANNER */}
-          {isCaptionsOn && currentSubtitle && (
-            <div className="w-full max-w-3xl mx-auto mt-2 text-center z-10 animate-in fade-in duration-200">
-              <div className="inline-block px-4 py-2 rounded-xl bg-black/80 backdrop-blur-md text-xs sm:text-sm text-white font-medium border border-white/10 shadow-lg">
-                {currentSubtitle}
+            {/* TILE 3: Nexum AI Notetaker ────────────────────────────────────── */}
+            <div className="relative rounded-2xl bg-[#282a2d] overflow-hidden flex flex-col border border-[#3c4043] transition-all duration-200">
+              <div className="flex-1 flex items-center justify-center flex-col gap-3 p-4">
+                <NexumAIOrb speaking={!!liveCaption} />
+                {/* Live Transcript Subtitle inside AI tile */}
+                {liveCaption && (
+                  <div className="max-w-full px-3 py-2 rounded-xl bg-black/60 text-[11px] text-[#e3e3e3] text-center leading-snug line-clamp-3">
+                    {liveCaption}
+                  </div>
+                )}
+                {!liveCaption && (
+                  <div className="flex items-center gap-1 opacity-60">
+                    <span className="w-1 h-2 bg-[#8ab4f8] rounded-full animate-bounce" />
+                    <span className="w-1 h-4 bg-[#8ab4f8] rounded-full animate-bounce [animation-delay:0.1s]" />
+                    <span className="w-1 h-6 bg-[#8ab4f8] rounded-full animate-bounce [animation-delay:0.2s]" />
+                    <span className="w-1 h-4 bg-[#8ab4f8] rounded-full animate-bounce [animation-delay:0.3s]" />
+                    <span className="w-1 h-2 bg-[#8ab4f8] rounded-full animate-bounce [animation-delay:0.4s]" />
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom pill */}
+              <div className="absolute bottom-3 left-3">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-sm text-xs font-medium text-[#8ab4f8]">
+                  <ShieldCheck className="w-3 h-3 text-[#81c995]" />
+                  <span>Nexum AI Notetaker</span>
+                </div>
+              </div>
+              <div className="absolute bottom-3 right-3 text-[10px] text-[#9aa0a6] font-mono bg-black/60 px-2 py-0.5 rounded-full">
+                ADR Guard Active
+              </div>
+            </div>
+          </div>
+
+          {/* ── Closed Captions Banner ─────────────────────────────────────────── */}
+          {isCCOn && liveCaption && (
+            <div className="text-center px-4 animate-in fade-in duration-150 shrink-0">
+              <div className="inline-block max-w-2xl px-4 py-2 rounded-xl bg-black/80 text-sm text-white font-medium backdrop-blur-md">
+                {liveCaption}
               </div>
             </div>
           )}
         </div>
 
-        {/* RIGHT SIDE DRAWER PANELS (Google Meet Style: Info, People, Chat, AI Intelligence) */}
-        {activeSidePanel !== "none" && (
-          <aside className="w-80 sm:w-96 bg-[#202124] border-l border-[#3c4043] flex flex-col justify-between shrink-0 z-30 shadow-2xl animate-in slide-in-from-right duration-200">
-            {/* Drawer Header */}
-            <div className="p-4 border-b border-[#3c4043] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {activeSidePanel === "info" && <Info className="w-4 h-4 text-[#8ab4f8]" />}
-                {activeSidePanel === "people" && <Users className="w-4 h-4 text-[#8ab4f8]" />}
-                {activeSidePanel === "chat" && <MessageSquare className="w-4 h-4 text-[#8ab4f8]" />}
-                {activeSidePanel === "ai" && <Bot className="w-4 h-4 text-[#c58af9]" />}
-                <span className="font-semibold text-sm text-white capitalize">
-                  {activeSidePanel === "info" && "Meeting Details"}
-                  {activeSidePanel === "people" && "People (3)"}
-                  {activeSidePanel === "chat" && "In-Call Messages"}
-                  {activeSidePanel === "ai" && "AI Notetaker & Scope Guard"}
-                </span>
-              </div>
+        {/* ════════════════════════════════════════════════════════════════════
+            SIDE PANEL
+        ════════════════════════════════════════════════════════════════════ */}
+        {sidePanel !== "none" && (
+          <aside className="w-80 bg-[#202124] border-l border-[#3c4043] flex flex-col shrink-0 z-20 animate-in slide-in-from-right duration-150">
+            {/* Panel Header */}
+            <div className="h-14 px-4 flex items-center justify-between border-b border-[#3c4043] shrink-0">
+              <span className="font-semibold text-sm text-white">
+                {sidePanel === "people" && `People (${remotePeers.size + 1 + 1})`}
+                {sidePanel === "chat" && "In-call messages"}
+                {sidePanel === "ai" && "AI Notetaker"}
+              </span>
               <button
                 type="button"
-                onClick={() => setActiveSidePanel("none")}
+                onClick={() => setSidePanel("none")}
                 className="p-1.5 rounded-full hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* TAB: INFO */}
-            {activeSidePanel === "info" && (
-              <div className="flex-1 p-5 overflow-y-auto space-y-4 text-xs text-[#9aa0a6]">
-                <div className="space-y-1">
-                  <h4 className="font-semibold text-sm text-white">{projectTitle}</h4>
-                  <p>Permanent Bilateral Sync Room with cryptographic audit trail.</p>
-                </div>
-                <div className="p-3 rounded-xl bg-[#282a2d] border border-[#3c4043] space-y-2">
-                  <span className="font-bold text-white uppercase text-[10px] tracking-wider">Joining Info</span>
-                  <div className="flex items-center justify-between text-xs text-white">
-                    <span className="font-mono text-[#8ab4f8]">{roomId}</span>
-                    <button
-                      type="button"
-                      onClick={handleCopyInvite}
-                      className="text-[#8ab4f8] hover:underline font-semibold flex items-center gap-1"
-                    >
-                      {copiedLink ? "Copied" : "Copy"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB: PEOPLE */}
-            {activeSidePanel === "people" && (
-              <div className="flex-1 p-4 overflow-y-auto space-y-2 text-xs">
+            {/* ── People ─────────────────────────────────────────────────────── */}
+            {sidePanel === "people" && (
+              <div className="flex-1 p-3 overflow-y-auto space-y-2">
                 {/* Me */}
-                <div className="p-3 rounded-xl bg-[#282a2d] border border-[#3c4043] flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-[#1a73e8] flex items-center justify-center font-bold text-xs text-white">
-                      {myInitials}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-white">{myName} (You)</div>
-                      <div className="text-[11px] text-[#9aa0a6]">{myRole}</div>
-                    </div>
+                <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#282a2d] transition">
+                  <AvatarCircle name={myName} src={myAvatar} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-white truncate">{myName} (You)</div>
+                    <div className="text-xs text-[#9aa0a6]">{myRole}</div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {isMicOn ? <Mic className="w-4 h-4 text-[#81c995]" /> : <MicOff className="w-4 h-4 text-[#ea4335]" />}
+                  <div className="flex items-center gap-1.5">
+                    {isMicOn ? <Mic className="w-4 h-4 text-[#81c995]" /> : <MicOff className="w-4 h-4 text-[#f28b82]" />}
                   </div>
                 </div>
 
-                {/* Counterpart */}
-                <div className="p-3 rounded-xl bg-[#282a2d] border border-[#3c4043] flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-[#137333] flex items-center justify-center font-bold text-xs text-white">
-                      {counterpartInitials}
+                {/* Remote peers */}
+                {Array.from(remotePeers.values()).map((p) => (
+                  <div key={p.userId} className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#282a2d] transition">
+                    <AvatarCircle name={p.userName} src={p.avatar} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-white truncate">{p.userName}</div>
+                      <div className="text-xs text-[#9aa0a6]">{p.role}</div>
                     </div>
-                    <div>
-                      <div className="font-semibold text-white">{counterpartName}</div>
-                      <div className="text-[11px] text-[#9aa0a6]">{counterpartRole}</div>
-                    </div>
+                    {p.micOn !== undefined && (
+                      p.micOn ? <Mic className="w-4 h-4 text-[#81c995]" /> : <MicOff className="w-4 h-4 text-[#f28b82]" />
+                    )}
                   </div>
-                  <Mic className="w-4 h-4 text-[#81c995]" />
-                </div>
+                ))}
 
-                {/* Nexum AI Notetaker */}
-                <div className="p-3 rounded-xl bg-gradient-to-r from-[#282a2d] to-[#251f38] border border-[#8ab4f8]/40 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-[#9334e6] flex items-center justify-center text-white">
-                      <Bot className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-[#c58af9]">Nexum AI Notetaker</div>
-                      <div className="text-[11px] text-[#9aa0a6]">Automated AI Observer</div>
-                    </div>
+                {/* Nexum AI */}
+                <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#282a2d] transition">
+                  <img src="/logo.png" alt="Nexum AI" className="w-9 h-9 rounded-full object-cover" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-[#8ab4f8] truncate">Nexum AI Notetaker</div>
+                    <div className="text-xs text-[#9aa0a6]">AI Observer</div>
                   </div>
                   <span className="w-2 h-2 rounded-full bg-[#81c995] animate-pulse" />
                 </div>
               </div>
             )}
 
-            {/* TAB: IN-CALL CHAT */}
-            {activeSidePanel === "chat" && (
-              <div className="flex-1 flex flex-col justify-between overflow-hidden">
-                <div className="flex-1 p-4 overflow-y-auto space-y-3 text-xs">
+            {/* ── Chat ───────────────────────────────────────────────────────── */}
+            {sidePanel === "chat" && (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 p-3 overflow-y-auto space-y-2">
+                  {chatMessages.length === 0 && (
+                    <div className="flex items-center justify-center h-full text-[#9aa0a6] text-sm text-center px-4">
+                      No messages yet. Send a message to everyone in the call.
+                    </div>
+                  )}
                   {chatMessages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`p-3 rounded-xl ${
-                        msg.isAi
-                          ? "bg-[#251f38] border border-[#8ab4f8]/30 text-[#e8eaed]"
-                          : msg.sender.includes("(You)") || msg.sender === myName
-                          ? "bg-[#1a73e8]/20 border border-[#1a73e8]/40 text-white ml-4"
-                          : "bg-[#282a2d] border border-[#3c4043] text-white mr-4"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-[10px] text-[#9aa0a6] mb-1">
-                        <span className="font-bold">{msg.sender}</span>
-                        <span>{msg.time}</span>
+                    <div key={msg.id} className={`flex flex-col ${msg.isMe ? "items-end" : "items-start"}`}>
+                      <span className="text-[11px] text-[#9aa0a6] mb-0.5 px-1">
+                        {msg.isMe ? "You" : msg.fromUserName} · {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <div
+                        className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm ${
+                          msg.isMe
+                            ? "bg-[#8ab4f8] text-[#202124] font-medium rounded-br-sm"
+                            : "bg-[#3c4043] text-[#e3e3e3] rounded-bl-sm"
+                        }`}
+                      >
+                        {msg.text}
                       </div>
-                      <p className="leading-relaxed">{msg.text}</p>
                     </div>
                   ))}
                   <div ref={chatEndRef} />
                 </div>
 
-                <form onSubmit={handleSendChat} className="p-3 border-t border-[#3c4043] flex items-center gap-2">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    sendChat(chatInput);
+                    setChatInput("");
+                  }}
+                  className="p-3 border-t border-[#3c4043] flex items-center gap-2 shrink-0"
+                >
                   <input
                     type="text"
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     placeholder="Send a message to everyone"
-                    className="flex-1 px-3 py-2 rounded-full bg-[#282a2d] border border-[#3c4043] text-xs text-white placeholder:text-[#9aa0a6] focus:outline-none focus:border-[#8ab4f8]"
+                    className="flex-1 px-4 py-2 rounded-full bg-[#3c4043] border border-[#4a4d51] text-sm text-white placeholder:text-[#9aa0a6] focus:outline-none focus:border-[#8ab4f8] transition"
                   />
                   <button
                     type="submit"
-                    className="p-2 rounded-full bg-[#8ab4f8] hover:bg-[#aecbfa] text-[#202124] transition cursor-pointer"
+                    disabled={!chatInput.trim()}
+                    className="p-2 rounded-full bg-[#8ab4f8] hover:bg-[#aecbfa] disabled:opacity-40 text-[#202124] transition cursor-pointer"
                   >
                     <Send className="w-4 h-4" />
                   </button>
@@ -945,96 +547,61 @@ function MeetingRoomContent() {
               </div>
             )}
 
-            {/* TAB: AI NOTETAKER & SCOPE GUARD */}
-            {activeSidePanel === "ai" && (
-              <div className="flex-1 flex flex-col justify-between overflow-hidden">
-                <div className="flex-1 p-4 overflow-y-auto space-y-3 text-xs">
-                  {/* Alert summary badge */}
-                  <div className="p-3 rounded-xl bg-[#282a2d] border border-[#3c4043] space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-[10px] uppercase text-[#9aa0a6] tracking-wider">
-                        Live Scope Guard Status
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#81c995]/20 text-[#81c995]">
-                        Consensus Active
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#e8eaed]">
-                      Whisper Large v3 is indexing bilateral verbal commitments against the signed PRD hash.
-                    </p>
+            {/* ── AI Notetaker ────────────────────────────────────────────────── */}
+            {sidePanel === "ai" && (
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                {/* Status badge */}
+                <div className="p-3 rounded-xl bg-[#282a2d] border border-[#3c4043] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#81c995]" />
+                    <span className="text-xs font-semibold text-[#e3e3e3]">Scope Guard Active</span>
                   </div>
-
-                  {/* Transcript segments */}
-                  <div className="space-y-2 pt-1">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#9aa0a6]">
-                      Verbal Transcript Stream
-                    </div>
-                    {transcripts.map((t) => (
-                      <div
-                        key={t.id}
-                        className={`p-3 rounded-xl border text-xs space-y-1 ${
-                          t.isScopeAlert
-                            ? "bg-[#3e2c14] border-[#f29900]/50 text-[#fdd663]"
-                            : t.isCommitment
-                            ? "bg-[#271d3b] border-[#c58af9]/50 text-[#e8eaed]"
-                            : "bg-[#282a2d] border-[#3c4043] text-[#e8eaed]"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="font-bold text-[#9aa0a6]">{t.speaker}</span>
-                          <span className="font-mono text-[#9aa0a6]">{t.timestamp}</span>
-                        </div>
-                        <p className="leading-relaxed">{t.text}</p>
-                        {t.isScopeAlert && (
-                          <div className="inline-flex items-center gap-1 text-[10px] font-bold text-[#f29900] pt-0.5">
-                            <AlertCircle className="w-3 h-3" />
-                            <span>Verbal Scope Alert: +$400 USD change discussed</span>
-                          </div>
-                        )}
-                        {t.isCommitment && (
-                          <div className="inline-flex items-center gap-1 text-[10px] font-bold text-[#81c995] pt-0.5">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>Action Item Extracted: Queued for Kanban</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    <div ref={transcriptEndRef} />
-                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#81c995]/20 text-[#81c995]">
+                    Live
+                  </span>
                 </div>
 
-                {/* Quick spoken remark simulator */}
-                <div className="p-3 border-t border-[#3c4043] bg-[#202124] space-y-2">
-                  <div className="text-[10px] font-medium text-[#9aa0a6]">Test Voice / Spoken Input:</div>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      id="spokenInput"
-                      placeholder="Say something into the call..."
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          addSpokenRemark((e.target as HTMLInputElement).value);
-                          (e.target as HTMLInputElement).value = "";
-                        }
-                      }}
-                      className="flex-1 px-3 py-1.5 rounded-full bg-[#282a2d] border border-[#3c4043] text-xs text-white placeholder:text-[#9aa0a6] focus:outline-none focus:border-[#8ab4f8]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const el = document.getElementById("spokenInput") as HTMLInputElement;
-                        if (el && el.value) {
-                          addSpokenRemark(el.value);
-                          el.value = "";
-                        }
-                      }}
-                      className="p-1.5 rounded-full bg-[#8ab4f8] hover:bg-[#aecbfa] text-[#202124] transition cursor-pointer"
-                      title="Simulate speech"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
+                {/* Transcripts */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-[#9aa0a6]">
+                    Live Transcript
                   </div>
+                  {captions.length === 0 && (
+                    <div className="text-xs text-[#9aa0a6] text-center py-6">
+                      Captions will appear here as participants speak.
+                    </div>
+                  )}
+                  {captions.map((c) => (
+                    <div
+                      key={c.id}
+                      className={`p-3 rounded-xl border text-xs space-y-1 ${
+                        c.isScopeAlert
+                          ? "bg-[#3e2c14]/60 border-[#f29900]/40"
+                          : c.isCommitment
+                          ? "bg-[#1e3a1e]/60 border-[#81c995]/40"
+                          : "bg-[#282a2d] border-[#3c4043]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[10px] text-[#9aa0a6]">
+                        <span className="font-semibold">{c.isMe ? `${c.fromUserName} (You)` : c.fromUserName}</span>
+                        <span>{new Date(c.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      </div>
+                      <p className="text-[#e3e3e3] leading-relaxed">{c.text}</p>
+                      {c.isScopeAlert && (
+                        <div className="flex items-center gap-1 text-[10px] text-[#f29900] font-medium">
+                          <AlertCircle className="w-3 h-3" />
+                          <span>Verbal scope discussion detected</span>
+                        </div>
+                      )}
+                      {c.isCommitment && (
+                        <div className="flex items-center gap-1 text-[10px] text-[#81c995] font-medium">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Action item extracted</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <div ref={captionsEndRef} />
                 </div>
               </div>
             )}
@@ -1042,186 +609,153 @@ function MeetingRoomContent() {
         )}
       </div>
 
-      {/* BOTTOM CONTROL DOCK (Clean, Pixel-Perfect Google Meet Layout) */}
-      <footer className="h-20 bg-[#202124] px-4 sm:px-6 flex items-center justify-between shrink-0 z-20 border-t border-[#3c4043]/30">
-        {/* Left: Meeting Time & Code */}
-        <div className="hidden sm:flex items-center gap-3 text-xs text-white">
-          <span className="font-medium">{currentTimeStr}</span>
-          <span className="text-[#3c4043]">|</span>
-          <span className="font-mono text-[#9aa0a6]">{roomId}</span>
+      {/* ══════════════════════════════════════════════════════════════════════
+          BOTTOM CONTROL DOCK  — Google Meet style
+      ══════════════════════════════════════════════════════════════════════ */}
+      <footer className="h-20 px-4 md:px-8 flex items-center justify-between shrink-0 z-20">
+        {/* Left: Clock + Room ID */}
+        <div className="hidden md:flex items-center gap-3 text-sm text-[#9aa0a6]">
+          <span>{clockStr}</span>
+          <span className="text-[#3c4043]">·</span>
+          <span className="font-mono text-xs">{roomId}</span>
         </div>
 
-        {/* Center: Google Meet Circular Control Buttons */}
-        <div className="flex items-center gap-2 sm:gap-3 mx-auto">
-          {/* Microphone Button */}
+        {/* Center: Controls */}
+        <div className="flex items-center gap-2 md:gap-3 mx-auto md:mx-0">
+
+          {/* Mic */}
           <button
             type="button"
-            onClick={() => setIsMicOn(!isMicOn)}
-            className={`w-11 h-11 rounded-full flex items-center justify-center transition shadow-md cursor-pointer ${
-              isMicOn
-                ? "bg-[#3c4043] hover:bg-[#4a4d51] text-white"
-                : "bg-[#ea4335] hover:bg-[#d93025] text-white"
+            onClick={toggleMic}
+            title={isMicOn ? "Turn off mic (Ctrl+D)" : "Turn on mic (Ctrl+D)"}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition cursor-pointer ${
+              isMicOn ? "bg-[#3c4043] hover:bg-[#4a4d51] text-white" : "bg-[#f28b82]/20 hover:bg-[#f28b82]/30 text-[#f28b82] border border-[#f28b82]/40"
             }`}
-            title={isMicOn ? "Turn off microphone (Ctrl + D)" : "Turn on microphone (Ctrl + D)"}
           >
             {isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
           </button>
 
-          {/* Camera Button */}
+          {/* Camera */}
           <button
             type="button"
-            onClick={() => setIsVideoOn(!isVideoOn)}
-            className={`w-11 h-11 rounded-full flex items-center justify-center transition shadow-md cursor-pointer ${
-              isVideoOn
-                ? "bg-[#3c4043] hover:bg-[#4a4d51] text-white"
-                : "bg-[#ea4335] hover:bg-[#d93025] text-white"
+            onClick={toggleVideo}
+            title={isVideoOn ? "Turn off camera (Ctrl+E)" : "Turn on camera (Ctrl+E)"}
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition cursor-pointer ${
+              isVideoOn ? "bg-[#3c4043] hover:bg-[#4a4d51] text-white" : "bg-[#f28b82]/20 hover:bg-[#f28b82]/30 text-[#f28b82] border border-[#f28b82]/40"
             }`}
-            title={isVideoOn ? "Turn off camera (Ctrl + E)" : "Turn on camera (Ctrl + E)"}
           >
             {isVideoOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
           </button>
 
-          {/* Captions (CC) Button */}
+          {/* CC */}
           <button
             type="button"
-            onClick={() => setIsCaptionsOn(!isCaptionsOn)}
-            className={`w-11 h-11 rounded-full flex items-center justify-center transition shadow-md cursor-pointer text-xs font-bold ${
-              isCaptionsOn
-                ? "bg-[#8ab4f8] text-[#202124]"
-                : "bg-[#3c4043] hover:bg-[#4a4d51] text-white"
+            onClick={() => setIsCCOn(!isCCOn)}
+            title="Toggle closed captions"
+            className={`w-12 h-12 rounded-full flex items-center justify-center text-xs font-bold transition cursor-pointer ${
+              isCCOn ? "bg-[#8ab4f8] text-[#202124]" : "bg-[#3c4043] hover:bg-[#4a4d51] text-[#9aa0a6]"
             }`}
-            title="Turn on/off captions"
           >
             CC
           </button>
 
-          {/* Screen Share Button */}
+          {/* Screen share */}
           <button
             type="button"
             onClick={toggleScreenShare}
-            className={`w-11 h-11 rounded-full flex items-center justify-center transition shadow-md cursor-pointer ${
-              isScreenSharing
-                ? "bg-[#8ab4f8] text-[#202124]"
-                : "bg-[#3c4043] hover:bg-[#4a4d51] text-white"
-            }`}
             title="Present your screen"
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition cursor-pointer ${
+              isScreenSharing ? "bg-[#8ab4f8] text-[#202124]" : "bg-[#3c4043] hover:bg-[#4a4d51] text-white"
+            }`}
           >
             <ScreenShare className="w-5 h-5" />
           </button>
 
-          {/* Raise Hand Button */}
+          {/* Raise hand */}
           <button
             type="button"
             onClick={() => setIsHandRaised(!isHandRaised)}
-            className={`w-11 h-11 rounded-full flex items-center justify-center transition shadow-md cursor-pointer ${
-              isHandRaised
-                ? "bg-[#f29900] text-black"
-                : "bg-[#3c4043] hover:bg-[#4a4d51] text-white"
-            }`}
             title="Raise or lower your hand"
+            className={`w-12 h-12 rounded-full flex items-center justify-center transition cursor-pointer ${
+              isHandRaised ? "bg-[#f29900] text-[#202124]" : "bg-[#3c4043] hover:bg-[#4a4d51] text-white"
+            }`}
           >
             <Hand className="w-5 h-5" />
           </button>
 
-          {/* Emoji Reactions Button */}
+          {/* Reactions */}
           <div className="relative">
             <button
               type="button"
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="w-11 h-11 rounded-full bg-[#3c4043] hover:bg-[#4a4d51] text-white flex items-center justify-center transition shadow-md cursor-pointer"
+              onClick={() => setShowEmoji(!showEmoji)}
               title="Send a reaction"
+              className="w-12 h-12 rounded-full bg-[#3c4043] hover:bg-[#4a4d51] text-white flex items-center justify-center transition cursor-pointer"
             >
               <Smile className="w-5 h-5" />
             </button>
-
-            {showEmojiPicker && (
-              <div className="absolute bottom-14 left-1/2 -translate-x-1/2 p-2 rounded-full bg-[#282a2d] border border-[#3c4043] flex items-center gap-1 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
-                {["💖", "👍", "👏", "🎉", "💡"].map((emoji) => (
+            {showEmoji && (
+              <div className="absolute bottom-14 left-1/2 -translate-x-1/2 p-2 rounded-2xl bg-[#282a2d] border border-[#3c4043] flex items-center gap-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100 z-50">
+                {["👍", "❤️", "😄", "👏", "🎉", "🙌"].map((e) => (
                   <button
-                    key={emoji}
+                    key={e}
                     type="button"
-                    onClick={() => triggerEmoji(emoji)}
-                    className="w-9 h-9 rounded-full hover:bg-[#3c4043] text-lg flex items-center justify-center transition cursor-pointer"
+                    onClick={() => triggerEmoji(e)}
+                    className="w-10 h-10 rounded-full hover:bg-[#3c4043] text-xl flex items-center justify-center transition cursor-pointer"
                   >
-                    {emoji}
+                    {e}
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* End Call / Leave Room Button */}
+          {/* End Call */}
           <button
             type="button"
-            onClick={handleEndMeetingAndSynthesize}
+            onClick={endCall}
             disabled={isEndingMeeting}
-            className="px-5 py-2.5 rounded-full bg-[#ea4335] hover:bg-[#d93025] disabled:opacity-50 text-white text-xs font-semibold transition shadow-md cursor-pointer flex items-center gap-2"
-            title="Leave call and synthesize intelligence"
+            className="px-5 h-12 rounded-full bg-[#ea4335] hover:bg-[#d93025] disabled:opacity-50 text-white text-sm font-semibold flex items-center gap-2 transition cursor-pointer ml-2"
+            title="Leave call"
           >
             <PhoneOff className="w-4 h-4" />
-            <span className="hidden md:inline">
-              {isEndingMeeting ? "Synthesizing AI Summary..." : "End Call"}
-            </span>
+            <span className="hidden md:inline">{isEndingMeeting ? "Ending..." : "Leave"}</span>
           </button>
         </div>
 
-        {/* Right: Drawer Toggles */}
-        <div className="flex items-center gap-1 sm:gap-2">
-          {/* Details (Info) */}
+        {/* Right: Drawer toggles */}
+        <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setActiveSidePanel(activeSidePanel === "info" ? "none" : "info")}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition cursor-pointer ${
-              activeSidePanel === "info"
-                ? "bg-[#8ab4f8] text-[#202124]"
-                : "hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white"
+            onClick={() => setSidePanel(sidePanel === "people" ? "none" : "people")}
+            title="People"
+            className={`relative w-10 h-10 rounded-full flex items-center justify-center transition cursor-pointer ${
+              sidePanel === "people" ? "bg-[#8ab4f8] text-[#202124]" : "hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white"
             }`}
-            title="Meeting details"
-          >
-            <Info className="w-4 h-4" />
-          </button>
-
-          {/* People */}
-          <button
-            type="button"
-            onClick={() => setActiveSidePanel(activeSidePanel === "people" ? "none" : "people")}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition cursor-pointer relative ${
-              activeSidePanel === "people"
-                ? "bg-[#8ab4f8] text-[#202124]"
-                : "hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white"
-            }`}
-            title="Show everyone"
           >
             <Users className="w-4 h-4" />
-            <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#3c4043] border border-[#202124] text-[9px] font-bold text-white flex items-center justify-center">
-              3
+            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#3c4043] border border-[#202124] text-[9px] font-bold text-white flex items-center justify-center">
+              {remotePeers.size + 2}
             </span>
           </button>
 
-          {/* Chat */}
           <button
             type="button"
-            onClick={() => setActiveSidePanel(activeSidePanel === "chat" ? "none" : "chat")}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition cursor-pointer relative ${
-              activeSidePanel === "chat"
-                ? "bg-[#8ab4f8] text-[#202124]"
-                : "hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white"
+            onClick={() => setSidePanel(sidePanel === "chat" ? "none" : "chat")}
+            title="In-call messages"
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition cursor-pointer ${
+              sidePanel === "chat" ? "bg-[#8ab4f8] text-[#202124]" : "hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white"
             }`}
-            title="Chat with everyone"
           >
             <MessageSquare className="w-4 h-4" />
           </button>
 
-          {/* AI Notetaker Panel */}
           <button
             type="button"
-            onClick={() => setActiveSidePanel(activeSidePanel === "ai" ? "none" : "ai")}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition cursor-pointer relative ${
-              activeSidePanel === "ai"
-                ? "bg-[#c58af9] text-[#202124]"
-                : "hover:bg-[#3c4043] text-[#c58af9]"
+            onClick={() => setSidePanel(sidePanel === "ai" ? "none" : "ai")}
+            title="AI Notetaker"
+            className={`relative w-10 h-10 rounded-full flex items-center justify-center transition cursor-pointer ${
+              sidePanel === "ai" ? "bg-[#8ab4f8] text-[#202124]" : "hover:bg-[#3c4043] text-[#9aa0a6] hover:text-white"
             }`}
-            title="AI Notetaker & Scope Guard"
           >
             <Bot className="w-4 h-4" />
             <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#81c995] animate-pulse" />
@@ -1237,7 +771,7 @@ export default function MeetingRoomPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-[#202124] flex items-center justify-center text-[#9aa0a6]">
-          Loading Google Meet sync room...
+          Loading meeting room...
         </div>
       }
     >
