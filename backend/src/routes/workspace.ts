@@ -1075,6 +1075,24 @@ router.post("/projects/:projectId/meetings/:meetingId/respond", async (req: Requ
 });
 
 /**
+ * POST /api/workspace/transcribe-audio
+ * Ultra-fast multilingual speech-to-text via Groq Whisper Large v3 (sub-second latency)
+ */
+router.post("/transcribe-audio", upload.single("audio"), async (req: Request, res: Response) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ success: false, error: "Audio file is required" });
+    }
+    const filename = req.file.originalname || "voice_chunk.webm";
+    const text = await groqService.transcribeAudio(req.file.buffer, filename);
+    res.json({ success: true, text });
+  } catch (err: any) {
+    console.error("[WorkspaceRouter] Transcribe error:", err);
+    res.status(500).json({ success: false, error: err.message || "Failed to transcribe audio" });
+  }
+});
+
+/**
  * POST /api/workspace/projects/:projectId/meetings/:meetingId/notetaker/synthesize
  * Multilingual AI Notetaker post-call synthesis (Groq Whisper v3 + Gemini).
  * Auto-creates Kanban tasks, ADR decisions, and drops summary into timeline.

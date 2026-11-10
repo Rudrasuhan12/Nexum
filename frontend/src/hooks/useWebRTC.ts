@@ -85,6 +85,47 @@ interface UseWebRTCOptions {
   backendUrl?: string;
 }
 
+// ─── Studio Voice DSP & Gain Booster ──────────────────────────────────────────
+// Applies Web Audio API High-Pass filter, Dynamics Compressor & Gain Booster (+5dB)
+// to dramatically increase vocal clarity, remove fan/room rumble, and boost audible power.
+function createStudioVoiceTrack(rawStream: MediaStream): { track: MediaStreamTrack; ctx: AudioContext } | null {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return null;
+    const ctx = new AudioCtx();
+    const source = ctx.createMediaStreamSource(rawStream);
+
+    // 1. High-Pass Filter: strips low-frequency mechanical rumble, desk bumps, AC hum below 85Hz
+    const highpass = ctx.createBiquadFilter();
+    highpass.type = "highpass";
+    highpass.frequency.value = 85;
+
+    // 2. Dynamics Compressor: boosts quiet whispers, prevents loud distortion, gives studio presence
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -24;
+    compressor.knee.value = 30;
+    compressor.ratio.value = 12;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.25;
+
+    // 3. Vocal Gain Booster (+5 dB clean boost / ~1.8x volume multiplier)
+    const gainNode = ctx.createGain();
+    gainNode.gain.value = 1.8;
+
+    const destination = ctx.createMediaStreamDestination();
+    source.connect(highpass);
+    highpass.connect(compressor);
+    compressor.connect(gainNode);
+    gainNode.connect(destination);
+
+    const enhancedTrack = destination.stream.getAudioTracks()[0];
+    return { track: enhancedTrack, ctx };
+  } catch (err) {
+    console.warn("[WebRTC] Studio Voice DSP fallback to raw track:", err);
+    return null;
+  }
+}
+
 export function useWebRTC({
   roomId,
   userId,
@@ -437,15 +478,19 @@ export function useWebRTC({
           audioTrack = localStreamRef.current.getAudioTracks()[0];
           audioTrack.enabled = true;
         } else {
-          // Request audio hardware
+          // Request high-fidelity audio hardware
           const stream = await navigator.mediaDevices.getUserMedia({
             audio: {
               echoCancellation: true,
               noiseSuppression: true,
               autoGainControl: true,
+              sampleRate: 48000,
+              channelCount: 1,
             },
           });
-          audioTrack = stream.getAudioTracks()[0];
+          // Pass through Studio Voice DSP graph (+5dB volume booster & rumble filter)
+          const dsp = createStudioVoiceTrack(stream);
+          audioTrack = dsp ? dsp.track : stream.getAudioTracks()[0];
           if (!localStreamRef.current) {
             localStreamRef.current = new MediaStream();
           }

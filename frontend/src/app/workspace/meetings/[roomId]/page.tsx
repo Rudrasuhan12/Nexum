@@ -12,6 +12,32 @@ import { useAuth } from "@/context/AuthContext";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { submitMeetingNotetakerSynthesis } from "@/lib/api-client";
 
+// ─── Real-Time Caption Lexicon Polisher ──────────────────────────────────────
+// Normalizes technical terms, currency, and capitalization with sub-millisecond latency.
+function polishTranscript(raw: string): string {
+  if (!raw) return "";
+  let text = raw.trim();
+  text = text.charAt(0).toUpperCase() + text.slice(1);
+  const replacements: [RegExp, string][] = [
+    [/\bpay\s*pal\b/gi, "PayPal"],
+    [/\bgit\s*hub\b/gi, "GitHub"],
+    [/\bsha\s*256\b/gi, "SHA-256"],
+    [/\bnext\s*js\b/gi, "Next.js"],
+    [/\bweb\s*rtc\b/gi, "WebRTC"],
+    [/\bweb\s*hook(s?)\b/gi, "webhook$1"],
+    [/\bui\b/gi, "UI"],
+    [/\bapi\b/gi, "API"],
+    [/\bapis\b/gi, "APIs"],
+    [/\bprd\b/gi, "PRD"],
+    [/\bpull\s*request\b/gi, "Pull Request"],
+    [/\bescrow\b/gi, "Escrow"],
+  ];
+  for (const [pattern, rep] of replacements) {
+    text = text.replace(pattern, rep);
+  }
+  return text;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function initials(name: string) {
@@ -170,7 +196,12 @@ function MeetingRoomContent() {
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
   useEffect(() => { captionsEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [captions]);
 
-  // ─── Web Speech Recognition for live CC ──────────────────────────────────────
+  // ─── Continuous High-Accuracy Web Speech Recognition for live CC ──────────────
+  const isMicOnRef = useRef(isMicOn);
+  useEffect(() => {
+    isMicOnRef.current = isMicOn;
+  }, [isMicOn]);
+
   useEffect(() => {
     if (!isMicOn || typeof window === "undefined") return;
     const SpeechRecognition =
@@ -178,33 +209,55 @@ function MeetingRoomContent() {
     if (!SpeechRecognition) return;
 
     let recognition: any;
-    try {
-      recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = "en-US";
-      recognition.maxAlternatives = 1;
+    let isStoppedManually = false;
 
-      recognition.onresult = (event: any) => {
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript.trim();
-          const isFinal = event.results[i].isFinal;
-          const lower = transcript.toLowerCase();
-          const isScope = /cost|price|dollar|amend|add feature|change scope/.test(lower);
-          const isCommit = /commit|agree|will deliver|by wednesday|by friday|by monday/.test(lower);
-          sendCaption(transcript, isFinal, isScope, isCommit);
-        }
-      };
-      recognition.onerror = (e: any) => {
-        if (e.error === "not-allowed") {
-          console.warn("[CC] Speech recognition: microphone not allowed");
-        }
-      };
-      recognition.start();
-    } catch (err) {
-      console.warn("[CC] Speech recognition init failed:", err);
-    }
+    const startRecognizer = () => {
+      try {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        // Auto-detect browser/user locale for highest native accent accuracy (e.g. en-IN, en-US, en-GB)
+        const userLocale = typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US";
+        recognition.lang = userLocale.startsWith("en") ? userLocale : "en-US";
+        recognition.maxAlternatives = 1;
+
+        recognition.onresult = (event: any) => {
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const raw = event.results[i][0].transcript;
+            const polished = polishTranscript(raw);
+            const isFinal = event.results[i].isFinal;
+            const lower = raw.toLowerCase();
+            const isScope = /\$|\b(cost|price|dollar|usd|amend|amendment|extra|add feature|out of scope|change scope)\b/i.test(lower);
+            const isCommit = /\b(commit|agree|agreed|will deliver|by monday|by tuesday|by wednesday|by thursday|by friday|by next week|tomorrow)\b/i.test(lower);
+            sendCaption(polished, isFinal, isScope, isCommit);
+          }
+        };
+
+        recognition.onerror = (e: any) => {
+          if (e.error === "not-allowed") {
+            console.warn("[CC] Speech recognition: microphone permission required");
+          }
+        };
+
+        // Auto-restart on natural pause so live captions never stop mid-meeting
+        recognition.onend = () => {
+          if (!isStoppedManually && isMicOnRef.current) {
+            try {
+              recognition.start();
+            } catch {}
+          }
+        };
+
+        recognition.start();
+      } catch (err) {
+        console.warn("[CC] Speech recognition init failed:", err);
+      }
+    };
+
+    startRecognizer();
+
     return () => {
+      isStoppedManually = true;
       try { recognition?.stop(); } catch {}
     };
   }, [isMicOn, sendCaption]);
