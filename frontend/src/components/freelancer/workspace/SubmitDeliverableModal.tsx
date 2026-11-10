@@ -3,10 +3,18 @@
 import React, { useState } from "react";
 import { X, Send, FileCode, Video, FileText, CheckCircle2, ShieldCheck, Check } from "lucide-react";
 
+export interface SubmitDeliverableMilestoneProp {
+  id: string;
+  number?: number;
+  title: string;
+  amount?: string;
+}
+
 interface SubmitDeliverableModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmitSuccess?: (details: { prUrl: string; loomUrl: string; notes: string }) => void;
+  onSubmitSuccess?: (details: { prUrl: string; loomUrl: string; notes: string; milestoneId?: string }) => void;
+  milestone?: SubmitDeliverableMilestoneProp | null;
   defaultMilestone?: string;
   defaultAmount?: string;
 }
@@ -15,11 +23,17 @@ export default function SubmitDeliverableModal({
   isOpen,
   onClose,
   onSubmitSuccess,
-  defaultMilestone = "Milestone 2: Frontend Development & Orders Engine",
-  defaultAmount = "$4,000.00 USD",
+  milestone,
+  defaultMilestone = "Milestone 1: Project Kickoff & Initial Deliverables",
+  defaultAmount = "$3,000.00 USD",
 }: SubmitDeliverableModalProps) {
+  const milestoneTitle = milestone
+    ? (milestone.number ? `Milestone ${milestone.number}: ${milestone.title}` : milestone.title)
+    : defaultMilestone;
+  const milestoneAmount = milestone?.amount || defaultAmount;
+
   const [githubPrUrl, setGithubPrUrl] = useState("https://github.com/techkart/storefront/pull/42");
-  const [loomDemoUrl, setLoomDemoUrl] = useState("https://www.loom.com/share/techkart-milestone2-demo");
+  const [loomDemoUrl, setLoomDemoUrl] = useState("https://www.loom.com/share/techkart-milestone-demo");
   const [submissionNotes, setSubmissionNotes] = useState(
     "All milestone acceptance criteria implemented: PayPal v2 order capture verified, idempotency cache deduplicates within 30s window, and SHA-256 state consensus signatures match test vector."
   );
@@ -40,6 +54,7 @@ export default function SubmitDeliverableModal({
           prUrl: githubPrUrl,
           loomUrl: loomDemoUrl,
           notes: submissionNotes,
+          milestoneId: milestone?.id,
         });
       }
       setTimeout(() => {
@@ -64,7 +79,7 @@ export default function SubmitDeliverableModal({
               Submit Milestone Deliverable
             </h3>
             <p className="text-xs text-slate-500">
-              {defaultMilestone} · Escrow Allocation: <span className="font-bold text-slate-800 font-mono">{defaultAmount}</span>
+              {milestoneTitle} · Escrow Allocation: <span className="font-bold text-slate-800 font-mono">{milestoneAmount}</span>
             </p>
           </div>
 

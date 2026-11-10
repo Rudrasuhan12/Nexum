@@ -790,7 +790,9 @@ router.get("/active", async (req: Request, res: Response, next: NextFunction): P
             title: m.title,
             description: m.description || "",
             deliverablesSummary: typeof m.deliverables === "string" ? m.deliverables : "Verified milestone deliverables",
-            acceptanceCriteria: Array.isArray(m.criteria) ? m.criteria : [],
+            acceptanceCriteria: Array.isArray(m.criteria)
+              ? m.criteria.map((c: any) => (typeof c === "string" ? c : c?.text || c?.title || String(c)))
+              : [],
             amountCents: mAmount,
             amountDisplay: `$${(mAmount / 100).toLocaleString("en-US", { minimumFractionDigits: 0 })} USD`,
             currency: m.currency || "USD",

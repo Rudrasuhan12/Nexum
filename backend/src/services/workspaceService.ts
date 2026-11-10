@@ -749,6 +749,23 @@ export class WorkspaceService {
     const roomId = `room-${conversation.id.slice(-6)}-${Date.now().toString().slice(-4)}`;
     const roomUrl = `/workspace/meetings/${roomId}`;
 
+    // Determine sender role and name accurately
+    let senderRole: "CLIENT" | "FREELANCER" = "CLIENT";
+    let senderName = "Participant";
+    const sender = await prisma.user.findFirst({
+      where: { OR: [{ id: params.proposedByUserId }, { email: params.proposedByUserId }] },
+    });
+    if (sender) {
+      senderRole = (sender.role as any) === "FREELANCER" ? "FREELANCER" : "CLIENT";
+      senderName = sender.name;
+    } else if (conversation.project.agreement?.freelancerId === params.proposedByUserId) {
+      senderRole = "FREELANCER";
+      senderName = conversation.project.agreement.freelancer?.name || "Freelancer";
+    } else {
+      senderRole = "CLIENT";
+      senderName = conversation.project.client?.name || "Client";
+    }
+
     const meeting = await prisma.workspaceMeeting.create({
       data: {
         conversationId: conversation.id,
@@ -766,8 +783,8 @@ export class WorkspaceService {
     await prisma.workspaceMessage.create({
       data: {
         conversationId: conversation.id,
-        senderId: params.proposedByUserId,
-        senderRole: "CLIENT", // Can be FREELANCER
+        senderId: sender?.id || params.proposedByUserId,
+        senderRole,
         type: "meeting_proposal_card",
         origin: "WEB",
         originalContent: `Proposed Meeting: ${params.title} (${params.durationMinutes} mins)`,
@@ -781,6 +798,8 @@ export class WorkspaceService {
           roomUrl,
           status: "PROPOSED",
           proposedByUserId: params.proposedByUserId,
+          senderName,
+          senderRole,
           meetingDetails: {
             meetingId: meeting.id,
             title: params.title,
@@ -790,6 +809,8 @@ export class WorkspaceService {
             roomUrl,
             status: "PROPOSED",
             proposedByUserId: params.proposedByUserId,
+            senderName,
+            senderRole,
           },
         } as any,
       },
@@ -831,7 +852,14 @@ export class WorkspaceService {
       return { success: true, status: "CANCELLED", meeting: updated };
     }
 
-    const confirmedSlot = selectedSlotTime ? new Date(selectedSlotTime) : new Date();
+    let confirmedSlot: Date;
+    if (selectedSlotTime) {
+      const cleaned = String(selectedSlotTime).replace(" at ", "T").trim();
+      const parsed = new Date(cleaned);
+      confirmedSlot = isNaN(parsed.getTime()) ? new Date() : parsed;
+    } else {
+      confirmedSlot = new Date();
+    }
     const endSlot = new Date(confirmedSlot.getTime() + meeting.durationMinutes * 60000);
 
     // Generate Google Calendar deep link

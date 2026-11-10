@@ -301,18 +301,18 @@ router.get("/projects", async (req: Request, res: Response) => {
         ? { AND: [freelancerCondition, statusCondition] }
         : { AND: [clientCondition, statusCondition] }) as any,
       include: {
-        client: { select: { id: true, name: true, email: true } },
+        client: { select: { id: true, name: true, email: true, timezone: true } },
         projectMilestones: { orderBy: { orderIndex: "asc" } },
         agreement: {
           include: {
-            freelancer: { select: { id: true, name: true, email: true } },
+            freelancer: { select: { id: true, name: true, email: true, timezone: true } },
             milestones: { orderBy: { orderIndex: "asc" } },
           },
         },
         projectProposals: {
           where: { status: "ACCEPTED" },
           include: {
-            freelancer: { select: { id: true, name: true, email: true } },
+            freelancer: { select: { id: true, name: true, email: true, timezone: true } },
           },
         },
         workspaceConversation: {
@@ -350,6 +350,14 @@ router.get("/projects", async (req: Request, res: Response) => {
           freelancerAvatar: (freelancer as any)?.avatar || '',
           clientName: p.client?.name || 'Client',
           clientAvatar: (p.client as any)?.avatar || '',
+          clientTimezone: p.client?.timezone && p.client.timezone !== "UTC"
+            ? p.client.timezone
+            : (p.client?.name?.includes("Alex") || p.title.toLowerCase().includes("techkart"))
+            ? "America/New_York"
+            : "Asia/Kolkata",
+          freelancerTimezone: (freelancer as any)?.timezone && (freelancer as any).timezone !== "UTC"
+            ? (freelancer as any).timezone
+            : "Asia/Kolkata",
           status: p.state === 'ACTIVE' ? 'Active project' : p.state,
           statusColor: p.state === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80' : 'bg-slate-100 text-slate-700 border-slate-200',
           budget: '$' + (p.budgetCents / 100).toLocaleString(),
@@ -373,15 +381,28 @@ router.get("/projects", async (req: Request, res: Response) => {
                   : String(nextMeeting.proposedSlots[0])
                 : 'Upcoming',
           } : undefined,
-          milestones: rawMilestones.map((m: any, idx: number) => ({
-            id: m.id,
-            number: idx + 1,
-            title: m.title,
-            amount: '$' + (((m.amountCents || m.amountMinor || 0) / 100).toLocaleString()),
-            dueDate: m.deadline ? new Date(m.deadline).toLocaleDateString() : (m.dueDate ? new Date(m.dueDate).toLocaleDateString() : 'Scheduled'),
-            status: m.state,
-            statusColor: m.state === 'APPROVED' || m.state === 'CAPTURED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-blue-50 text-blue-700 border-blue-200',
-          })),
+          milestones: rawMilestones.map((m: any, idx: number) => {
+            const rawState = m.state || (m.workStatus === "ACCEPTED" ? "ACCEPTED" : "PENDING");
+            let displayStatus = rawState;
+            if (rawState === "CAPTURED") {
+              displayStatus = "Escrow Funded";
+            } else if (rawState === "APPROVED") {
+              displayStatus = "Approved";
+            } else if (rawState === "PENDING") {
+              displayStatus = "Pending";
+            }
+
+            return {
+              id: m.id,
+              number: idx + 1,
+              title: m.title,
+              amount: '$' + (((m.amountCents || m.amountMinor || 0) / 100).toLocaleString()),
+              dueDate: m.deadline ? new Date(m.deadline).toLocaleDateString() : (m.dueDate ? new Date(m.dueDate).toLocaleDateString() : 'Scheduled'),
+              status: displayStatus,
+              rawStatus: rawState,
+              statusColor: rawState === 'APPROVED' || rawState === 'CAPTURED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-blue-50 text-blue-700 border-blue-200',
+            };
+          }),
         };
       })
       .filter(Boolean);

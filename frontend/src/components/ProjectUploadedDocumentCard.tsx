@@ -214,7 +214,7 @@ ${technicalArchitecture || "Full-stack implementation as detailed in milestone s
 ${functionalRequirements.map((r, i) => `  FR-${String(i + 1).padStart(2, "0")}: ${r}`).join("\n") || "  FR-01: System development and testing"}
 
 5.0 VERIFIABLE ACCEPTANCE CRITERIA & QA PROTOCOL
-${acceptanceCriteria.map((c, i) => `  [x] AC-${String(i + 1).padStart(2, "0")}: ${c}`).join("\n") || "  [x] AC-01: Deliverables meet documented criteria"}
+${acceptanceCriteria.map((c: any, i) => `  [x] AC-${String(i + 1).padStart(2, "0")}: ${typeof c === "string" ? c : c?.text || c?.title || String(c || "")}`).join("\n") || "  [x] AC-01: Deliverables meet documented criteria"}
 
 6.0 DOCUMENT SIGN-OFF & ESCROW REGISTRY
   Client Representative:  ${clientName}
@@ -707,13 +707,13 @@ End of Document — Uploaded and verified on Nexum Protocol Registry
                         </tr>
                       </thead>
                       <tbody>
-                        {acceptanceCriteria.map((crit, i) => (
+                        {acceptanceCriteria.map((crit: any, i) => (
                           <tr key={i} className="border-b border-slate-200 hover:bg-slate-50/50">
                             <td className="px-3 py-2 font-mono font-bold text-emerald-800 border-r border-slate-300 align-top">
                               AC-{String(i + 1).padStart(2, "0")}
                             </td>
                             <td className="px-3 py-2 text-slate-800 border-r border-slate-300 leading-relaxed">
-                              {crit}
+                              {typeof crit === "string" ? crit : crit?.text || crit?.title || String(crit || "")}
                             </td>
                             <td className="px-3 py-2 text-center font-mono font-bold text-emerald-700 text-[11px] align-top">
                               [Verified]

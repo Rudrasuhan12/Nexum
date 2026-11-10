@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   Search,
   ShoppingCart,
@@ -52,6 +52,7 @@ import SubmitDeliverableModal from "./SubmitDeliverableModal";
 import ProjectHandoverBanner from "@/components/handover/ProjectHandoverBanner";
 import HandoverChecklistView from "@/components/handover/HandoverChecklistView";
 import BilateralContractModal from "@/components/workspace/BilateralContractModal";
+import { parseMeetingSlot, formatDualTimezoneSlot, formatInTimezone } from "@/lib/timezone-utils";
 import {
   getWorkspaceTimeline,
   sendWorkspaceMessage,
@@ -142,6 +143,7 @@ export default function FreelancerWorkspaceChatsMode({
   const [isOriginalMsgModalOpen, setIsOriginalMsgModalOpen] = useState(false);
   const [isProposeMeetingModalOpen, setIsProposeMeetingModalOpen] = useState(false);
   const [isSubmitDeliverableModalOpen, setIsSubmitDeliverableModalOpen] = useState(false);
+  const [submittingMilestoneForWorkspace, setSubmittingMilestoneForWorkspace] = useState<any>(null);
   const [reviewVersionTarget, setReviewVersionTarget] = useState("Version 5");
 
   const timelineEndRef = useRef<HTMLDivElement | null>(null);
@@ -157,6 +159,21 @@ export default function FreelancerWorkspaceChatsMode({
   // Safely derive selected project (null when user has 0 projects)
   const selectedProject =
     projects.find((p) => p.id === selectedProjectId) || (projects.length > 0 ? projects[0] : null);
+
+  const currentActiveMilestone = useMemo(() => {
+    if (submittingMilestoneForWorkspace) return submittingMilestoneForWorkspace;
+    if (!selectedProject?.milestones || selectedProject.milestones.length === 0) return null;
+    return (
+      selectedProject.milestones.find(
+        (m: any) =>
+          m.status !== "Approved" &&
+          m.status !== "APPROVED" &&
+          m.status !== "ACCEPTED" &&
+          m.status !== "COMPLETED" &&
+          m.rawStatus !== "APPROVED"
+      ) || selectedProject.milestones[0]
+    );
+  }, [submittingMilestoneForWorkspace, selectedProject]);
 
   const totalUnreadCount = projects.reduce((acc, p) => acc + p.unreadCount, 0);
 
@@ -465,21 +482,29 @@ export default function FreelancerWorkspaceChatsMode({
   };
 
   // Bilateral Meeting Proposal Handler (Freelancer side)
-  const handleScheduleMeetingProposal = async (details: {
-    date: string;
-    time: string;
-    topic: string;
-    duration?: string;
-  }) => {
-    const slotString = `${details.date} at ${details.time}`;
+  const handleScheduleMeetingProposal = async (details: any) => {
+    const safeDate = parseMeetingSlot(`${details.date} at ${details.time}`);
+    const isoStartTime = details.isoStartTime || safeDate.toISOString();
+    const durationMins = parseInt(details.duration || "30") || 30;
+    const isoEndTime = new Date(safeDate.getTime() + durationMins * 60000).toISOString();
+    const slotString = details.displaySlot || `${details.date} at ${details.time}`;
     const requesterId = user?.id || "cmw71wu3700007e1vx0piqxa5";
+
+    const slotPayload = {
+      id: `slot_${Date.now()}`,
+      startTime: isoStartTime,
+      endTime: isoEndTime,
+      slotTime: isoStartTime,
+      displaySlot: slotString,
+    };
+
     try {
       const res = await proposeWorkspaceMeeting(selectedProjectId, {
         proposedByUserId: requesterId,
         title: details.topic,
-        agenda: `${details.topic} (Duration: ${details.duration || "30 min"})`,
-        durationMinutes: parseInt(details.duration || "30") || 30,
-        proposedSlots: [{ id: "slot_1", startTime: slotString, endTime: slotString }],
+        agenda: `${details.topic} (Duration: ${durationMins} min)`,
+        durationMinutes: durationMins,
+        proposedSlots: [slotPayload],
       });
 
       if (res.success && res.data) {
@@ -491,9 +516,9 @@ export default function FreelancerWorkspaceChatsMode({
       const fallbackMeeting: WorkspaceMeetingItem = {
         id: `meet_${Date.now()}`,
         title: details.topic,
-        durationMinutes: 30,
+        durationMinutes: durationMins,
         status: "PROPOSED",
-        proposedSlots: [slotString],
+        proposedSlots: [slotPayload],
         roomUrl: `/workspace/meetings/room-${Date.now().toString().slice(-4)}`,
       };
       setMeetings((prev) => [fallbackMeeting, ...prev]);
@@ -1750,40 +1775,47 @@ export default function FreelancerWorkspaceChatsMode({
                             </span>
                             <div className="flex flex-wrap items-center gap-2">
                               {proposedSlots.map((slot: any, idx: number) => {
+                                const uTz = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "Asia/Kolkata";
+                                const cTz = (selectedProject as any)?.clientTimezone || "America/New_York";
+                                const cName = selectedProject?.clientName || "Client";
+                                const dualTz = formatDualTimezoneSlot(slot, uTz, cTz, cName);
                                 const slotVal =
                                   typeof slot === "object" && slot !== null
                                     ? slot.startTime || slot.id || `Slot ${idx + 1}`
                                     : String(slot);
-                                const displayVal =
-                                  typeof slot === "object" && slot !== null && slot.startTime
-                                    ? new Date(slot.startTime).toLocaleString([], {
-                                        dateStyle: "medium",
-                                        timeStyle: "short",
-                                      })
-                                    : String(slotVal);
 
                                 if (isProposer) {
                                   return (
                                     <div
                                       key={idx}
-                                      className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold text-xs flex items-center gap-1.5 shadow-2xs"
+                                      className="p-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs shadow-2xs space-y-1"
                                     >
-                                      <Clock className="w-3.5 h-3.5 text-indigo-500" />
-                                      <span>{displayVal}</span>
+                                      <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                                        <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                                        <span>{dualTz.primary}</span>
+                                      </div>
+                                      {dualTz.secondary && (
+                                        <div className="text-[11px] text-slate-500 font-medium pl-5">
+                                          {dualTz.secondary}
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 }
 
                                 return (
-                                  <div key={idx} className="flex items-center gap-2">
+                                  <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-2">
                                     <button
                                       type="button"
                                       onClick={() => handleConfirmMeeting(meet.meetingId || item.id, slotVal)}
-                                      className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-98"
+                                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-98"
                                     >
                                       <Check className="w-3.5 h-3.5" />
-                                      <span>Accept Slot: {displayVal}</span>
+                                      <span>Accept Slot: {dualTz.userTime}</span>
                                     </button>
+                                    <span className="text-[11px] text-slate-500 font-medium">
+                                      ({dualTz.counterpartTime} for {cName})
+                                    </span>
                                     <button
                                       type="button"
                                       onClick={() => handleDeclineMeeting(meet.meetingId || item.id)}
@@ -1813,9 +1845,11 @@ export default function FreelancerWorkspaceChatsMode({
                 // CARD TYPE E1: Meeting Confirmed Card
                 if (item.type === "meeting_confirmed_card") {
                   const meta = (item as any).metadata || item.meetingDetails || {};
+                  const uTz = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "Asia/Kolkata";
+                  const confirmedDateObj = parseMeetingSlot(meta.confirmedSlot);
                   const confirmedTime = meta.confirmedSlot
-                    ? new Date(meta.confirmedSlot).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })
-                    : item.bubbleText;
+                    ? formatInTimezone(confirmedDateObj, uTz).fullFormatted
+                    : (item.bubbleText || formatInTimezone(new Date(), uTz).fullFormatted);
                   const roomUrl = meta.roomUrl || `/workspace/meetings/room-${item.id.slice(-4)}`;
                   const fullRoomUrl = `${roomUrl}?projectId=${selectedProjectId}&meetingId=${meta.meetingId || item.id}&role=FREELANCER`;
                   const gcalUrl = meta.googleCalendarHtmlLink;
@@ -2137,7 +2171,10 @@ export default function FreelancerWorkspaceChatsMode({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsSubmitDeliverableModalOpen(true)}
+                  onClick={() => {
+                    setSubmittingMilestoneForWorkspace(currentActiveMilestone);
+                    setIsSubmitDeliverableModalOpen(true);
+                  }}
                   className="px-3.5 py-1.5 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-white text-xs font-bold transition shadow-xs cursor-pointer"
                 >
                   + Submit Deliverable
@@ -2896,7 +2933,10 @@ export default function FreelancerWorkspaceChatsMode({
 
                   <button
                     type="button"
-                    onClick={() => setIsSubmitDeliverableModalOpen(true)}
+                    onClick={() => {
+                      setSubmittingMilestoneForWorkspace(currentActiveMilestone);
+                      setIsSubmitDeliverableModalOpen(true);
+                    }}
                     className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition cursor-pointer shrink-0 font-bold"
                   >
                     + Submit deliverable
@@ -3071,7 +3111,10 @@ export default function FreelancerWorkspaceChatsMode({
             </h3>
             <button
               type="button"
-              onClick={() => setIsSubmitDeliverableModalOpen(true)}
+              onClick={() => {
+                setSubmittingMilestoneForWorkspace(currentActiveMilestone);
+                setIsSubmitDeliverableModalOpen(true);
+              }}
               className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
             >
               + Submit
@@ -3081,18 +3124,33 @@ export default function FreelancerWorkspaceChatsMode({
           {selectedProject.milestones && selectedProject.milestones.length > 0 ? (
             <div className="space-y-2.5 text-xs">
               {selectedProject.milestones.map((m) => (
-                <div key={m.id} className="flex items-center justify-between py-1 border-b border-slate-50 last:border-b-0">
-                  <div>
-                    <div className="font-bold text-slate-900">
+                <div key={m.id} className="flex items-center justify-between py-1 border-b border-slate-50 last:border-b-0 gap-2">
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-900 truncate">
                       {m.number}. {m.title}
                     </div>
                     <div className="text-[11px] text-slate-400 mt-0.5">
                       {m.amount} · {m.dueDate}
                     </div>
                   </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${m.statusColor}`}>
-                    {m.status}
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${m.statusColor}`}>
+                      {m.status}
+                    </span>
+                    {m.status !== "Approved" && m.status !== "ACCEPTED" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubmittingMilestoneForWorkspace(m);
+                          setIsSubmitDeliverableModalOpen(true);
+                        }}
+                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 px-1.5 py-0.5 rounded transition cursor-pointer"
+                        title={`Submit deliverables for ${m.title}`}
+                      >
+                        Submit
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -3117,11 +3175,9 @@ export default function FreelancerWorkspaceChatsMode({
               <div>
                 <div className="font-bold text-slate-900">{selectedProject.upcomingMeeting.title}</div>
                 <div className="text-[11px] text-slate-500">
-                  {typeof selectedProject.upcomingMeeting.time === "object" && selectedProject.upcomingMeeting.time !== null
-                    ? ((selectedProject.upcomingMeeting.time as any).startTime
-                        ? new Date((selectedProject.upcomingMeeting.time as any).startTime).toLocaleString()
-                        : String((selectedProject.upcomingMeeting.time as any).id || "Upcoming"))
-                    : String(selectedProject.upcomingMeeting.time || "Upcoming")}
+                  {selectedProject.upcomingMeeting.time
+                    ? formatInTimezone(parseMeetingSlot(selectedProject.upcomingMeeting.time), typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "Asia/Kolkata").fullFormatted
+                    : "Upcoming"}
                 </div>
               </div>
               <button
@@ -3173,19 +3229,33 @@ export default function FreelancerWorkspaceChatsMode({
       <ProposeMeetingModal
         isOpen={isProposeMeetingModalOpen}
         onClose={() => setIsProposeMeetingModalOpen(false)}
-        freelancerName={selectedProject?.clientName || "Client"}
+        freelancerName={user?.name || selectedProject?.freelancerName || "Sambit Kumar"}
+        clientName={selectedProject?.clientName || "Alex Rivera"}
+        freelancerTimezone={(selectedProject as any)?.freelancerTimezone || "Asia/Kolkata"}
+        clientTimezone={(selectedProject as any)?.clientTimezone || "America/New_York"}
+        currentUserRole="FREELANCER"
         onScheduleMeeting={handleScheduleMeetingProposal}
       />
 
       <SubmitDeliverableModal
         isOpen={isSubmitDeliverableModalOpen}
-        onClose={() => setIsSubmitDeliverableModalOpen(false)}
+        onClose={() => {
+          setIsSubmitDeliverableModalOpen(false);
+          setSubmittingMilestoneForWorkspace(null);
+        }}
+        milestone={currentActiveMilestone}
         onSubmitSuccess={async (details) => {
-          showToast("Milestone 2 deliverable logged to consensus!");
+          const targetMilestone = currentActiveMilestone;
+          const targetTitle = targetMilestone
+            ? (targetMilestone.number ? `Milestone ${targetMilestone.number}: ${targetMilestone.title}` : targetMilestone.title)
+            : "Milestone 1";
+          const targetId = details.milestoneId || targetMilestone?.id || "ms_1";
+
+          showToast(`${targetTitle} deliverable logged to consensus!`);
           try {
             await submitWorkspaceDeliverable(selectedProjectId, {
-              milestoneId: "ms_techkart_2",
-              freelancerId: "usr_freelancer_sambit",
+              milestoneId: targetId,
+              freelancerId: user?.id || "usr_freelancer_sambit",
               repoUrl: details.prUrl,
               previewUrl: details.loomUrl,
               notes: details.notes,
@@ -3200,7 +3270,7 @@ export default function FreelancerWorkspaceChatsMode({
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             badgeText: "Deliverable Submitted",
             badgeType: "green",
-            summaryText: `You submitted Pull Request: ${details.prUrl}. Automated SHA-256 pre-checks verified. 72-hour review buffer activated.`,
+            summaryText: `You submitted Pull Request: ${details.prUrl} for ${targetTitle}. Automated SHA-256 pre-checks verified. 72-hour review buffer activated.`,
             actions: {
               primaryLabel: "Update Submission",
               primaryAction: "submit_deliverable",

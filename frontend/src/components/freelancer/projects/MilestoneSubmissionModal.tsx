@@ -42,9 +42,14 @@ export default function MilestoneSubmissionModal({
   );
   const [attachmentName, setAttachmentName] = useState("deliverables-package.zip");
   const [attachmentSize, setAttachmentSize] = useState("4.8 MB");
-  const [checkedCriteria, setCheckedCriteria] = useState<string[]>(
-    milestone.acceptanceCriteria
-  );
+  const normalizedCriteria: string[] = React.useMemo(() => {
+    if (!Array.isArray(milestone.acceptanceCriteria)) return [];
+    return milestone.acceptanceCriteria
+      .map((c: any) => (typeof c === "string" ? c : c?.text || c?.title || String(c || "")))
+      .filter((s: string) => Boolean(s.trim()));
+  }, [milestone.acceptanceCriteria]);
+
+  const [checkedCriteria, setCheckedCriteria] = useState<string[]>(normalizedCriteria);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -79,7 +84,7 @@ export default function MilestoneSubmissionModal({
       setErrorMsg("Please provide a completion note explaining the delivery.");
       return;
     }
-    if (checkedCriteria.length === 0 && milestone.acceptanceCriteria.length > 0) {
+    if (checkedCriteria.length === 0 && normalizedCriteria.length > 0) {
       setErrorMsg("Please verify at least one acceptance criterion.");
       return;
     }
@@ -257,7 +262,7 @@ export default function MilestoneSubmissionModal({
           </div>
 
           {/* Acceptance Criteria Checklist */}
-          {milestone.acceptanceCriteria.length > 0 && (
+          {normalizedCriteria.length > 0 && (
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
@@ -265,11 +270,11 @@ export default function MilestoneSubmissionModal({
                   Acceptance Criteria Self-Check
                 </span>
                 <span className="text-[11px] font-semibold text-slate-500">
-                  {checkedCriteria.length} of {milestone.acceptanceCriteria.length} verified
+                  {checkedCriteria.length} of {normalizedCriteria.length} verified
                 </span>
               </div>
               <div className="space-y-1.5 pt-1">
-                {milestone.acceptanceCriteria.map((criterion, idx) => {
+                {normalizedCriteria.map((criterion, idx) => {
                   const isChecked = checkedCriteria.includes(criterion);
                   return (
                     <label
