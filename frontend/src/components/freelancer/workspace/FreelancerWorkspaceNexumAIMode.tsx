@@ -22,6 +22,7 @@ import {
 import { fetchWorkspaceProjects } from "@/lib/api-client";
 import { useAuth } from "@/context/AuthContext";
 import ReviewVersionModal from "@/components/client/workspace/ReviewVersionModal";
+import FormattedAiMessage from "@/components/workspace/FormattedAiMessage";
 
 interface FreelancerWorkspaceNexumAIModeProps {
   onOpenInChats: (projectId: string, draftMessage?: string) => void;
@@ -197,11 +198,27 @@ export default function FreelancerWorkspaceNexumAIMode({
     setInputValue("");
     setIsGenerating(true);
 
+    const scope = (activeScope || "").trim().toLowerCase();
+    const isAllScope = !scope || scope.includes("all my") || scope.includes("all contract") || scope.includes("all project");
+    const matchedProject = isAllScope
+      ? undefined
+      : projects.find((p) => {
+          const name = (p.name || (p as any).title || p.shortName || "").toLowerCase();
+          const shortName = (p.shortName || "").toLowerCase();
+          return name.includes(scope) || scope.includes(name) || (shortName && (shortName.includes(scope) || scope.includes(shortName)));
+        });
+    const activeProjectId = matchedProject ? matchedProject.id : undefined;
+
     try {
       const res = await fetch("/api/assistant/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          conversationId:
+            selectedChatId && !selectedChatId.startsWith("fchat_new_")
+              ? selectedChatId
+              : undefined,
+          projectId: activeProjectId,
           content: query,
           activeScope,
         }),
@@ -209,6 +226,9 @@ export default function FreelancerWorkspaceNexumAIMode({
 
       if (res.ok) {
         const data = await res.json();
+        if (data.conversationId && (!selectedChatId || selectedChatId.startsWith("fchat_new_"))) {
+          setSelectedChatId(data.conversationId);
+        }
         const contentText =
           data.reply ||
           data.assistantMessage?.content ||
@@ -655,13 +675,13 @@ export default function FreelancerWorkspaceNexumAIMode({
                   <span>{msg.createdAt}</span>
                 </div>
                 <div
-                  className={`max-w-xl p-3.5 rounded-2xl text-xs leading-relaxed shadow-2xs whitespace-pre-line ${
+                  className={`max-w-2xl p-4 rounded-2xl text-xs sm:text-[13px] leading-relaxed shadow-2xs ${
                     isUser
                       ? "bg-[#4f46e5] text-white rounded-br-xs"
                       : "bg-white border border-slate-200/90 text-slate-900 rounded-bl-xs"
                   }`}
                 >
-                  {msg.content}
+                  <FormattedAiMessage content={msg.content} isUser={isUser} />
                 </div>
               </div>
             );

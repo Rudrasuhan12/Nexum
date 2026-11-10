@@ -977,63 +977,60 @@ function FreelancerApplyContent() {
               </div>
             </div>
 
-            {/* Form Actions Footer */}
-            <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs mt-6">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3 text-xs w-full sm:w-auto justify-between sm:justify-start">
-                  <Link
-                    href={`/freelancer/projects/${projectId}`}
-                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition"
-                  >
-                    Discard & Cancel
-                  </Link>
+            {/* Form Actions Footer (Only rendered when proposal can be submitted or revised) */}
+            {(!existingActiveProposal || revisionOf) && (
+              <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs mt-6">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 text-xs w-full sm:w-auto justify-between sm:justify-start">
+                    <Link
+                      href={`/freelancer/projects/${projectId}`}
+                      className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition"
+                    >
+                      Discard & Cancel
+                    </Link>
 
-                  <div className="hidden sm:flex items-center gap-3 text-slate-500 font-medium pl-3 border-l border-slate-200">
-                    <span>
-                      Total Quote:{" "}
-                      <strong className="text-slate-900 font-mono">${cleanQuote.toLocaleString()}</strong>
-                    </span>
-                    <span>·</span>
-                    <span>
-                      Milestones: <strong className="text-slate-900">{milestones.length}</strong>
-                    </span>
-                    <span>·</span>
-                    <span>
-                      Duration: <strong className="text-slate-900">{proposalDurationWeeks} Weeks</strong>
-                    </span>
+                    <div className="hidden sm:flex items-center gap-3 text-slate-500 font-medium pl-3 border-l border-slate-200">
+                      <span>
+                        Total Quote:{" "}
+                        <strong className="text-slate-900 font-mono">${cleanQuote.toLocaleString()}</strong>
+                      </span>
+                      <span>·</span>
+                      <span>
+                        Milestones: <strong className="text-slate-900">{milestones.length}</strong>
+                      </span>
+                      <span>·</span>
+                      <span>
+                        Duration: <strong className="text-slate-900">{proposalDurationWeeks} Weeks</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || !isSumMatching}
+                      className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Submitting Proposal to Client...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          <span>
+                            {revisionOf
+                              ? "Submit Revised Proposal to Client"
+                              : "Submit Formal Proposal & Escrow Checkpoints"}
+                          </span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-3 w-full sm:w-auto">
-                  <button
-                    type="submit"
-                    disabled={isSubmitting || !isSumMatching || Boolean(existingActiveProposal && !revisionOf)}
-                    className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Submitting Proposal to Client...</span>
-                      </>
-                    ) : existingActiveProposal && !revisionOf ? (
-                      <>
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        <span>Proposal Already Submitted (Under Review)</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-3.5 h-3.5" />
-                        <span>
-                          {revisionOf
-                            ? "Submit Revised Proposal to Client"
-                            : "Submit Formal Proposal & Escrow Checkpoints"}
-                        </span>
-                      </>
-                    )}
-                  </button>
-                </div>
               </div>
-            </div>
+            )}
           </form>
         </main>
       </div>

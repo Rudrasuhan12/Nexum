@@ -28,6 +28,7 @@ import {
 import { fetchWorkspaceProjects } from "@/lib/api-client";
 import ReviewVersionModal from "./ReviewVersionModal";
 import { useAuth } from "@/context/AuthContext";
+import FormattedAiMessage from "@/components/workspace/FormattedAiMessage";
 
 interface WorkspaceNexumAIModeProps {
   onOpenInChats: (projectId: string, draftMessage?: string) => void;
@@ -314,12 +315,24 @@ export default function WorkspaceNexumAIMode({
     };
     setLiveMessages((prev) => [...prev, userMsg]);
 
+    const scope = (activeScope || "").trim().toLowerCase();
+    const isAllScope = !scope || scope.includes("all my") || scope.includes("all contract") || scope.includes("all project");
+    const matchedProject = isAllScope
+      ? undefined
+      : projects.find((p) => {
+          const name = (p.name || (p as any).title || p.shortName || "").toLowerCase();
+          const shortName = (p.shortName || "").toLowerCase();
+          return name.includes(scope) || scope.includes(name) || (shortName && (shortName.includes(scope) || scope.includes(shortName)));
+        });
+    const activeProjectId = matchedProject ? matchedProject.id : undefined;
+
     try {
       const res = await fetch("/api/assistant/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversationId: selectedChatId.startsWith("chat_") ? undefined : selectedChatId,
+          projectId: activeProjectId,
           content: text,
           activeScope,
         }),
@@ -327,6 +340,9 @@ export default function WorkspaceNexumAIMode({
 
       if (res.ok) {
         const data = await res.json();
+        if (data.conversationId && (!selectedChatId || selectedChatId.startsWith("chat_"))) {
+          setSelectedChatId(data.conversationId);
+        }
         const contentText =
           data.reply ||
           data.assistantMessage?.content ||
@@ -785,7 +801,7 @@ export default function WorkspaceNexumAIMode({
                     <span>Nexum AI · {m.model || "Gemini 3.8"}</span>
                   </div>
                 )}
-                <div className="whitespace-pre-wrap">{m.content}</div>
+                <FormattedAiMessage content={m.content} isUser={m.role === "user"} />
                 <div
                   className={`text-[10px] pt-1 text-right ${
                     m.role === "user" ? "text-indigo-200" : "text-slate-400"
