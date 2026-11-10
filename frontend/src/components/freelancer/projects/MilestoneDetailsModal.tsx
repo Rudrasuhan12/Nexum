@@ -175,15 +175,18 @@ export default function MilestoneDetailsModal({
         <div className="space-y-2">
           <h4 className="text-xs font-bold text-slate-900">Acceptance Criteria</h4>
           <div className="space-y-1.5">
-            {milestone.acceptanceCriteria.map((crit, idx) => (
-              <div
-                key={idx}
-                className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-start gap-2 text-xs text-slate-700"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                <span>{crit}</span>
-              </div>
-            ))}
+            {milestone.acceptanceCriteria.map((crit: any, idx: number) => {
+              const text = typeof crit === "string" ? crit : crit?.text || crit?.title || String(crit || "");
+              return (
+                <div
+                  key={idx}
+                  className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-start gap-2 text-xs text-slate-700"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>{text}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
 

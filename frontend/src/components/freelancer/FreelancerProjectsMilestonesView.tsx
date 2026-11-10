@@ -158,7 +158,16 @@ export default function FreelancerProjectsMilestonesView({
                 ? 100
                 : 0;
 
-            const milestones = Array.isArray(live.milestones) ? live.milestones : [];
+            const milestones = Array.isArray(live.milestones)
+              ? live.milestones.map((m: any) => ({
+                  ...m,
+                  acceptanceCriteria: Array.isArray(m.acceptanceCriteria)
+                    ? m.acceptanceCriteria.map((c: any) =>
+                        typeof c === "string" ? c : c?.text || c?.title || String(c)
+                      )
+                    : [],
+                }))
+              : [];
 
             const clientName = live.client?.name || "Client Partner";
 

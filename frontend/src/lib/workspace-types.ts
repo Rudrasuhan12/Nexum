@@ -41,6 +41,8 @@ export interface WorkspaceProject {
   };
   paymentNote?: string;
   canSee: boolean;
+  clientTimezone?: string;
+  freelancerTimezone?: string;
 }
 
 export interface MediationMetric {
@@ -85,7 +87,7 @@ export interface WorkspaceMeetingItem {
   agenda?: string;
   durationMinutes: number;
   status: "PROPOSED" | "CONFIRMED" | "CANCELLED" | "COMPLETED";
-  proposedSlots: string[];
+  proposedSlots: Array<string | { id?: string; startTime?: string; endTime?: string; slotTime?: string; displaySlot?: string; [key: string]: any }>;
   acceptedSlot?: string;
   roomUrl: string;
   googleCalendarUrl?: string;

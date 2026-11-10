@@ -69,6 +69,7 @@ import ProjectHandoverBanner from "@/components/handover/ProjectHandoverBanner";
 import ProjectHandoverModal from "@/components/handover/ProjectHandoverModal";
 import HandoverChecklistView from "@/components/handover/HandoverChecklistView";
 import BilateralContractModal from "@/components/workspace/BilateralContractModal";
+import { parseMeetingSlot, formatDualTimezoneSlot, formatInTimezone } from "@/lib/timezone-utils";
 
 interface WorkspaceChatsModeProps {
   onSwitchToAIMode: (projectScope?: string) => void;
@@ -733,21 +734,29 @@ export default function WorkspaceChatsMode({
   };
 
   // Bilateral Meeting Proposal Handler
-  const handleScheduleMeetingProposal = async (details: {
-    date: string;
-    time: string;
-    topic: string;
-    duration?: string;
-  }) => {
-    const slotString = `${details.date} at ${details.time}`;
+  const handleScheduleMeetingProposal = async (details: any) => {
+    const safeDate = parseMeetingSlot(`${details.date} at ${details.time}`);
+    const isoStartTime = details.isoStartTime || safeDate.toISOString();
+    const durationMins = parseInt(details.duration || "30") || 30;
+    const isoEndTime = new Date(safeDate.getTime() + durationMins * 60000).toISOString();
+    const slotString = details.displaySlot || `${details.date} at ${details.time}`;
     const requesterId = user?.id || (selectedProject as any)?.clientId || "usr_client_alex";
+
+    const slotPayload = {
+      id: `slot_${Date.now()}`,
+      startTime: isoStartTime,
+      endTime: isoEndTime,
+      slotTime: isoStartTime,
+      displaySlot: slotString,
+    };
+
     try {
       const res = await proposeWorkspaceMeeting(selectedProjectId, {
         proposedByUserId: requesterId,
         title: details.topic,
-        agenda: `${details.topic} (Duration: ${details.duration || "30 min"})`,
-        durationMinutes: parseInt(details.duration || "30") || 30,
-        proposedSlots: [{ id: "slot_1", startTime: slotString, endTime: slotString }],
+        agenda: `${details.topic} (Duration: ${durationMins} min)`,
+        durationMinutes: durationMins,
+        proposedSlots: [slotPayload],
       });
 
       if (res.success && res.data) {
@@ -759,9 +768,9 @@ export default function WorkspaceChatsMode({
       const fallbackMeeting: WorkspaceMeetingItem = {
         id: `meet_${Date.now()}`,
         title: details.topic,
-        durationMinutes: 30,
+        durationMinutes: durationMins,
         status: "PROPOSED",
-        proposedSlots: [slotString],
+        proposedSlots: [slotPayload],
         roomUrl: `/workspace/meetings/room-${Date.now().toString().slice(-4)}`,
       };
       setMeetings((prev) => [fallbackMeeting, ...prev]);
@@ -1592,40 +1601,47 @@ export default function WorkspaceChatsMode({
                             </span>
                             <div className="flex flex-wrap items-center gap-2">
                               {proposedSlots.map((slot: any, idx: number) => {
+                                const uTz = (selectedProject as any)?.clientTimezone || "America/New_York";
+                                const fTz = (selectedProject as any)?.freelancerTimezone || "Asia/Kolkata";
+                                const fName = selectedProject?.freelancerName || "Freelancer";
+                                const dualTz = formatDualTimezoneSlot(slot, uTz, fTz, fName);
                                 const slotVal =
                                   typeof slot === "object" && slot !== null
                                     ? slot.startTime || slot.id || `Slot ${idx + 1}`
                                     : String(slot);
-                                const displayVal =
-                                  typeof slot === "object" && slot !== null && slot.startTime
-                                    ? new Date(slot.startTime).toLocaleString([], {
-                                        dateStyle: "medium",
-                                        timeStyle: "short",
-                                      })
-                                    : String(slotVal);
 
                                 if (isProposer) {
                                   return (
                                     <div
                                       key={idx}
-                                      className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold text-xs flex items-center gap-1.5 shadow-2xs"
+                                      className="p-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs shadow-2xs space-y-1"
                                     >
-                                      <Clock className="w-3.5 h-3.5 text-indigo-500" />
-                                      <span>{displayVal}</span>
+                                      <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                                        <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                                        <span>{dualTz.primary}</span>
+                                      </div>
+                                      {dualTz.secondary && (
+                                        <div className="text-[11px] text-slate-500 font-medium pl-5">
+                                          {dualTz.secondary}
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 }
 
                                 return (
-                                  <div key={idx} className="flex items-center gap-2">
+                                  <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-2">
                                     <button
                                       type="button"
                                       onClick={() => handleConfirmMeeting(meet.meetingId || item.id, slotVal)}
-                                      className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-98"
+                                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-98"
                                     >
                                       <Check className="w-3.5 h-3.5" />
-                                      <span>Accept Slot: {displayVal}</span>
+                                      <span>Accept Slot: {dualTz.userTime}</span>
                                     </button>
+                                    <span className="text-[11px] text-slate-500 font-medium">
+                                      ({dualTz.counterpartTime} for {fName})
+                                    </span>
                                     <button
                                       type="button"
                                       onClick={() => handleDeclineMeeting(meet.meetingId || item.id)}
@@ -1655,9 +1671,11 @@ export default function WorkspaceChatsMode({
                 // CARD TYPE E1: Meeting Confirmed Card
                 if (item.type === "meeting_confirmed_card") {
                   const meta = (item as any).metadata || item.meetingDetails || {};
+                  const uTz = (selectedProject as any)?.clientTimezone || "America/New_York";
+                  const confirmedDateObj = parseMeetingSlot(meta.confirmedSlot);
                   const confirmedTime = meta.confirmedSlot
-                    ? new Date(meta.confirmedSlot).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })
-                    : item.bubbleText;
+                    ? formatInTimezone(confirmedDateObj, uTz).fullFormatted
+                    : (item.bubbleText || formatInTimezone(new Date(), uTz).fullFormatted);
                   const roomUrl = meta.roomUrl || `/workspace/meetings/room-${item.id.slice(-4)}`;
                   const fullRoomUrl = `${roomUrl}?projectId=${selectedProjectId}&meetingId=${meta.meetingId || item.id}&role=CLIENT`;
                   const gcalUrl = meta.googleCalendarHtmlLink;
@@ -3424,11 +3442,9 @@ export default function WorkspaceChatsMode({
                 <div>
                   <div className="font-bold text-slate-900">{selectedProject.upcomingMeeting.title}</div>
                   <div className="text-[11px] text-slate-500">
-                    {typeof selectedProject.upcomingMeeting.time === "object" && selectedProject.upcomingMeeting.time !== null
-                      ? ((selectedProject.upcomingMeeting.time as any).startTime
-                          ? new Date((selectedProject.upcomingMeeting.time as any).startTime).toLocaleString()
-                          : String((selectedProject.upcomingMeeting.time as any).id || "Upcoming"))
-                      : String(selectedProject.upcomingMeeting.time || "Upcoming")}
+                    {selectedProject.upcomingMeeting.time
+                      ? formatInTimezone(parseMeetingSlot(selectedProject.upcomingMeeting.time), (selectedProject as any)?.clientTimezone || "America/New_York").fullFormatted
+                      : "Upcoming"}
                   </div>
                 </div>
                 <button
@@ -3483,7 +3499,11 @@ export default function WorkspaceChatsMode({
   <ProposeMeetingModal
     isOpen={isProposeMeetingModalOpen}
     onClose={() => setIsProposeMeetingModalOpen(false)}
-    freelancerName={selectedProject?.freelancerName || "Freelancer"}
+    freelancerName={selectedProject?.freelancerName || "Sambit Kumar"}
+    clientName={user?.name || selectedProject?.clientName || "Alex Rivera"}
+    freelancerTimezone={(selectedProject as any)?.freelancerTimezone || "Asia/Kolkata"}
+    clientTimezone={(selectedProject as any)?.clientTimezone || "America/New_York"}
+    currentUserRole="CLIENT"
     onScheduleMeeting={handleScheduleMeetingProposal}
   />
 
