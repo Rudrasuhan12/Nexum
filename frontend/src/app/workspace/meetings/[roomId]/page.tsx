@@ -83,6 +83,7 @@ function MeetingRoomContent() {
   const {
     localStream, remoteStream, remotePeers, isConnected,
     isMicOn, isVideoOn, isScreenSharing,
+    isSpeakingMe, isSpeakingRemote,
     toggleMic, toggleVideo, toggleScreenShare, hangUp,
     chatMessages, captions, liveCaption,
     sendChat, sendCaption, sendReaction,
@@ -90,9 +91,10 @@ function MeetingRoomContent() {
     roomId, userId: myId, userName: myName, role: myRole, avatar: myAvatar, backendUrl,
   });
 
-  // ─── Local video ref ─────────────────────────────────────────────────────────
+  // ─── Media Element refs ──────────────────────────────────────────────────────
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const captionsEndRef = useRef<HTMLDivElement>(null);
 
@@ -149,12 +151,18 @@ function MeetingRoomContent() {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
-  }, [localStream]);
+  }, [localStream, isVideoOn]);
 
-  // ─── Wire remote stream to <video> ───────────────────────────────────────────
+  // ─── Wire remote stream to <video> and dedicated <audio> ─────────────────────
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
+    }
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.play().catch((err) => {
+        console.warn("[MeetingRoom] Remote audio play:", err);
+      });
     }
   }, [remoteStream]);
 
@@ -323,7 +331,7 @@ function MeetingRoomContent() {
           <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3 min-h-0">
 
             {/* TILE 1: Me ───────────────────────────────────────────────────── */}
-            <div className={`relative rounded-2xl bg-[#282a2d] overflow-hidden flex flex-col border ${isMicOn ? "border-[#8ab4f8]/40" : "border-[#3c4043]"} transition-all duration-200`}>
+            <div className={`relative rounded-2xl bg-[#282a2d] overflow-hidden flex flex-col border ${isSpeakingMe ? "border-[#8ab4f8] ring-2 ring-[#8ab4f8]/30" : isMicOn ? "border-[#8ab4f8]/40" : "border-[#3c4043]"} transition-all duration-200`}>
               {isVideoOn && localStream ? (
                 <video
                   ref={localVideoRef}
@@ -335,7 +343,7 @@ function MeetingRoomContent() {
                 />
               ) : (
                 <div className="flex-1 flex items-center justify-center">
-                  <AvatarCircle name={myName} src={myAvatar} size="lg" speaking={isMicOn} />
+                  <AvatarCircle name={myName} src={myAvatar} size="lg" speaking={isSpeakingMe} />
                 </div>
               )}
 
@@ -354,8 +362,11 @@ function MeetingRoomContent() {
             </div>
 
             {/* TILE 2: Remote Participant ────────────────────────────────────── */}
-            <div className={`relative rounded-2xl bg-[#282a2d] overflow-hidden flex flex-col border ${remotePeer && remotePeer.micOn ? "border-white/30" : "border-[#3c4043]"} transition-all duration-200`}>
-              {remoteStream ? (
+            <div className={`relative rounded-2xl bg-[#282a2d] overflow-hidden flex flex-col border ${isSpeakingRemote ? "border-[#81c995] ring-2 ring-[#81c995]/40" : remotePeer?.micOn ? "border-white/30" : "border-[#3c4043]"} transition-all duration-200`}>
+              {/* Dedicated audio element ensures incoming sound always plays */}
+              <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+
+              {remoteStream && remoteStream.getVideoTracks().some((t) => t.enabled && t.readyState === "live") ? (
                 <video
                   ref={remoteVideoRef}
                   autoPlay
@@ -368,7 +379,7 @@ function MeetingRoomContent() {
                     name={remotePeer?.userName || counterpartName}
                     src={remotePeer?.avatar}
                     size="lg"
-                    speaking={remotePeer?.micOn}
+                    speaking={isSpeakingRemote || !!remotePeer?.micOn}
                   />
                   {!remotePeer && (
                     <span className="text-xs text-[#9aa0a6] text-center px-4">
