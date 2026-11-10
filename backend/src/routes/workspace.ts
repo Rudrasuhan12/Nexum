@@ -67,6 +67,180 @@ export function checkProjectParticipant(
 }
 
 /**
+ * GET /api/workspace/ai-context
+ * Fetches dynamic, real-time database context directly from PostgreSQL via Prisma.
+ * Strictly queries database records for projects, documents (PRDs, attachments, files),
+ * milestones, deliverable submissions, and workspace chats.
+ */
+router.get("/ai-context", async (req: Request, res: Response) => {
+  try {
+    const sessionUser = (req as any).user;
+    const requestedUserId =
+      (req.query.userId as string) ||
+      (req.headers["x-user-id"] as string) ||
+      sessionUser?.id ||
+      sessionUser?.email ||
+      "";
+    const role = (req.query.role as string) || sessionUser?.role || "CLIENT";
+    const projectId = (req.query.projectId as string) || "";
+    const activeScope = ((req.query.activeScope as string) || "").trim();
+
+    // Resolve user if exists in DB to support querying by either ID or Email
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: requestedUserId },
+          { email: requestedUserId },
+        ],
+      },
+      select: { id: true, email: true, name: true, role: true },
+    });
+
+    const candidateIds = user ? [user.id, requestedUserId] : (requestedUserId ? [requestedUserId] : []);
+    const candidateEmails = user ? [user.email, requestedUserId] : (requestedUserId ? [requestedUserId] : []);
+
+    const isAllProjects =
+      !projectId &&
+      (!activeScope ||
+        activeScope.toLowerCase().includes("all") ||
+        activeScope.toLowerCase().includes("contracts") ||
+        activeScope.toLowerCase().includes("projects"));
+
+    const projectInclude = {
+      client: { select: { id: true, name: true, email: true } },
+      projectMilestones: {
+        orderBy: { orderIndex: "asc" },
+        include: {
+          submissions: {
+            orderBy: { createdAt: "desc" },
+            include: { files: true },
+          },
+        },
+      },
+      agreement: {
+        include: {
+          freelancer: { select: { id: true, name: true, email: true } },
+          milestones: {
+            orderBy: { orderIndex: "asc" },
+            include: {
+              submissions: {
+                orderBy: { createdAt: "desc" },
+                include: { files: true },
+              },
+            },
+          },
+        },
+      },
+      projectProposals: {
+        include: {
+          freelancer: { select: { id: true, name: true, email: true } },
+          attachments: true,
+          versions: {
+            orderBy: { version: "desc" },
+            take: 1,
+          },
+        },
+      },
+      workspaceConversation: {
+        include: {
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 15,
+            include: {
+              sender: { select: { id: true, name: true, role: true } },
+            },
+          },
+          tasks: { orderBy: { createdAt: "asc" } },
+          decisions: { orderBy: { createdAt: "desc" } },
+          meetings: { orderBy: { createdAt: "desc" }, take: 3 },
+        },
+      },
+      projectFiles: { orderBy: { createdAt: "desc" } },
+      prdVersions: { orderBy: { versionNumber: "desc" } },
+      handover: {
+        include: {
+          items: true,
+        },
+      },
+    };
+
+    let targetProject: any = null;
+    let allUserProjects: any[] = [];
+
+    if (!isAllProjects && (projectId || activeScope)) {
+      // Find specific project by ID or by title match
+      const projectConditions: any[] = [];
+      if (projectId) {
+        projectConditions.push({ id: projectId });
+      }
+      if (activeScope) {
+        projectConditions.push(
+          { title: { contains: activeScope, mode: "insensitive" } },
+          { id: activeScope }
+        );
+        if (activeScope.toLowerCase().includes("terra")) {
+          projectConditions.push({ title: { contains: "TerraShield", mode: "insensitive" } });
+        }
+      }
+
+      targetProject = await prisma.project.findFirst({
+        where: { OR: projectConditions },
+        include: projectInclude as any,
+      });
+    }
+
+    // Query user's active/relevant projects from DB
+    const clientCondition = {
+      OR: [
+        { clientId: { in: candidateIds } },
+        { client: { id: { in: candidateIds } } },
+        { client: { email: { in: candidateEmails } } },
+      ],
+    };
+
+    const freelancerCondition = {
+      OR: [
+        { agreement: { freelancerId: { in: candidateIds } } },
+        { agreement: { freelancer: { id: { in: candidateIds } } } },
+        { agreement: { freelancer: { email: { in: candidateEmails } } } },
+        { projectProposals: { some: { freelancerId: { in: candidateIds } } } },
+        { projectProposals: { some: { freelancer: { email: { in: candidateEmails } } } } },
+      ],
+    };
+
+    allUserProjects = await prisma.project.findMany({
+      where: role === "FREELANCER" ? (candidateIds.length ? freelancerCondition : {}) : (candidateIds.length ? clientCondition : {}),
+      include: projectInclude as any,
+      orderBy: { updatedAt: "desc" },
+      take: 20,
+    });
+
+    // Fallback if targetProject not yet found but exists in user's projects
+    if (!targetProject && allUserProjects.length > 0 && !isAllProjects) {
+      targetProject = allUserProjects[0];
+    }
+
+    res.json({
+      success: true,
+      data: {
+        scopeMode: isAllProjects ? "ALL_PROJECTS" : "SINGLE_PROJECT",
+        userRole: role,
+        userName: user?.name || (role === "CLIENT" ? "Client" : "Freelancer"),
+        targetProject,
+        allProjects: allUserProjects,
+      },
+    });
+  } catch (err: unknown) {
+    console.error("Fetch AI context error:", err);
+    res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to fetch AI context from database",
+    });
+  }
+});
+
+
+/**
  * GET /api/workspace/projects
  * Fetches real active projects for the authenticated user (Client or Freelancer).
  * Returns truthful empty list [] when user has no active workspace contracts.
