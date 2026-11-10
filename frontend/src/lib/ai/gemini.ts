@@ -51,16 +51,21 @@ export const HIGH_GRADE_CASCADE: ModelConfig[] = [
     model: "qwen/qwen-2.5-72b-instruct",
     displayName: "Qwen 2.5 72B",
   },
-  // Tier 3: Direct Official Google Gemini API
+// Tier 3: Direct Official Google Gemini API
   {
     provider: "gemini-direct",
-    model: "gemini-2.5-flash",
-    displayName: "Google Gemini 2.5 Flash",
+    model: "gemini-3-flash-preview",
+    displayName: "Google Gemini 3 Flash",
   },
   {
     provider: "gemini-direct",
-    model: "gemini-1.5-flash",
-    displayName: "Google Gemini 1.5 Flash",
+    model: "gemini-3.5-flash",
+    displayName: "Google Gemini 3.5 Flash",
+  },
+  {
+    provider: "gemini-direct",
+    model: "gemini-flash-latest",
+    displayName: "Google Gemini Flash Latest",
   },
   // Tier 4: High-speed enterprise models via Groq
   {
@@ -375,6 +380,18 @@ function formatProfessionalText(raw: string): string {
     .trim();
 }
 
+function cleanKey(raw?: string): string {
+  if (!raw) return "";
+  let cleaned = raw.trim();
+  while (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+}
+
 /**
  * Executes a generation request through the high-grade model cascade.
  * Primary: google/gemini-3.7-flash (OpenRouter)
@@ -383,7 +400,7 @@ function formatProfessionalText(raw: string): string {
 export async function generateGeminiResponse(
   messages: AssistantMessage[],
   options?: AssistantContextOptions
-): Promise<{ text: string; model: string; isFallback?: boolean }> {
+): Promise<{ text: string; model: string; isFallback?: boolean; cascadeErrors?: string[]; debug?: any }> {
   // 1. Resolve 100% dynamic database-driven context
   const intel = await fetchAssistantIntelligenceContext(options || {});
   const systemPrompt = buildSystemPrompt(intel);
@@ -400,9 +417,26 @@ export async function generateGeminiResponse(
   ];
 
   const cascadeErrors: string[] = [];
-  const openRouterKey = (process.env.OPENROUTER_API_KEY || OPENROUTER_API_KEY || "").trim();
-  const groqKey = (process.env.GROQ_API_KEY || GROQ_API_KEY || "").trim();
-  const geminiDirectKey = (process.env.GEMINI_API_KEY || process.env.AI_API_KEY || GEMINI_DIRECT_KEY || "").trim();
+  const openRouterKey = cleanKey(
+    process.env.OPENROUTER_API_KEY ||
+    process.env.NEXT_PUBLIC_OPENROUTER_API_KEY ||
+    OPENROUTER_API_KEY
+  );
+  const groqKey = cleanKey(
+    process.env.GROQ_API_KEY ||
+    process.env.NEXT_PUBLIC_GROQ_API_KEY ||
+    GROQ_API_KEY
+  );
+  const geminiDirectKey = cleanKey(
+    process.env.GEMINI_API_KEY ||
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
+    process.env.AI_API_KEY ||
+    GEMINI_DIRECT_KEY
+  );
+
+  if (!openRouterKey && !groqKey && !geminiDirectKey) {
+    cascadeErrors.push("No API keys detected in runtime environment (OPENROUTER_API_KEY, GROQ_API_KEY, and GEMINI_API_KEY are unset or empty)");
+  }
 
   for (const config of HIGH_GRADE_CASCADE) {
     try {
@@ -531,7 +565,7 @@ export async function generateGeminiResponse(
           return {
             text: formatProfessionalText(reply),
             model: config.displayName,
-            isFallback: true,
+            isFallback: false,
           };
         }
       }
@@ -554,6 +588,15 @@ export async function generateGeminiResponse(
     text: formatProfessionalText(dynamicReply),
     model: "Nexum Gemini Intelligence Protocol",
     isFallback: true,
+    cascadeErrors,
+    debug: {
+      keysDetected: {
+        openRouter: Boolean(openRouterKey),
+        groq: Boolean(groqKey),
+        gemini: Boolean(geminiDirectKey),
+      },
+      cascadeErrors,
+    },
   };
 }
 

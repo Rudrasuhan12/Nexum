@@ -124,6 +124,8 @@ export async function POST(request: Request) {
       assistantMessage: assistantMsg,
       model: aiResponse.model,
       isFallback: Boolean(aiResponse.isFallback),
+      debug: (aiResponse as any).debug,
+      cascadeErrors: (aiResponse as any).cascadeErrors,
     });
   } catch (err: unknown) {
     const error = err as Error;
