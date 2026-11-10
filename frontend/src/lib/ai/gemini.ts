@@ -51,7 +51,18 @@ export const HIGH_GRADE_CASCADE: ModelConfig[] = [
     model: "qwen/qwen-2.5-72b-instruct",
     displayName: "Qwen 2.5 72B",
   },
-  // Tier 3: High-speed enterprise models via Groq
+  // Tier 3: Direct Official Google Gemini API
+  {
+    provider: "gemini-direct",
+    model: "gemini-2.5-flash",
+    displayName: "Google Gemini 2.5 Flash",
+  },
+  {
+    provider: "gemini-direct",
+    model: "gemini-1.5-flash",
+    displayName: "Google Gemini 1.5 Flash",
+  },
+  // Tier 4: High-speed enterprise models via Groq
   {
     provider: "groq",
     model: "openai/gpt-oss-120b",
@@ -301,7 +312,8 @@ GEMINI CAPABILITIES & INSTRUCTIONS:
 3. Document & Spec Grounding: Answer questions directly referencing the project's PRD document (${intel.targetProject?.documents?.[0]?.name || "spec document"}), technical requirements, and acceptance criteria.
 4. Workspace Chat Awareness: Reference recent discussions between client and freelancer when answering questions about what was discussed or agreed upon.
 5. All Projects Query Handling: When the user asks about "all projects" or "all my contracts" (e.g. "Summarize pending deliverable deadlines across all my contracts"), give a clear, comprehensive breakdown of each active contract, its current milestone, due dates, deliverable statuses, and next required actions.
-6. Consensus Protection: Remind users that all commitments, scope changes, milestone approvals, and payouts require bilateral human approval on the platform. AI output is advisory and drafting only.`;
+6. Advisory Scope & Human Approval Boundary: You are a principal technical advisor, systems architect, and software engineer. Deliver deep technical architectures, trade-off analyses, reviews, and working code immediately. Only note the requirement for bilateral human platform approval if the user explicitly asks to disburse escrow money, sign an amendment, or perform a legally binding platform action.
+7. Clean Output Formatting: Write clean, readable, professional prose without raw hashtags or excessive asterisks. Do not use markdown hash marks (#, ##, ###) for section headers—use clean capitalized titles instead. Use standard bullet points (•) and numbered lists (1., 2.). Enclose code in standard triple-backtick markdown blocks with the language tag.`;
   }
 
   // Fallback for tests or invocations without AssistantIntelligenceContext
@@ -344,21 +356,23 @@ COMMUNICATION & FORMATTING GUIDELINES:
 }
 
 /**
- * Cleans excessive markdown bold stars while maintaining professional prose structure.
+ * Cleans excessive markdown bold stars and hash marks while maintaining professional prose structure.
  */
 function formatProfessionalText(raw: string): string {
   if (!raw) return "";
 
-  const cleaned = raw
-    // Convert excessive bold headers like **Header:** into clean Title format
-    .replace(/^\*\*(.+?)\*\*:\s*/gm, "$1: ")
-    // Convert markdown subheadings ### to clean titles if present
-    .replace(/^###\s+/gm, "")
-    // Convert dash bullets to clean bullet points
-    .replace(/^(\s*)-\s+/gm, "$1• ")
+  return raw
+    // Convert lines like "* **Key:** Value" or "- **Key:** Value" into "• **Key:** Value"
+    .replace(/^(\s*)[*-]\s+\*\*/gm, "$1• **")
+    // Convert lines like "* **" without bold into clean bullets
+    .replace(/^(\s*)[*-]\s+/gm, "$1• ")
+    // Convert markdown subheadings ### or ## to clean section headers
+    .replace(/^#{1,4}\s+(.+)$/gm, "$1")
+    // Clean up excessive markdown divider dashes into clean whitespace
+    .replace(/^---+$/gm, "")
+    // Remove isolated stray asterisks
+    .replace(/(^|\s)\*(?!\*)/gm, "$1• ")
     .trim();
-
-  return cleaned;
 }
 
 /**
@@ -386,11 +400,14 @@ export async function generateGeminiResponse(
   ];
 
   const cascadeErrors: string[] = [];
+  const openRouterKey = (process.env.OPENROUTER_API_KEY || OPENROUTER_API_KEY || "").trim();
+  const groqKey = (process.env.GROQ_API_KEY || GROQ_API_KEY || "").trim();
+  const geminiDirectKey = (process.env.GEMINI_API_KEY || process.env.AI_API_KEY || GEMINI_DIRECT_KEY || "").trim();
 
   for (const config of HIGH_GRADE_CASCADE) {
     try {
       if (config.provider === "openrouter") {
-        if (!OPENROUTER_API_KEY) continue;
+        if (!openRouterKey) continue;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 20000);
@@ -398,7 +415,7 @@ export async function generateGeminiResponse(
         const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${OPENROUTER_API_KEY.trim()}`,
+            Authorization: `Bearer ${openRouterKey}`,
             "Content-Type": "application/json",
             "HTTP-Referer": "https://nexum.network",
             "X-Title": "Nexum AI Workspace Copilot",
@@ -427,11 +444,59 @@ export async function generateGeminiResponse(
           return {
             text: formatProfessionalText(reply),
             model: config.displayName,
-            isFallback: config.model !== "google/gemini-3.7-flash",
+            isFallback: false,
+          };
+        }
+      } else if (config.provider === "gemini-direct") {
+        if (!geminiDirectKey) continue;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${geminiDirectKey}`;
+        const geminiContents = messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            role: m.role === "assistant" ? "model" : "user",
+            parts: [{ text: m.content }],
+          }));
+
+        const res = await fetch(geminiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            system_instruction: {
+              parts: [{ text: systemPrompt }],
+            },
+            contents: geminiContents.length > 0 ? geminiContents : [{ role: "user", parts: [{ text: "Hello" }] }],
+            generationConfig: {
+              temperature: 0.35,
+              maxOutputTokens: 2048,
+            },
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          const errText = await res.text();
+          cascadeErrors.push(`${config.displayName} (HTTP ${res.status}): ${errText.slice(0, 120)}`);
+          console.warn(`[Nexum AI] Gemini Direct ${config.displayName} failed (HTTP ${res.status}). Trying next in cascade...`);
+          continue;
+        }
+
+        const data = await res.json();
+        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (reply && reply.trim().length > 0) {
+          return {
+            text: formatProfessionalText(reply),
+            model: config.displayName,
+            isFallback: false,
           };
         }
       } else if (config.provider === "groq") {
-        if (!GROQ_API_KEY) continue;
+        if (!groqKey) continue;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 20000);
@@ -439,7 +504,7 @@ export async function generateGeminiResponse(
         const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${GROQ_API_KEY.trim()}`,
+            Authorization: `Bearer ${groqKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -475,6 +540,10 @@ export async function generateGeminiResponse(
       cascadeErrors.push(`${config.displayName}: ${e.message}`);
       console.warn(`[Nexum AI] Error calling ${config.displayName}: ${e.message}`);
     }
+  }
+
+  if (cascadeErrors.length > 0) {
+    console.warn(`[Nexum AI] Cascade exhausted. Errors:`, cascadeErrors);
   }
 
   // Graceful high-fidelity protocol fallback grounded in real dynamic context
@@ -589,14 +658,23 @@ Ingestion Pipeline Reliability:
   }
 
   // Default response
+  const projectTitle = proj?.title || intel.activeScopeLabel || "Active Project Scope";
+  const clientName = proj?.client?.name || "Client Partner";
+  const freelancerName = proj?.freelancer?.name || intel.userName || "Lead Developer";
+  const budget = proj?.totalBudget || "Escrow Guarded";
+  const status = proj?.escrowStatus || "Secured";
+  const activeMilestone = proj?.milestones?.[0]?.title || "Milestone 1";
+  const workStatus = proj?.milestones?.[0]?.workStatus || "IN_PROGRESS";
+  const docName = doc?.name || "Verified PRD Specification";
+
   return `Nexum AI Project Intelligence (${intel.userName} · ${intel.userRole}):
 
 • Scope: ${intel.activeScopeLabel}
-• Active Contract: ${proj?.title}
-• Client: ${proj?.client.name} | Freelancer: ${proj?.freelancer.name}
-• Total Budget: ${proj?.totalBudget} (${proj?.escrowStatus})
-• Active Milestone: ${proj?.milestones?.[0]?.title || "Milestone 1"} (${proj?.milestones?.[0]?.workStatus || "IN_PROGRESS"})
-• Attached Specification: ${doc?.name || "Verified PRD Attached"}
+• Active Contract: ${projectTitle}
+• Client: ${clientName} | Freelancer: ${freelancerName}
+• Total Budget: ${budget} (${status})
+• Active Milestone: ${activeMilestone} (${workStatus})
+• Attached Specification: ${docName}
 
-I am equipped with complete context on your project documents, milestones, deliverables, and workspace chats directly from the database. I can write production code, draft architectural specs, review milestone deliverables, or help prepare client/freelancer communications.`;
+I am analyzing your inquiry against the live contract baseline and technical requirements. Ask me to write production code, evaluate architectural trade-offs, draft change requests, review milestone deliverables, or prepare bilateral communications.`;
 }
