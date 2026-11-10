@@ -56,6 +56,13 @@ export default function FreelancerWorkspaceNexumAIMode({
   const [activeScope, setActiveScope] = useState<string>(initialScope);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
 
+  // Sync active scope when parent updates initialScope (e.g. from Chats mode navigation)
+  useEffect(() => {
+    if (initialScope) {
+      setActiveScope(initialScope);
+    }
+  }, [initialScope]);
+
   // Live messages for current conversation session
   const [liveMessages, setLiveMessages] = useState<LiveMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);

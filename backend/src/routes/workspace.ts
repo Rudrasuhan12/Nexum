@@ -7,6 +7,7 @@ import { FilePurpose, ProjectFileCategory } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { workspaceService } from "../services/workspaceService.js";
 import { groqService } from "../services/groqService.js";
+import { geminiService } from "../services/geminiService.js";
 import { defaultStorage } from "../lib/files.js";
 
 const upload = multer({
@@ -464,6 +465,25 @@ router.post(
         },
       });
 
+      // Extract text content if text, md, json, csv, etc.
+      let docText = "";
+      const isTextDoc =
+        file.mimetype.startsWith("text/") ||
+        Boolean(file.originalname.match(/\.(md|txt|json|csv|yaml|yml|ts|js|jsx|tsx|html|py|sql)$/i));
+      if (isTextDoc && file.buffer) {
+        docText = file.buffer.toString("utf-8");
+      }
+
+      // Generate AI document summary & key targets
+      let docSummary: { summary: string; keyTargets: string[] } | null = null;
+      try {
+        if (docText || file.mimetype === "application/pdf" || file.originalname.endsWith(".pdf")) {
+          docSummary = await geminiService.summarizeDocument(docText || file.originalname, file.originalname);
+        }
+      } catch (err) {
+        console.warn("[Workspace] AI document summarization failed:", err);
+      }
+
       // Send a file_card into the workspace timeline
       const senderDisplayName = requestedRole === "FREELANCER" ? "You (Freelancer)" : (project.client?.name || "Client");
       const sendResult = await workspaceService.sendMessage({
@@ -485,6 +505,8 @@ router.post(
           sha256Seal: sha256,
           note: note || undefined,
           senderDisplayName,
+          aiSummary: docSummary?.summary || undefined,
+          keyTargets: docSummary?.keyTargets || undefined,
         },
       });
 

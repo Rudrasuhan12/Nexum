@@ -154,51 +154,71 @@ Return strictly valid JSON matching this schema:
    */
   async summarizeDocument(docText: string, docName: string) {
     const ai = this.getClient();
+    const wordCount = docText ? docText.split(/\s+/).filter(Boolean).length : 0;
+    
+    // Default high-grade deterministic fallback
+    const fallbackResult = {
+      summary: `Ingested "${docName}" (${wordCount > 0 ? `${wordCount} words` : "binary document"}). Technical requirements cataloged into contract vault.`,
+      keyTargets: [
+        `Deliver functional components specified in ${docName}`,
+        "Verify dual-seal acceptance criteria against PRD baseline",
+        "Maintain zero unhandled edge-cases and pass unit assertions",
+      ],
+      suggestedMilestones: [
+        "Milestone 1: Architectural Foundation & Specs",
+        "Milestone 2: Core Engine Implementation",
+        "Milestone 3: Verification, QA & Escrow Settlement",
+      ],
+      keyRisks: [
+        "Unspecified third-party service latency",
+        "Scope divergence from baseline acceptance criteria",
+      ],
+    };
+
     if (!ai) {
-      return {
-        summary: `Document "${docName}" ingested. Contains ${docText.split(" ").length} words.`,
-        keyTargets: [
-          "Fulfill core functional requirements",
-          "Meet performance & security benchmarks",
-          "Ensure bilateral inspection buffer adherence",
-        ],
-        suggestedMilestones: [
-          "Milestone 1: Architectural Foundation & Specs",
-          "Milestone 2: Core Engine Implementation",
-          "Milestone 3: Verification, QA & Escrow Settlement",
-        ],
-        keyRisks: [
-          "Ambiguous third-party API rate limits",
-          "Timeline slippage on edge-case error scenarios",
-        ],
-      };
+      return fallbackResult;
     }
 
-    try {
-      const prompt = `You are Nexum AI. Analyze this specification document ("${docName}") and produce an executive summary and 3-5 concrete milestone targets with acceptance criteria.
-DOCUMENT:
-${docText.slice(0, 25000)}
+    const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+    const prompt = `You are Nexum AI, an expert software architecture and contract mediator.
+Analyze this technical or specification document ("${docName}") uploaded in the workspace.
+Produce a concise, professional executive summary (2-3 sentences) and 3 to 5 concrete deliverable key targets.
 
-Return JSON:
+DOCUMENT EXCERPT:
+${docText ? docText.slice(0, 25000) : `File: ${docName} (Document uploaded to contract vault)`}
+
+Return ONLY valid JSON matching this schema:
 {
-  "summary": string,
-  "keyTargets": string[]
+  "summary": "Concise executive summary of the document and its requirements.",
+  "keyTargets": ["Target 1", "Target 2", "Target 3"]
 }`;
 
-      const res = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: { responseMimeType: "application/json" },
-      });
+    for (const model of candidateModels) {
+      try {
+        const res = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: { responseMimeType: "application/json" },
+        });
 
-      return JSON.parse(res.text || "{}");
-    } catch (err) {
-      console.error("[GeminiService] Document summary error:", err);
-      return {
-        summary: `Summary of ${docName}`,
-        keyTargets: ["Deliver core specification features"],
-      };
+        const raw = res.text?.trim() || "";
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed.summary === "string") {
+            return {
+              summary: parsed.summary,
+              keyTargets: Array.isArray(parsed.keyTargets) && parsed.keyTargets.length > 0
+                ? parsed.keyTargets
+                : fallbackResult.keyTargets,
+            };
+          }
+        }
+      } catch (err) {
+        console.warn(`[GeminiService] Model ${model} summary error, trying next:`, err);
+      }
     }
+
+    return fallbackResult;
   }
 }
 

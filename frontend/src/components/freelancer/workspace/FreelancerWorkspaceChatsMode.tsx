@@ -1526,6 +1526,34 @@ export default function FreelancerWorkspaceChatsMode({
                         </div>
                       </div>
 
+                      {/* Nexum AI Document Analysis & Key Targets */}
+                      {meta.aiSummary && (
+                        <div className="ml-8 p-3.5 rounded-xl border border-indigo-200/80 bg-indigo-50/50 space-y-2">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
+                            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>Nexum AI Document Analysis & Key Targets</span>
+                          </div>
+                          <p className="text-xs text-slate-700 leading-relaxed font-sans">
+                            {meta.aiSummary}
+                          </p>
+                          {Array.isArray(meta.keyTargets) && meta.keyTargets.length > 0 && (
+                            <div className="pt-1.5 border-t border-indigo-100 space-y-1">
+                              <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">
+                                Key Technical Deliverables Identified:
+                              </span>
+                              <ul className="text-xs text-slate-700 space-y-1">
+                                {meta.keyTargets.map((kt: string, idx: number) => (
+                                  <li key={idx} className="flex items-start gap-1.5">
+                                    <span className="text-indigo-500 font-bold">•</span>
+                                    <span>{kt}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {meta.sha256Seal && (
                         <div className="ml-8 flex items-center gap-1.5 text-[9px] font-mono text-slate-400">
                           <ShieldCheck className="w-3 h-3 text-emerald-500" />
@@ -2497,13 +2525,12 @@ export default function FreelancerWorkspaceChatsMode({
 
                     <button
                       type="button"
-                      onClick={() => setComposerMode("private_ai")}
+                      onClick={() => {
+                        const scope = selectedProject?.shortName || selectedProject?.name || "All my client contracts";
+                        onSwitchToAIMode(scope);
+                      }}
                       title="Ask Nexum AI privately (Clients never see this)"
-                      className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer flex items-center gap-1 ${
-                        composerMode === "private_ai"
-                          ? "bg-white text-indigo-700 shadow-xs"
-                          : "text-slate-500 hover:text-slate-800"
-                      }`}
+                      className="px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer flex items-center gap-1 text-slate-500 hover:text-slate-800"
                     >
                       <Sparkles className="w-3 h-3 text-indigo-500" />
                       <span>Private AI</span>

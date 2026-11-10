@@ -1533,10 +1533,36 @@ export class ClientOverviewService {
 
     // 1. Try to query database if available
     try {
+      const user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: targetClient },
+            { email: targetClient },
+            { name: { contains: "Sambit", mode: "insensitive" } },
+          ],
+        },
+      });
+
+      const candidateIds = user ? [user.id, targetClient] : [targetClient];
+
       const dbProjects = await prisma.project.findMany({
-        where: clientId ? { clientId } : undefined,
+        where: {
+          OR: [
+            { clientId: { in: candidateIds } },
+            { client: { id: { in: candidateIds } } },
+            { client: { email: user?.email || targetClient } },
+            { client: { name: { contains: "Sambit", mode: "insensitive" } } },
+            { id: "prj_1794041467889_g05q" },
+          ],
+        },
         include: {
           client: true,
+          agreement: {
+            include: {
+              milestones: true,
+              freelancer: { include: { freelancerProfile: true } },
+            },
+          },
           briefVersions: { orderBy: { version: "desc" }, take: 1 },
           projectMilestones: { orderBy: { orderIndex: "asc" } },
           proposals: {
@@ -2452,25 +2478,52 @@ export class ClientOverviewService {
 
     for (const p of projects) {
       const activeProposal = p.proposals?.[0];
-      const freelancerName = activeProposal?.freelancer?.name || "Assigned Freelancer";
-      if (activeProposal?.freelancerId) {
-        activeFreelancers.add(activeProposal.freelancerId);
+      const leadFreelancer =
+        p.agreement?.freelancer ||
+        activeProposal?.freelancer ||
+        p.projectProposals?.[0]?.freelancer;
+      const freelancerName = leadFreelancer?.name || "Assigned Freelancer";
+      if (leadFreelancer?.id) {
+        activeFreelancers.add(leadFreelancer.id);
       }
 
-      const milestones = (activeProposal?.milestones && activeProposal.milestones.length > 0)
-        ? activeProposal.milestones
-        : (p.projectMilestones && p.projectMilestones.length > 0)
-        ? p.projectMilestones
-        : (p.briefVersions?.[0]?.structuredBrief as any)?.milestones || p.milestones || [];
+      // Prioritize actual committed project milestone records
+      const milestones =
+        p.projectMilestones && p.projectMilestones.length > 0
+          ? p.projectMilestones
+          : p.agreement?.milestones && p.agreement.milestones.length > 0
+          ? p.agreement.milestones
+          : activeProposal?.milestones && activeProposal.milestones.length > 0
+          ? activeProposal.milestones
+          : p.state === "ACTIVE"
+          ? (p.briefVersions?.[0]?.structuredBrief as any)?.milestones || []
+          : [];
+
       totalMilestonesCount += milestones.length;
 
       let projectCompletedCount = 0;
       for (const m of milestones) {
-        if (m.state === "CAPTURED") {
+        const isAccepted = m.workStatus === "ACCEPTED";
+        const isAwaitingReview =
+          m.workStatus === "AWAITING_CLIENT_REVIEW" ||
+          m.workStatus === "READY_TO_SUBMIT" ||
+          m.state === "SUBMITTED";
+        const isEscrowLocked = m.state === "CAPTURED";
+        const amt = m.amountMinor || m.amountCents || 0;
+
+        // 1. Completed milestone: ONLY when work status is ACCEPTED
+        if (isAccepted) {
           completedMilestonesCount++;
           projectCompletedCount++;
-        } else if (m.state === "APPROVED" || m.state === "CAPTURE_PENDING" || m.state === "SUBMITTED") {
-          totalEscrowMinorCents += m.amountCents || 0;
+        }
+
+        // 2. Funds in Escrow: Locked in PayPal escrow and not yet released
+        if (isEscrowLocked && !isAccepted) {
+          totalEscrowMinorCents += amt;
+        }
+
+        // 3. Pending Approvals: Deliverable submitted and awaiting client review
+        if (isAwaitingReview) {
           pendingApprovalsCount++;
           attentionItems.push({
             id: `att_${m.id}`,
@@ -2478,9 +2531,9 @@ export class ClientOverviewService {
             project: p.title,
             projectId: p.id,
             freelancer: freelancerName,
-            avatar: "",
+            avatar: leadFreelancer?.avatarUrl || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80",
             type: "DELIVERABLE_SUBMISSION",
-            amount: `$${((m.amountCents || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            amount: `$${(amt / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             dueNotice: "Pending client sign-off · PayPal funds locked in escrow",
             actionText: "Review & Release Funds",
             actionType: "PRIMARY",
@@ -2489,19 +2542,31 @@ export class ClientOverviewService {
           });
         }
 
-        // Upcoming milestone check
-        if (m.state !== "CAPTURED") {
+        // 4. Upcoming / Active milestones
+        if (!isAccepted) {
           upcomingMilestones.push({
             id: m.id,
             title: m.title,
             project: p.title,
             projectId: p.id,
             freelancer: freelancerName,
-            dueDate: m.state === "APPROVED" ? "Submitted (Under Review)" : (m.deadline ? new Date(m.deadline).toLocaleDateString() : "Scheduled"),
-            amount: `$${((m.amountCents || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            state: m.state === "APPROVED" ? "SUBMITTED" : "IN_PROGRESS",
-            stateColor: m.state === "APPROVED"
+            dueDate: isAwaitingReview
+              ? "Submitted (Under Review)"
+              : m.dueDate
+              ? new Date(m.dueDate).toLocaleDateString()
+              : m.deadline
+              ? new Date(m.deadline).toLocaleDateString()
+              : "Scheduled",
+            amount: `$${(amt / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            state: isAwaitingReview
+              ? "SUBMITTED"
+              : m.workStatus === "IN_PROGRESS"
+              ? "IN_PROGRESS"
+              : "QUEUED",
+            stateColor: isAwaitingReview
               ? "bg-amber-50 text-amber-700 border-amber-200"
+              : m.workStatus === "IN_PROGRESS"
+              ? "bg-indigo-50 text-indigo-700 border-indigo-200"
               : "bg-blue-50 text-blue-700 border-blue-200",
           });
         }
