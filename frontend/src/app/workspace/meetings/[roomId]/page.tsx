@@ -136,6 +136,15 @@ function MeetingRoomContent() {
   const [clockStr, setClockStr] = useState("");
   const [projectTitle, setProjectTitle] = useState("Bilateral Sync Call");
   const [counterpartName, setCounterpartName] = useState("Waiting for other participant...");
+  const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
+
+  const unlockAudio = useCallback(() => {
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.play().then(() => {
+        setAudioAutoplayBlocked(false);
+      }).catch(() => {});
+    }
+  }, []);
 
   // ─── Clock ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -186,9 +195,18 @@ function MeetingRoomContent() {
     }
     if (remoteAudioRef.current && remoteStream) {
       remoteAudioRef.current.srcObject = remoteStream;
-      remoteAudioRef.current.play().catch((err) => {
-        console.warn("[MeetingRoom] Remote audio play:", err);
-      });
+      remoteAudioRef.current.volume = 1.0;
+      const playPromise = remoteAudioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setAudioAutoplayBlocked(false);
+          })
+          .catch((err) => {
+            console.warn("[MeetingRoom] Remote audio play blocked by browser autoplay policy:", err);
+            setAudioAutoplayBlocked(true);
+          });
+      }
     }
   }, [remoteStream]);
 
@@ -319,7 +337,19 @@ function MeetingRoomContent() {
 
   // ─── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="h-screen w-screen bg-[#202124] text-[#e3e3e3] flex flex-col overflow-hidden font-sans select-none">
+    <div
+      onClick={unlockAudio}
+      className="h-screen w-screen bg-[#202124] text-[#e3e3e3] flex flex-col overflow-hidden font-sans select-none"
+    >
+      {/* ── Browser Autoplay Audio Unlock Banner ────────────────────────────── */}
+      {audioAutoplayBlocked && (
+        <div
+          onClick={unlockAudio}
+          className="bg-[#ea4335] text-white px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer z-50 animate-pulse hover:bg-[#d93025] transition"
+        >
+          <span>🔇 Incoming audio is paused by your browser. Click anywhere on this screen to enable audio.</span>
+        </div>
+      )}
 
       {/* ── Floating Emoji Reactions ─────────────────────────────────────────── */}
       <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">

@@ -1,14 +1,14 @@
 /**
- * useWebRTC - Production WebRTC hook with Signaling & MediaStream Lifecycle
+ * useWebRTC - Production-Grade WebRTC Engine
  *
- * Fixes for Audio & Calling:
- *  - Transceivers (audio & video) created upfront with { direction: 'sendrecv' }
- *  - offerToReceiveAudio / offerToReceiveVideo guaranteed in SDP
- *  - ICE candidate queue: candidates arriving before setRemoteDescription are buffered and processed
- *  - Dedicated audio track management: toggleMic uses track.enabled (standard WebRTC mute/unmute)
- *    and replaces track in existing audio sender so renegotiation is not broken
- *  - Audio meter / analyser for real speaking detection on both local and remote streams
- *  - WebSocket signaling on ws://[host]/ws/meeting
+ * Guarantees:
+ *  1. Single Offer Initiator (No offer glare/collision)
+ *  2. Perfect Negotiation Glare Resolver with rollback fallback
+ *  3. Dynamic IP/Host Signaling Resolution (connects correctly across LAN/WAN/production)
+ *  4. Native Hardware Audio Pipeline (AEC + NS + AGC) with auto-initialization on room entry
+ *  5. Audio & Video Transceivers reserved upfront
+ *  6. Buffered ICE Candidate Queue
+ *  7. Reliable mute/unmute via track.enabled (never drops connection)
  */
 
 "use client";
@@ -19,6 +19,7 @@ function buildIceServers(): RTCIceServer[] {
   const servers: RTCIceServer[] = [
     { urls: "stun:stun.relay.metered.ca:80" },
     { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
   ];
 
   const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
@@ -44,6 +45,25 @@ function buildIceServers(): RTCIceServer[] {
 }
 
 const ICE_SERVERS = buildIceServers();
+
+function resolveSignalingUrl(configuredBackendUrl: string): string {
+  if (typeof window !== "undefined") {
+    const currentHost = window.location.hostname;
+    const isHttps = window.location.protocol === "https:";
+    const proto = isHttps ? "wss:" : "ws:";
+
+    // If configured as localhost but user is browsing via local network IP (e.g. 192.168.x.x)
+    if (configuredBackendUrl.includes("localhost") && currentHost !== "localhost" && currentHost !== "127.0.0.1") {
+      return `${proto}//${currentHost}:4000/ws/meeting`;
+    }
+
+    // In production where backend is on same domain or custom URL
+    if (configuredBackendUrl.startsWith("http")) {
+      return configuredBackendUrl.replace(/^http/, "ws") + "/ws/meeting";
+    }
+  }
+  return configuredBackendUrl.replace(/^http/, "ws") + "/ws/meeting";
+}
 
 export interface RemotePeer {
   userId: string;
@@ -85,47 +105,6 @@ interface UseWebRTCOptions {
   backendUrl?: string;
 }
 
-// ─── Studio Voice DSP & Gain Booster ──────────────────────────────────────────
-// Applies Web Audio API High-Pass filter, Dynamics Compressor & Gain Booster (+5dB)
-// to dramatically increase vocal clarity, remove fan/room rumble, and boost audible power.
-function createStudioVoiceTrack(rawStream: MediaStream): { track: MediaStreamTrack; ctx: AudioContext } | null {
-  try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return null;
-    const ctx = new AudioCtx();
-    const source = ctx.createMediaStreamSource(rawStream);
-
-    // 1. High-Pass Filter: strips low-frequency mechanical rumble, desk bumps, AC hum below 85Hz
-    const highpass = ctx.createBiquadFilter();
-    highpass.type = "highpass";
-    highpass.frequency.value = 85;
-
-    // 2. Dynamics Compressor: boosts quiet whispers, prevents loud distortion, gives studio presence
-    const compressor = ctx.createDynamicsCompressor();
-    compressor.threshold.value = -24;
-    compressor.knee.value = 30;
-    compressor.ratio.value = 12;
-    compressor.attack.value = 0.003;
-    compressor.release.value = 0.25;
-
-    // 3. Vocal Gain Booster (+5 dB clean boost / ~1.8x volume multiplier)
-    const gainNode = ctx.createGain();
-    gainNode.gain.value = 1.8;
-
-    const destination = ctx.createMediaStreamDestination();
-    source.connect(highpass);
-    highpass.connect(compressor);
-    compressor.connect(gainNode);
-    gainNode.connect(destination);
-
-    const enhancedTrack = destination.stream.getAudioTracks()[0];
-    return { track: enhancedTrack, ctx };
-  } catch (err) {
-    console.warn("[WebRTC] Studio Voice DSP fallback to raw track:", err);
-    return null;
-  }
-}
-
 export function useWebRTC({
   roomId,
   userId,
@@ -149,14 +128,14 @@ export function useWebRTC({
   const [captions, setCaptions] = useState<CaptionEntry[]>([]);
   const [liveCaption, setLiveCaption] = useState<string>("");
   const [isConnected, setIsConnected] = useState(false);
-  const [isMicOn, setIsMicOn] = useState(false);
+  const [isMicOn, setIsMicOn] = useState(true);
   const [isVideoOn, setIsVideoOn] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isSpeakingMe, setIsSpeakingMe] = useState(false);
   const [isSpeakingRemote, setIsSpeakingRemote] = useState(false);
 
-  // Signaling URL
-  const signalingUrl = backendUrl.replace(/^http/, "ws") + "/ws/meeting";
+  // Dynamic signaling endpoint
+  const signalingUrl = resolveSignalingUrl(backendUrl);
 
   // Send message over WebSocket
   const sigSend = useCallback((msg: object) => {
@@ -165,7 +144,7 @@ export function useWebRTC({
     }
   }, []);
 
-  // Flush queued ICE candidates after remote description is set
+  // Flush queued ICE candidates after remote description is applied
   const flushIceCandidates = useCallback(async (pc: RTCPeerConnection) => {
     while (iceCandidateQueue.current.length > 0) {
       const candidate = iceCandidateQueue.current.shift();
@@ -179,16 +158,17 @@ export function useWebRTC({
     }
   }, []);
 
-  // Create PeerConnection with Audio/Video transceivers
+  // Create or return RTCPeerConnection
   const createPC = useCallback(() => {
     if (pcRef.current && pcRef.current.signalingState !== "closed") {
       return pcRef.current;
     }
 
+    console.log("[WebRTC] Creating new RTCPeerConnection...");
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     pcRef.current = pc;
 
-    // Upfront transceivers ensure SDP offer/answer always contains audio and video media lines
+    // Upfront transceivers guarantee audio and video m-lines in SDP offer & answer
     try {
       pc.addTransceiver("audio", { direction: "sendrecv" });
       pc.addTransceiver("video", { direction: "sendrecv" });
@@ -196,7 +176,7 @@ export function useWebRTC({
       console.warn("[WebRTC] addTransceiver warning:", e);
     }
 
-    // Attach local tracks if already available
+    // Attach existing local tracks
     if (localStreamRef.current) {
       for (const track of localStreamRef.current.getTracks()) {
         const sender = pc.getSenders().find((s) => s.track?.kind === track.kind || s.track === track);
@@ -221,31 +201,21 @@ export function useWebRTC({
       }
     };
 
-    // Handle incoming remote media tracks (Audio & Video)
+    // Receive incoming remote tracks
     pc.ontrack = (event) => {
-      console.log(`[WebRTC] Received remote track: ${event.track.kind}`);
-      const incomingStream = event.streams[0] || new MediaStream([event.track]);
-      setRemoteStream((prev) => {
-        if (!prev) return incomingStream;
-        // Merge track into existing stream
-        if (!prev.getTracks().some((t) => t.id === event.track.id)) {
-          prev.addTrack(event.track);
-        }
-        return new MediaStream(prev.getTracks());
-      });
+      console.log(`[WebRTC] Received remote track: ${event.track.kind}, id: ${event.track.id}`);
+      const incomingStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
+      setRemoteStream(incomingStream);
     };
 
     pc.onconnectionstatechange = () => {
-      console.log("[WebRTC] Connection state:", pc.connectionState);
-      if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-        console.warn("[WebRTC] PeerConnection disconnected/failed, preparing reconnect.");
-      }
+      console.log("[WebRTC] Connection state changed to:", pc.connectionState);
     };
 
     return pc;
   }, [sigSend]);
 
-  // Initiate an offer to the target peer
+  // Initiate an offer to target peer
   const initiateOffer = useCallback(async (targetUserId: string) => {
     try {
       const pc = createPC();
@@ -266,10 +236,55 @@ export function useWebRTC({
     }
   }, [createPC, sigSend]);
 
+  // Auto-initialize microphone on room entry (Google Meet default behavior)
+  useEffect(() => {
+    let active = true;
+    async function initAudio() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        if (!active) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+        setIsMicOn(true);
+
+        const pc = pcRef.current;
+        if (pc) {
+          const track = stream.getAudioTracks()[0];
+          const audioSender = pc.getSenders().find(
+            (s) => s.track?.kind === "audio" || (s as any).kind === "audio"
+          );
+          if (audioSender) {
+            audioSender.replaceTrack(track).catch(console.warn);
+          } else {
+            pc.addTrack(track, stream);
+          }
+        }
+      } catch (err) {
+        console.warn("[WebRTC] Auto audio acquisition skipped or permission not granted:", err);
+        setIsMicOn(false);
+      }
+    }
+    initAudio();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // Connect WebSocket signaling
   const connectSignaling = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
 
+    console.log(`[Signaling] Connecting to: ${signalingUrl}`);
     const ws = new WebSocket(signalingUrl);
     wsRef.current = ws;
 
@@ -296,7 +311,7 @@ export function useWebRTC({
 
       const { type } = msg;
 
-      // When we join, discover participants already in the room
+      // 1. We joined: discover who is in the room
       if (type === "joined") {
         const others = (msg.participants as any[]).filter((p: any) => p.userId !== userId);
         const peerMap = new Map<string, RemotePeer>();
@@ -306,16 +321,16 @@ export function useWebRTC({
         }
         setRemotePeers(peerMap);
 
-        // If an existing peer is present, create PC and wait or initiate
         if (others.length > 0) {
+          // Prepare our PeerConnection to receive the offer from the existing peer
           createPC();
-          // Caller initiates call to the first peer in room
-          initiateOffer(others[0].userId);
+          // DO NOT initiate offer here. The existing peer will initiate offer upon receiving peer_joined!
+          console.log("[WebRTC] Waiting for offer from existing room host...");
         }
         return;
       }
 
-      // When another peer joins after us
+      // 2. Another peer joined: WE are the existing peer, so WE initiate the offer
       if (type === "peer_joined") {
         const { userId: uid, userName: uName, role: uRole, avatar: uAvatar } = msg;
         remoteUserIdRef.current = uid;
@@ -324,18 +339,31 @@ export function useWebRTC({
           next.set(uid, { userId: uid, userName: uName, role: uRole, avatar: uAvatar });
           return next;
         });
-        // We are already in the room, initiate call to the newcomer
+
+        console.log(`[WebRTC] Peer joined (${uid}). Initiating offer...`);
         createPC();
         initiateOffer(uid);
         return;
       }
 
-      // Handle incoming SDP offer
+      // 3. Receive SDP offer
       if (type === "offer") {
         const { fromUserId, sdp } = msg;
         remoteUserIdRef.current = fromUserId;
         const pc = createPC();
         try {
+          // Perfect negotiation glare resolver:
+          // If we are in have-local-offer, polite peer rolls back to accept incoming offer
+          if (pc.signalingState !== "stable") {
+            const isPolite = String(userId) < String(fromUserId);
+            if (!isPolite) {
+              console.warn("[WebRTC] Impolite peer ignoring colliding offer from", fromUserId);
+              return;
+            }
+            console.log("[WebRTC] Polite peer rolling back local offer to accept incoming offer");
+            await pc.setLocalDescription({ type: "rollback" });
+          }
+
           await pc.setRemoteDescription(new RTCSessionDescription(sdp));
           await flushIceCandidates(pc);
 
@@ -353,7 +381,7 @@ export function useWebRTC({
         return;
       }
 
-      // Handle incoming SDP answer
+      // 4. Receive SDP answer
       if (type === "answer") {
         const { sdp } = msg;
         const pc = pcRef.current;
@@ -361,7 +389,7 @@ export function useWebRTC({
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(sdp));
             await flushIceCandidates(pc);
-            console.log("[WebRTC] Set remote answer successfully");
+            console.log("[WebRTC] Set remote answer successfully. Call active!");
           } catch (err) {
             console.error("[WebRTC] Error setting remote answer:", err);
           }
@@ -369,7 +397,7 @@ export function useWebRTC({
         return;
       }
 
-      // Handle incoming ICE candidate
+      // 5. Receive ICE candidate
       if (type === "ice_candidate") {
         const { candidate } = msg;
         const pc = pcRef.current;
@@ -380,13 +408,12 @@ export function useWebRTC({
             console.warn("[WebRTC] Error adding ICE candidate:", err);
           }
         } else {
-          // Buffer candidate until remote description is applied
           iceCandidateQueue.current.push(candidate);
         }
         return;
       }
 
-      // Handle chat messages
+      // 6. In-call chat
       if (type === "chat") {
         const { fromUserId: fid, fromUserName: fName, text, timestamp } = msg;
         setChatMessages((prev) => [
@@ -403,7 +430,7 @@ export function useWebRTC({
         return;
       }
 
-      // Handle captions
+      // 7. Live caption
       if (type === "caption") {
         const { fromUserId: fid, fromUserName: fName, text, isFinal, isScopeAlert, isCommitment, timestamp } = msg;
         setLiveCaption(`[${fName}]: "${text}"`);
@@ -426,7 +453,7 @@ export function useWebRTC({
         return;
       }
 
-      // Handle media state (remote peer mic / camera toggles)
+      // 8. Media state updates
       if (type === "media_state") {
         const { fromUserId: fid, micOn, videoOn } = msg;
         setRemotePeers((prev) => {
@@ -438,7 +465,7 @@ export function useWebRTC({
         return;
       }
 
-      // Peer left
+      // 9. Peer left
       if (type === "peer_left") {
         const { userId: uid } = msg;
         setRemotePeers((prev) => {
@@ -478,19 +505,14 @@ export function useWebRTC({
           audioTrack = localStreamRef.current.getAudioTracks()[0];
           audioTrack.enabled = true;
         } else {
-          // Request high-fidelity audio hardware
           const stream = await navigator.mediaDevices.getUserMedia({
             audio: {
               echoCancellation: true,
               noiseSuppression: true,
               autoGainControl: true,
-              sampleRate: 48000,
-              channelCount: 1,
             },
           });
-          // Pass through Studio Voice DSP graph (+5dB volume booster & rumble filter)
-          const dsp = createStudioVoiceTrack(stream);
-          audioTrack = dsp ? dsp.track : stream.getAudioTracks()[0];
+          audioTrack = stream.getAudioTracks()[0];
           if (!localStreamRef.current) {
             localStreamRef.current = new MediaStream();
           }
@@ -499,7 +521,6 @@ export function useWebRTC({
 
         setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
 
-        // Wire into PeerConnection
         const pc = pcRef.current || createPC();
         const audioSender = pc.getSenders().find(
           (s) => s.track?.kind === "audio" || (s as any).kind === "audio"
@@ -519,7 +540,7 @@ export function useWebRTC({
         console.warn("[WebRTC] Mic access denied:", err);
       }
     } else {
-      // Turn mic OFF (disable track so peer receives silence without tearing down WebRTC)
+      // Turn mic OFF (mute track so peer connection remains active without drops)
       if (localStreamRef.current) {
         for (const t of localStreamRef.current.getAudioTracks()) {
           t.enabled = false;
@@ -614,7 +635,6 @@ export function useWebRTC({
         screenStreamRef.current.getTracks().forEach((t) => t.stop());
         screenStreamRef.current = null;
       }
-      // Revert to camera track if video was on
       const pc = pcRef.current;
       const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
       const videoSender = pc?.getSenders().find(
@@ -628,7 +648,7 @@ export function useWebRTC({
     }
   }, [isScreenSharing, isMicOn, isVideoOn, createPC, sigSend]);
 
-  // ─── Real-time Local & Remote Audio Level Detection ────────────────────────
+  // ─── Real-time Local Speaking Detection ────────────────────────────────────
   useEffect(() => {
     if (!localStream || !isMicOn) {
       setIsSpeakingMe(false);
@@ -667,6 +687,7 @@ export function useWebRTC({
     }
   }, [localStream, isMicOn]);
 
+  // ─── Real-time Remote Speaking Detection ───────────────────────────────────
   useEffect(() => {
     if (!remoteStream) {
       setIsSpeakingRemote(false);
