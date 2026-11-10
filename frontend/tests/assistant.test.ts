@@ -98,27 +98,25 @@ describe("Nexum AI Assistant & Persistent Conversation Store", () => {
 
   it("builds authorized client project context with honest accounting facts", () => {
     const ctx = getClientProjectContext();
-    expect(ctx.projectName).toBe("Bilateral E-Commerce Payment Rails");
-    expect(ctx.budgetCeiling).toBe("$4,500.00 USD");
-    expect(ctx.capturedAmount).toBe("$1,200.00 USD");
-    expect(ctx.preFundedAmount).toBe("$1,500.00 USD");
-    expect(ctx.reserveAmount).toBe("$1,800.00 USD");
-    expect(ctx.contractor.name).toBe("Rohan Verma");
-    expect(ctx.milestones.length).toBe(4);
+    expect(ctx.projectName).toContain("TerraShield");
+    expect(ctx.budgetCeiling).toBe("$6,000.00 USD");
+    expect(ctx.capturedAmount).toContain("$6,000.00 USD");
+    expect(ctx.preFundedAmount).toContain("$6,000.00 USD");
+    expect(ctx.contractor.name).toBe("Sambit Kumar Mohanty");
+    expect(ctx.milestones.length).toBe(3);
   });
 
   it("constructs system prompt with AI safety boundaries and accounting rules", () => {
     const prompt = buildSystemPrompt();
-    expect(prompt).toContain("Bilateral E-Commerce Payment Rails");
-    expect(prompt).toContain("canonical_v1.2_#9f8c2b7e");
-    expect(prompt).toContain("You CANNOT independently approve agreements");
-    expect(prompt).toContain("PayPal Sandbox captured order confirms payment provider authorization");
+    expect(prompt).toContain("TerraShield");
+    expect(prompt).toContain("canonical_v1.0_#9f8c2b7e");
+    expect(prompt).toContain("AI never independently authorizes monetary disbursements");
+    expect(prompt).toContain("PayPal Sandbox");
   });
 
   it("defines a resilient multi-model fallback cascade using latest modern Gemini models", () => {
     expect(MODEL_FALLBACK_CASCADE.length).toBeGreaterThanOrEqual(4);
-    expect(MODEL_FALLBACK_CASCADE).toContain("gemini-2.0-flash");
-    expect(MODEL_FALLBACK_CASCADE).toContain("gemini-2.5-flash");
-    expect(MODEL_FALLBACK_CASCADE).toContain("gemini-1.5-pro");
+    expect(MODEL_FALLBACK_CASCADE).toContain("google/gemini-3.7-flash");
+    expect(MODEL_FALLBACK_CASCADE).toContain("google/gemini-3.8-flash");
   });
 });

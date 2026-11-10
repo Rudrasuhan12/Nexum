@@ -6,6 +6,8 @@ import {
   searchConversations,
 } from "@/lib/ai/conversation-store";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   try {
     const user = await getCurrentUser();
