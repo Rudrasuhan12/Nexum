@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 import {
   AssistantConversation,
   AssistantMessage,
@@ -12,37 +13,106 @@ interface StorageSchema {
   messages: Record<string, AssistantMessage[]>; // Keyed by conversationId
 }
 
-const DATA_DIR = path.join(process.cwd(), ".data");
-const DATA_FILE = path.join(DATA_DIR, "conversations.json");
+// In-memory persistent cache across serverless warm requests and runtime environments
+declare global {
+  // eslint-disable-next-line no-var
+  var __nexum_ai_memory_store: StorageSchema | undefined;
+}
+
+if (!globalThis.__nexum_ai_memory_store) {
+  globalThis.__nexum_ai_memory_store = {
+    conversations: {},
+    messages: {},
+  };
+}
+
+const memoryStore: StorageSchema = globalThis.__nexum_ai_memory_store;
+
+function getStoragePaths(): { dir: string; file: string } {
+  // In serverless (e.g. Vercel, AWS Lambda), the root filesystem is read-only.
+  // os.tmpdir() (/tmp) is the only writable storage.
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    const tmpDir = path.join(os.tmpdir(), "nexum_ai_data");
+    return {
+      dir: tmpDir,
+      file: path.join(tmpDir, "conversations.json"),
+    };
+  }
+
+  // Standard development environment: prefer local .data, fall back to os.tmpdir()
+  try {
+    const localDir = path.join(process.cwd(), ".data");
+    return {
+      dir: localDir,
+      file: path.join(localDir, "conversations.json"),
+    };
+  } catch {
+    const tmpDir = path.join(os.tmpdir(), "nexum_ai_data");
+    return {
+      dir: tmpDir,
+      file: path.join(tmpDir, "conversations.json"),
+    };
+  }
+}
 
 function ensureStorage(): StorageSchema {
+  const { dir, file } = getStoragePaths();
+
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(dir)) {
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+      } catch (mkdirErr) {
+        // If mkdir fails (e.g. read-only filesystem), continue in-memory
+        console.warn("[ConversationStore] Directory creation fallback to memory:", mkdirErr);
+        return memoryStore;
+      }
     }
-    if (!fs.existsSync(DATA_FILE)) {
-      const initial: StorageSchema = { conversations: {}, messages: {} };
-      fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2), "utf-8");
-      return initial;
+
+    if (!fs.existsSync(file)) {
+      try {
+        fs.writeFileSync(file, JSON.stringify(memoryStore, null, 2), "utf-8");
+      } catch (writeErr) {
+        console.warn("[ConversationStore] Initial file write fallback to memory:", writeErr);
+      }
+      return memoryStore;
     }
-    const raw = fs.readFileSync(DATA_FILE, "utf-8");
-    return JSON.parse(raw) as StorageSchema;
+
+    const raw = fs.readFileSync(file, "utf-8");
+    const parsed = JSON.parse(raw) as StorageSchema;
+
+    // Merge file data into memory store so both stay synchronized
+    if (parsed.conversations) {
+      Object.assign(memoryStore.conversations, parsed.conversations);
+    }
+    if (parsed.messages) {
+      Object.assign(memoryStore.messages, parsed.messages);
+    }
+
+    return memoryStore;
   } catch (err) {
-    console.error("Error reading conversation storage:", err);
-    return { conversations: {}, messages: {} };
+    console.warn("[ConversationStore] Reading storage fallback to memory:", err);
+    return memoryStore;
   }
 }
 
 function saveStorage(data: StorageSchema): void {
+  // Always update memory store first
+  Object.assign(memoryStore.conversations, data.conversations);
+  Object.assign(memoryStore.messages, data.messages);
+
+  const { dir, file } = getStoragePaths();
+
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
-    const tempFile = `${DATA_FILE}.tmp.${Date.now()}`;
+    const tempFile = `${file}.tmp.${Date.now()}`;
     fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), "utf-8");
-    fs.renameSync(tempFile, DATA_FILE);
+    fs.renameSync(tempFile, file);
   } catch (err) {
-    console.error("Error saving conversation storage:", err);
+    // If disk write fails in read-only serverless, memory store remains intact!
+    console.warn("[ConversationStore] Disk save skipped, memory store preserved:", err);
   }
 }
 
@@ -133,8 +203,23 @@ export function addMessage(
   content: string
 ): AssistantMessage | null {
   const data = ensureStorage();
-  const conv = data.conversations[conversationId];
-  if (!conv || conv.userId !== userId) {
+  let conv = data.conversations[conversationId];
+
+  // Self-heal: If conversation missing in current store, automatically reconstitute it
+  if (!conv) {
+    const now = new Date().toISOString();
+    conv = {
+      id: conversationId,
+      userId,
+      title: "New Conversation",
+      createdAt: now,
+      updatedAt: now,
+      messageCount: 0,
+    };
+    data.conversations[conversationId] = conv;
+  }
+
+  if (conv.userId !== userId) {
     return null;
   }
 
