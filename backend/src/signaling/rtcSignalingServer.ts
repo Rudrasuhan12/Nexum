@@ -299,7 +299,7 @@ export function attachSignalingServer(server: http.Server): WebSocketServer {
       }
     });
 
-    ws.on("error", (err) => {
+    ws.on("error", (err: Error) => {
       console.error("[Signaling] WebSocket error:", err.message);
     });
   });
