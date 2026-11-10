@@ -195,42 +195,50 @@ export default function FreelancerWorkspaceNexumAIMode({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: `[Context: Freelancer consulting on ${activeScope}] ${query}`,
+          content: query,
+          activeScope,
         }),
       });
 
       if (res.ok) {
         const data = await res.json();
+        const contentText =
+          data.reply ||
+          data.assistantMessage?.content ||
+          data.message?.content ||
+          "I have analyzed your inquiry against the active contract baseline.";
         const aiMsg: LiveMessage = {
           id: `am_${Date.now()}`,
           role: "assistant",
-          content: data.message?.content || data.reply || "I have analyzed your request against the contract baseline.",
+          content: contentText,
           createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          model: data.model || "Gemini 2.5 Pro",
+          model: data.model || "Gemini 3.7 Flash",
         };
         setLiveMessages((prev) => [...prev, aiMsg]);
       } else {
-        setTimeout(() => {
-          const aiMsg: LiveMessage = {
-            id: `am_${Date.now()}`,
-            role: "assistant",
-            content: `Based on Agreement v3 canonical hash (0x9f8c2b7e) and your milestones for ${activeScope}: \n\n1. **Scope Assessment**: The requested work constitutes an architectural addition beyond the agreed acceptance criteria.\n2. **Recommendation**: Alex's $500 counteroffer represents fair compensation for ~8-10 developer hours. Accept with the +4 days extension to ensure test coverage.\n3. **Consensus Protection**: Ensure dual signatures are sealed before delivering code.`,
-            createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            model: "Nexum Scope Mediation Engine",
-          };
-          setLiveMessages((prev) => [...prev, aiMsg]);
-        }, 800);
-      }
-    } catch {
-      setTimeout(() => {
+        const errData = await res.json().catch(() => ({}));
+        const contentText =
+          errData.reply ||
+          errData.error ||
+          "Temporary connection timeout to AI model cascade. Please retry in a moment.";
         const aiMsg: LiveMessage = {
           id: `am_${Date.now()}`,
           role: "assistant",
-          content: `Analysis complete: Your current milestone 2 delivery meets all cryptographic checks. If Alex Chen approves the counteroffer, Agreement v5 will anchor automatically.`,
+          content: contentText,
           createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          model: "Nexum AI Diagnostic",
         };
         setLiveMessages((prev) => [...prev, aiMsg]);
-      }, 700);
+      }
+    } catch {
+      const aiMsg: LiveMessage = {
+        id: `am_${Date.now()}`,
+        role: "assistant",
+        content: "Network issue connecting to the AI assistant. Please check your connectivity and retry.",
+        createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        model: "Nexum Protocol",
+      };
+      setLiveMessages((prev) => [...prev, aiMsg]);
     } finally {
       setIsGenerating(false);
     }

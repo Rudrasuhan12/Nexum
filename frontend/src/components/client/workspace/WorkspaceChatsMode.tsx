@@ -29,6 +29,7 @@ import {
   Bot,
   Layers,
   Package,
+  Download,
 } from "lucide-react";
 import {
   WorkspaceProject,
@@ -103,7 +104,9 @@ export default function WorkspaceChatsMode({
   const [tasks, setTasks] = useState<WorkspaceTaskItem[]>([]);
   const [meetings, setMeetings] = useState<WorkspaceMeetingItem[]>([]);
   const [decisions, setDecisions] = useState<WorkspaceDecisionItem[]>([]);
-  const [files, setFiles] = useState<Array<{ name: string; size: string; date: string; type: string }>>([]);
+  const [files, setFiles] = useState<
+    Array<{ id?: string; fileId?: string; name: string; size: string; date: string; type: string; downloadUrl?: string }>
+  >([]);
   const [agreementHash, setAgreementHash] = useState<string>("canonical_v1.0_pending");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -134,6 +137,8 @@ export default function WorkspaceChatsMode({
   const [reviewVersionTarget, setReviewVersionTarget] = useState("Version 4");
 
   const timelineEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   const showToast = (msg: any) => {
     const text = typeof msg === "object" ? msg?.message || JSON.stringify(msg) : String(msg ?? "");
@@ -260,12 +265,17 @@ export default function WorkspaceChatsMode({
           if (convo.project?.projectFiles && convo.project.projectFiles.length > 0) {
             setFiles(
               convo.project.projectFiles.map((pf: any) => ({
+                id: pf.id,
+                fileId: pf.fileId,
                 name: pf.name || pf.file?.originalName || "Project Document",
                 size: `${Math.round(((pf.file?.sizeBytes || 2048) / 1024))} KB`,
                 date: new Date(pf.createdAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }),
-                type: pf.name?.endsWith(".md") ? "MD" : pf.name?.endsWith(".pdf") ? "PDF" : "DOC",
+                type: pf.name?.endsWith(".md") ? "MD" : pf.name?.endsWith(".pdf") ? "PDF" : pf.file?.mime?.startsWith("image/") ? "IMG" : "DOC",
+                downloadUrl: `/api/files/${pf.fileId}?download=1`,
               }))
             );
+          } else if (convo.files && convo.files.length > 0) {
+            setFiles(convo.files);
           } else if (convo.project?.agreement) {
             setFiles([
               {
@@ -273,6 +283,7 @@ export default function WorkspaceChatsMode({
                 size: "14 KB",
                 date: new Date().toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }),
                 type: "MD",
+                downloadUrl: `/api/agreements/${convo.project.agreement.id}/export`,
               },
             ]);
           } else {
@@ -384,6 +395,78 @@ export default function WorkspaceChatsMode({
     /(\$|price|quote|scope|cost|fee|budget|timeline|delay|discount|reduce|counteroffer)/i.test(
       messageInput
     );
+
+  // File upload and sharing handler
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    if (!selectedProjectId) {
+      showToast("Please select a project first.");
+      return;
+    }
+
+    try {
+      setIsUploadingFile(true);
+      showToast(`Uploading ${file.name}...`);
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("senderId", user?.id || "usr_client_alex");
+      formData.append("senderRole", "CLIENT");
+      if (messageInput.trim()) {
+        formData.append("note", messageInput.trim());
+        setMessageInput("");
+      }
+
+      const res = await fetch(`/api/workspace/projects/${selectedProjectId}/files`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errorMsg = typeof data.error === "object" ? data.error?.message : data.error;
+        throw new Error(errorMsg || "Failed to upload file");
+      }
+
+      showToast(`File "${file.name}" uploaded and shared to contract vault!`);
+
+      if (data.data?.file) {
+        setFiles((prev) => [data.data.file, ...prev]);
+      }
+
+      // Refresh live timeline
+      const tRes = await getWorkspaceTimeline(selectedProjectId);
+      if (tRes.success && tRes.data?.messages) {
+        const mapped: TimelineItem[] = tRes.data.messages.map((m: any) => {
+          const meta = m.metadata || {};
+          const bubbleText = m.originalContent || m.content || meta.summaryText || "";
+          return {
+            id: m.id,
+            type: m.type as any,
+            senderName:
+              m.sender?.name || (m.senderRole === "CLIENT" ? "You (Client)" : (selectedProject?.freelancerName || "Freelancer")),
+            timestamp: new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            bubbleText,
+            rawMessage: m.originalContent || m.content,
+            summaryText: meta.summaryText || bubbleText,
+            badgeText: meta.badgeText || (m.senderRole === "CLIENT" ? "Delivered" : "Verified"),
+            badgeType: meta.badgeType || "green",
+            sha256Seal: m.sha256Seal,
+            metadata: meta,
+          };
+        });
+        setTimeline(mapped);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      showToast(`Upload failed: ${msg}`);
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
 
   // Send message handler through Tier 1 Bot triage
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -1995,6 +2078,10 @@ export default function WorkspaceChatsMode({
                 // CARD TYPE I: Escrow Locked System Notification Card
                 if (item.type === "ESCROW_LOCKED") {
                   const meta = (item as any).metadata || {};
+                  const isSandbox =
+                    meta.paypalCaptureId?.includes("SBX") ||
+                    meta.paypalCaptureId?.includes("SIM_") ||
+                    meta.paypalOrderId?.includes("SIM_");
                   return (
                     <div
                       key={item.id}
@@ -2003,11 +2090,11 @@ export default function WorkspaceChatsMode({
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-emerald-900 flex items-center gap-1.5">
                           <Lock className="w-4 h-4 text-emerald-600" />
-                          <span>Escrow Locked in Real · {item.timestamp}</span>
+                          <span>Escrow Deposit Secured · {item.timestamp}</span>
                         </span>
                         <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-800 font-bold bg-white px-2 py-0.5 rounded-md border border-emerald-200 shadow-2xs">
                           <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                          <span>PayPal Verified Escrow ✓</span>
+                          <span>{isSandbox ? "PayPal Sandbox Escrow ✓" : "PayPal Verified Escrow ✓"}</span>
                         </span>
                       </div>
                       <p className="text-emerald-950 font-medium leading-relaxed pl-5.5">
@@ -2018,6 +2105,80 @@ export default function WorkspaceChatsMode({
                           <span>Order: {meta.paypalOrderId}</span>
                           <span>•</span>
                           <span>Capture: {meta.paypalCaptureId || "HELD_IN_ESCROW"}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // CARD TYPE K: Shared Project File Card
+                if (item.type === "file_card") {
+                  const meta = (item as any).metadata || {};
+                  const fileName = meta.fileName || item.summaryText?.replace(/^Shared file: /, "") || "Shared Attachment";
+                  const fileSize = meta.fileSize || "Attachment";
+                  const downloadUrl = meta.downloadUrl || (meta.fileId ? `/api/files/${meta.fileId}?download=1` : "#");
+                  const ext = fileName.split(".").pop()?.toUpperCase() || "FILE";
+                  const isYou = item.senderName.includes("You") || (item.metadata as any)?.senderRole === "CLIENT";
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5 animate-in fade-in duration-150"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px]">
+                            {isYou ? "C" : "F"}
+                          </div>
+                          <span className="font-bold text-slate-800 text-xs">{item.senderName}</span>
+                          <span className="text-[10px] text-slate-400">· {item.timestamp}</span>
+                        </div>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/70">
+                          <Paperclip className="w-3 h-3 text-indigo-500" />
+                          <span>Vault File Shared</span>
+                        </span>
+                      </div>
+
+                      {meta.note && (
+                        <p className="text-xs text-slate-700 leading-relaxed pl-8">
+                          {meta.note}
+                        </p>
+                      )}
+
+                      <div className="ml-8 p-3 rounded-xl border border-slate-200/80 bg-slate-50/70 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center font-black text-[11px] font-mono shadow-2xs">
+                            {ext}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-xs text-slate-900">{fileName}</div>
+                            <div className="text-[10px] text-slate-400">{fileSize} · Synchronized to Project Files</div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={downloadUrl}
+                            download={fileName}
+                            className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Download</span>
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab("files")}
+                            className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition cursor-pointer"
+                          >
+                            View in Files Vault
+                          </button>
+                        </div>
+                      </div>
+
+                      {meta.sha256Seal && (
+                        <div className="ml-8 flex items-center gap-1.5 text-[9px] font-mono text-slate-400">
+                          <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                          <span className="truncate">SHA-256: {meta.sha256Seal.slice(0, 24)}...</span>
                         </div>
                       )}
                     </div>
@@ -2434,11 +2595,12 @@ export default function WorkspaceChatsMode({
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Project Files & Attachments</h3>
                 <button
                   type="button"
-                  onClick={() => showToast("File attachment selector opened.")}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingFile}
+                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1 disabled:opacity-50"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Upload File</span>
+                  <span>{isUploadingFile ? "Uploading..." : "Upload File"}</span>
                 </button>
               </div>
               {files.length === 0 ? (
@@ -2496,7 +2658,12 @@ export default function WorkspaceChatsMode({
                             if (f.name.toLowerCase().includes("contract")) {
                               setIsContractModalOpen(true);
                             } else {
-                              showToast(`Downloading ${f.name}...`);
+                              const url = (f as any).downloadUrl || ((f as any).fileId ? `/api/files/${(f as any).fileId}?download=1` : null);
+                              if (url) {
+                                window.open(url, "_blank");
+                              } else {
+                                showToast(`Downloading ${f.name}...`);
+                              }
                             }
                           }}
                           className="text-xs font-semibold text-indigo-600 hover:underline cursor-pointer"
@@ -2735,13 +2902,31 @@ export default function WorkspaceChatsMode({
               {/* Bottom bar of input */}
               <div className="flex items-center justify-between pt-1.5 border-t border-slate-100/80 mt-1 gap-2">
                 <div className="flex items-center gap-1.5 text-slate-500 overflow-x-auto">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.zip,.txt,.md,.json,.csv"
+                  />
+
                   <button
                     type="button"
-                    onClick={() => showToast("File attachment selector opened.")}
-                    className="p-1.5 rounded-lg hover:bg-slate-200/60 text-slate-500 transition cursor-pointer shrink-0"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingFile}
+                    className="p-1.5 rounded-lg hover:bg-slate-200/60 text-slate-500 transition cursor-pointer shrink-0 disabled:opacity-50"
                     title="Attach file"
                   >
                     <Paperclip className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingFile}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:bg-slate-200/60 transition cursor-pointer shrink-0 disabled:opacity-50"
+                  >
+                    {isUploadingFile ? "Uploading..." : "Share file"}
                   </button>
 
                   <button

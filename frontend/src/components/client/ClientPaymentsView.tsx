@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Image from "next/image";
+import { useAuth } from "@/context/AuthContext";
 import {
   DollarSign,
   ShieldCheck,
@@ -105,6 +106,7 @@ interface ClientPaymentsViewProps {
 export default function ClientPaymentsView({
   onOpenProjectWorkspace: _onOpenProjectWorkspace,
 }: ClientPaymentsViewProps) {
+  const { user } = useAuth();
   // Live state from backend
   const [summary, setSummary] = useState<any>(null);
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
@@ -139,12 +141,13 @@ export default function ClientPaymentsView({
   // Load real telemetry from API
   const loadData = useCallback(async () => {
     try {
+      const clientId = user?.id;
       const [sumRes, txsRes, cfRes, actRes, upRes] = await Promise.all([
-        fetchClientPaymentsSummary(),
-        fetchClientTransactions(),
-        fetchClientCashFlow(undefined, selectedTimeframe),
-        fetchClientActionRequired(),
-        fetchClientUpcomingDeliverable(),
+        fetchClientPaymentsSummary(clientId),
+        fetchClientTransactions(clientId),
+        fetchClientCashFlow(clientId, selectedTimeframe),
+        fetchClientActionRequired(clientId),
+        fetchClientUpcomingDeliverable(clientId),
       ]);
 
       if (sumRes.success && sumRes.data) {
@@ -168,7 +171,7 @@ export default function ClientPaymentsView({
     } finally {
       setIsLoading(false);
     }
-  }, [selectedTimeframe]);
+  }, [selectedTimeframe, user?.id]);
 
   useEffect(() => {
     loadData();

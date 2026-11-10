@@ -1,8 +1,18 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
+import multer from "multer";
+import crypto from "crypto";
+import path from "path";
+import { FilePurpose, ProjectFileCategory } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { workspaceService } from "../services/workspaceService.js";
 import { groqService } from "../services/groqService.js";
+import { defaultStorage } from "../lib/files.js";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB limit
+});
 
 const router = Router();
 
@@ -361,6 +371,160 @@ router.post("/projects/:projectId/messages", async (req: Request, res: Response)
     });
   }
 });
+
+/**
+ * POST /api/workspace/projects/:projectId/files
+ * Uploads a file, saves to persistent storage, creates File + ProjectFile records,
+ * and posts a file_card message into the workspace timeline.
+ */
+router.post(
+  "/projects/:projectId/files",
+  upload.single("file"),
+  async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      const file = req.file;
+
+      if (!file || !file.buffer) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "A file must be uploaded",
+            details: null,
+          },
+        });
+      }
+
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          agreement: true,
+          client: true,
+        },
+      });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: "NOT_FOUND",
+            message: "Project not found",
+            details: { projectId },
+          },
+        });
+      }
+
+      const sessionUser = (req as any).user;
+      const requestedSenderId = (req.body.senderId as string) || (req.headers["x-user-id"] as string) || sessionUser?.id;
+      const requestedRole = (req.body.senderRole as string) || sessionUser?.role || (requestedSenderId === project.clientId ? "CLIENT" : "FREELANCER");
+      const note = (req.body.note as string) || "";
+
+      // Ensure uploaderId is a valid user ID in DB for FK constraints
+      let uploaderId = requestedSenderId;
+      let validUser = uploaderId ? await prisma.user.findUnique({ where: { id: uploaderId } }) : null;
+      if (!validUser) {
+        if (requestedRole === "CLIENT") {
+          validUser = await prisma.user.findFirst({ where: { role: "CLIENT" } });
+        } else {
+          validUser = await prisma.user.findFirst({ where: { role: "FREELANCER" } });
+        }
+        uploaderId = validUser ? validUser.id : project.clientId;
+      }
+
+      const sha256 = crypto.createHash("sha256").update(file.buffer).digest("hex");
+      const ext = path.extname(file.originalname).toLowerCase();
+      const safeKey = `uploads/projects/${projectId}/${Date.now()}-${crypto.randomUUID()}${ext}`;
+
+      // Persist to storage adapter
+      await defaultStorage.save(safeKey, file.buffer);
+
+      // Create File record
+      const fileRecord = await prisma.file.create({
+        data: {
+          ownerId: uploaderId,
+          purpose: FilePurpose.PROJECT_FILE,
+          storageKey: safeKey,
+          originalName: file.originalname,
+          mime: file.mimetype || "application/octet-stream",
+          sizeBytes: file.size,
+          sha256,
+        },
+      });
+
+      // Create ProjectFile record in the project's files vault
+      const projectFile = await prisma.projectFile.create({
+        data: {
+          projectId,
+          fileId: fileRecord.id,
+          uploadedBy: uploaderId,
+          category: ProjectFileCategory.ATTACHMENT,
+          name: file.originalname,
+          note: note || null,
+        },
+      });
+
+      // Send a file_card into the workspace timeline
+      const senderDisplayName = requestedRole === "FREELANCER" ? "You (Freelancer)" : (project.client?.name || "Client");
+      const sendResult = await workspaceService.sendMessage({
+        projectId,
+        senderId: uploaderId,
+        senderRole: requestedRole as any,
+        content: note ? `Shared file: ${file.originalname} — "${note}"` : `Shared file: ${file.originalname}`,
+        type: "file_card",
+        origin: "WEB",
+        metadata: {
+          fileId: fileRecord.id,
+          projectFileId: projectFile.id,
+          fileName: file.originalname,
+          fileSize: `${Math.round(file.size / 1024)} KB`,
+          sizeBytes: file.size,
+          mime: file.mimetype || "application/octet-stream",
+          downloadUrl: `/api/files/${fileRecord.id}?download=1`,
+          streamUrl: `/api/files/${fileRecord.id}`,
+          sha256Seal: sha256,
+          note: note || undefined,
+          senderDisplayName,
+        },
+      });
+
+      res.status(201).json({
+        success: true,
+        data: {
+          file: {
+            id: projectFile.id,
+            fileId: fileRecord.id,
+            name: file.originalname,
+            size: `${Math.round(file.size / 1024)} KB`,
+            sizeBytes: file.size,
+            date: new Date().toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }),
+            type: file.originalname.endsWith(".md")
+              ? "MD"
+              : file.originalname.endsWith(".pdf")
+              ? "PDF"
+              : file.mimetype.includes("image")
+              ? "IMG"
+              : "DOC",
+            downloadUrl: `/api/files/${fileRecord.id}?download=1`,
+            sha256,
+          },
+          message: sendResult.message,
+          botInsights: sendResult.botInsights,
+        },
+      });
+    } catch (err) {
+      console.error("Project file upload error:", err);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: err instanceof Error ? err.message : "Failed to upload file",
+          details: null,
+        },
+      });
+    }
+  }
+);
 
 /**
  * POST /api/workspace/projects/:projectId/amendments/propose

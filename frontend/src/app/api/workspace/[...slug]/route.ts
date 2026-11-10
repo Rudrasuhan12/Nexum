@@ -5,6 +5,25 @@ const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   "http://localhost:4000";
 
+function extractForwardHeaders(request: NextRequest): Record<string, string> {
+  const cookieHeader = request.headers.get("cookie") || "";
+  const originHeader =
+    request.headers.get("origin") ||
+    request.headers.get("referer") ||
+    "http://localhost:3000";
+  const userIdHeader = request.headers.get("x-user-id") || "";
+  const authHeader = request.headers.get("authorization") || "";
+
+  return {
+    Origin: originHeader,
+    Referer: originHeader,
+    "x-nexum-internal": "true",
+    ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+    ...(userIdHeader ? { "x-user-id": userIdHeader } : {}),
+    ...(authHeader ? { Authorization: authHeader } : {}),
+  };
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string[] }> }
@@ -14,11 +33,14 @@ export async function GET(
   const url = `${BACKEND_URL}/api/workspace/${path}${request.nextUrl.search}`;
 
   try {
+    const headers = {
+      ...extractForwardHeaders(request),
+      "Content-Type": "application/json",
+    };
+
     const res = await fetch(url, {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       cache: "no-store",
     });
 
@@ -34,7 +56,11 @@ export async function GET(
     return NextResponse.json(
       {
         success: false,
-        error: "Backend workspace service is temporarily unavailable",
+        error: {
+          code: "SERVICE_UNAVAILABLE",
+          message: "Backend workspace service is temporarily unavailable",
+          details: null,
+        },
       },
       { status: 502 }
     );
@@ -50,19 +76,29 @@ export async function POST(
   const url = `${BACKEND_URL}/api/workspace/${path}`;
 
   try {
-    const body = await request.json().catch(() => ({}));
+    const contentType = request.headers.get("content-type") || "";
+    const forwardHeaders = extractForwardHeaders(request);
+    let body: any;
+
+    if (contentType.includes("multipart/form-data")) {
+      body = await request.formData();
+      // Notice: Do NOT set Content-Type header so fetch handles boundary generation automatically!
+    } else {
+      const json = await request.json().catch(() => ({}));
+      body = JSON.stringify(json);
+      forwardHeaders["Content-Type"] = "application/json";
+    }
+
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
+      headers: forwardHeaders,
+      body,
       cache: "no-store",
     });
 
     if (res.ok) {
       const data = await res.json();
-      return NextResponse.json(data, { status: res.status });
+      return NextResponse.json(data);
     }
 
     const errData = await res.json().catch(() => ({}));
@@ -72,7 +108,11 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        error: "Backend workspace service is temporarily unavailable",
+        error: {
+          code: "SERVICE_UNAVAILABLE",
+          message: "Backend workspace service is temporarily unavailable",
+          details: null,
+        },
       },
       { status: 502 }
     );
@@ -88,19 +128,21 @@ export async function PATCH(
   const url = `${BACKEND_URL}/api/workspace/${path}`;
 
   try {
+    const forwardHeaders = {
+      ...extractForwardHeaders(request),
+      "Content-Type": "application/json",
+    };
     const body = await request.json().catch(() => ({}));
     const res = await fetch(url, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: forwardHeaders,
       body: JSON.stringify(body),
       cache: "no-store",
     });
 
     if (res.ok) {
       const data = await res.json();
-      return NextResponse.json(data, { status: res.status });
+      return NextResponse.json(data);
     }
 
     const errData = await res.json().catch(() => ({}));
@@ -110,7 +152,11 @@ export async function PATCH(
     return NextResponse.json(
       {
         success: false,
-        error: "Backend workspace service is temporarily unavailable",
+        error: {
+          code: "SERVICE_UNAVAILABLE",
+          message: "Backend workspace service is temporarily unavailable",
+          details: null,
+        },
       },
       { status: 502 }
     );

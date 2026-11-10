@@ -209,7 +209,7 @@ export async function streamFileHandler(req: Request, res: Response, next: NextF
     } else if (file.purpose === "PROFILE_COVER") {
       const isVisible = file.coverProfiles.some((p) => p.searchVisibility === "VISIBLE");
       isPubliclyAccessible = isVisible;
-    } else if (file.purpose === "PROPOSAL_ATTACHMENT" || file.purpose === "PROJECT_FILE") {
+    } else if (file.purpose === "PROPOSAL_ATTACHMENT" || file.purpose === "PROJECT_FILE" || file.purpose === "CHAT_ATTACHMENT") {
       isPubliclyAccessible = true;
     }
 

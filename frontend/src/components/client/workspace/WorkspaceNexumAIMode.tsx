@@ -314,35 +314,50 @@ export default function WorkspaceNexumAIMode({
         body: JSON.stringify({
           conversationId: selectedChatId.startsWith("chat_") ? undefined : selectedChatId,
           content: text,
+          activeScope,
         }),
       });
 
       if (res.ok) {
         const data = await res.json();
+        const contentText =
+          data.reply ||
+          data.assistantMessage?.content ||
+          data.message?.content ||
+          "Analysis logged from project consensus state.";
         const assistantMsg: LiveMessage = {
           id: `ai_${Date.now()}`,
           role: "assistant",
-          content: data.reply || "Analysis logged from project consensus state.",
+          content: contentText,
           createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          model: data.model || "gemini-3.8-flash",
+          model: data.model || "Gemini 3.7 Flash",
         };
         setLiveMessages((prev) => [...prev, assistantMsg]);
         showToast("Nexum AI analysis generated from active agreements & verified records.");
       } else {
-        throw new Error("Chat API responded with non-200");
-      }
-    } catch {
-      setTimeout(() => {
+        const errData = await res.json().catch(() => ({}));
+        const contentText =
+          errData.reply ||
+          errData.error ||
+          "Temporary connection timeout to AI model cascade. Please retry in a moment.";
         const fallbackMsg: LiveMessage = {
           id: `ai_${Date.now()}`,
           role: "assistant",
-          content: `Here is the analysis based on **${activeScope}**:\n\n1. Active agreement remains locked under canonical hash \`#9f8c2b7e\`.\n2. Milestone 2 deliverable package is awaiting client sign-off.\n3. PayPal sandbox pre-funding verified with 0 dropped webhook events.`,
+          content: contentText,
           createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          model: "gemini-3.8-flash (Simulated Fallback)",
+          model: "Nexum Protocol",
         };
         setLiveMessages((prev) => [...prev, fallbackMsg]);
-        showToast("Nexum AI response rendered from project consensus state.");
-      }, 700);
+      }
+    } catch {
+      const fallbackMsg: LiveMessage = {
+        id: `ai_${Date.now()}`,
+        role: "assistant",
+        content: "Network issue connecting to the AI assistant. Please check your connectivity and retry.",
+        createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        model: "Nexum Protocol",
+      };
+      setLiveMessages((prev) => [...prev, fallbackMsg]);
     } finally {
       setIsGenerating(false);
     }
