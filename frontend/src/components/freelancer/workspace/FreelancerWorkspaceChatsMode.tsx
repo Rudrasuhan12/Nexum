@@ -318,15 +318,19 @@ export default function FreelancerWorkspaceChatsMode({
 
           if (convo.project?.projectFiles && convo.project.projectFiles.length > 0) {
             setFiles(
-              convo.project.projectFiles.map((pf: any) => ({
-                id: pf.id,
-                fileId: pf.fileId,
-                name: pf.name || pf.file?.originalName || "Project Document",
-                size: `${Math.round(((pf.file?.sizeBytes || 2048) / 1024))} KB`,
-                date: new Date(pf.createdAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }),
-                type: pf.name?.endsWith(".md") ? "MD" : pf.name?.endsWith(".pdf") ? "PDF" : pf.file?.mime?.startsWith("image/") ? "IMG" : "DOC",
-                downloadUrl: `/api/files/${pf.fileId}?download=1`,
-              }))
+              convo.project.projectFiles.map((pf: any) => {
+                let name = pf.name || pf.file?.originalName || "Project Document";
+                if (name === "Contract_Agreement_v2.0.md") name = "Contract_Agreement_v1.1.md";
+                return {
+                  id: pf.id,
+                  fileId: pf.fileId,
+                  name,
+                  size: `${Math.round(((pf.file?.sizeBytes || 2048) / 1024))} KB`,
+                  date: new Date(pf.createdAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }),
+                  type: name.endsWith(".md") ? "MD" : name.endsWith(".pdf") ? "PDF" : pf.file?.mime?.startsWith("image/") ? "IMG" : "DOC",
+                  downloadUrl: `/api/files/${pf.fileId}?download=1`,
+                };
+              })
             );
           } else if (convo.files && convo.files.length > 0) {
             setFiles(convo.files);

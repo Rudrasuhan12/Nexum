@@ -15,6 +15,7 @@ export interface ContractMilestoneInput {
 export interface ContractGenerationParams {
   agreementId: string;
   versionNumber: number;
+  versionString?: string;
   projectTitle: string;
   projectDescription?: string;
   clientName: string;
@@ -35,6 +36,7 @@ export interface SaveContractFileParams {
   projectId: string;
   agreementId: string;
   versionNumber: number;
+  versionString?: string;
   contractMarkdown: string;
   uploadedBy: string;
 }
@@ -62,10 +64,11 @@ export function generateContractMarkdown(params: ContractGenerationParams): stri
     : "DRAFT (PENDING MUTUAL HUMAN RATIFICATION)";
 
   const nowStr = new Date().toUTCString();
+  const verStr = params.versionString || (params.versionNumber <= 1 ? "v1.0" : `v1.${params.versionNumber - 1}`);
 
   let markdown = `# BILATERAL FREELANCE SERVICE & ESCROW AGREEMENT
-**Document Reference:** NEXUM-AGR-${params.agreementId.slice(0, 10).toUpperCase()}-v${params.versionNumber}.0  
-**Version:** v${params.versionNumber}.0  
+**Document Reference:** NEXUM-AGR-${params.agreementId.slice(0, 10).toUpperCase()}-${verStr}  
+**Version:** ${verStr}  
 **Status:** ${ratifiedStatus}  
 **Date of Synthesis:** ${nowStr}  
 **Protocol Mediator:** Nexum Autonomous AI Mediation Engine  
@@ -94,7 +97,7 @@ The Client hereby engages the Freelancer, and the Freelancer agrees to perform t
 ### 2.1 Scope Overview
 ${params.projectDescription || "Implementation of deliverables according to the verified proposal specifications and architecture benchmarks."}
 
-${params.amendmentNotes ? `### 2.2 Add-on & Amendment Notes (v${params.versionNumber}.0)\n${params.amendmentNotes}\n` : ""}
+${params.amendmentNotes ? `### 2.2 Add-on & Amendment Notes (${verStr})\n${params.amendmentNotes}\n` : ""}
 
 ---
 
@@ -170,7 +173,7 @@ By approving this document inside the Nexum project workspace, both parties cert
 |------|-----------------|--------------------|---------------|
 | **Client** | ${params.clientName} | ${clientSignStatus} | SHA256-CLIENT-VERIFIED |
 | **Freelancer** | ${params.freelancerName} | ${freelancerSignStatus} | SHA256-TALENT-VERIFIED |
-| **Autonomous Mediator** | Nexum AI Protocol Engine | Verified Synthesized Baseline | \`hash_v${params.versionNumber}_${params.agreementId.slice(0, 8)}\` |
+| **Autonomous Mediator** | Nexum AI Protocol Engine | Verified Synthesized Baseline | \`hash_${verStr.replace('.', '_')}_${params.agreementId.slice(0, 8)}\` |
 
 *This document was digitally drafted by Nexum AI and saved to Project Files for permanent access by both parties.*
 `;
@@ -186,7 +189,8 @@ export async function saveContractAsProjectFile(
   tx: any,
   params: SaveContractFileParams
 ): Promise<{ file: any; projectFile: any; fileName: string; sha256: string }> {
-  const fileName = `Contract_Agreement_v${params.versionNumber}.0.md`;
+  const verStr = params.versionString || (params.versionNumber <= 1 ? "v1.0" : `v1.${params.versionNumber - 1}`);
+  const fileName = `Contract_Agreement_${verStr}.md`;
   const storageKey = `contracts/${params.projectId}/${fileName}`;
   const buffer = Buffer.from(params.contractMarkdown, "utf-8");
   const sha256 = crypto.createHash("sha256").update(buffer).digest("hex");
