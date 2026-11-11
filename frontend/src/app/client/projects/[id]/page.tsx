@@ -171,13 +171,13 @@ function ProjectWorkspaceContent() {
           // Format Milestones
           const mappedMilestones: MilestoneItem[] = rawMilestones.map((m: any, idx: number) => {
             const amountVal = m.amountCents ? m.amountCents / 100 : (parseFloat(m.amount) || 0);
-            const isReleased = m.state === "CAPTURED" || m.status === "RELEASED";
+            const isReleased = m.state === "CAPTURED" || m.status === "RELEASED" || m.paymentStatus === "RELEASED" || m.workStatus === "COMPLETED";
             const isInReview = Boolean(
-              freelancer && (
-                m.workStatus === "AWAITING_CLIENT_REVIEW" ||
-                m.workStatus === "SUBMITTED" ||
-                m.status === "IN_REVIEW"
-              )
+              m.workStatus === "AWAITING_CLIENT_REVIEW" ||
+              m.workStatus === "SUBMITTED" ||
+              m.workStatus === "IN_REVIEW" ||
+              m.status === "IN_REVIEW" ||
+              (m.submissions && m.submissions.length > 0 && !isReleased)
             );
             return {
               id: m.id || `ms_${idx + 1}`,
@@ -1467,16 +1467,14 @@ function ProjectWorkspaceContent() {
                       </div>
 
                       {/* Autonomous Proof-of-Execution Deliverable Verifier with GitHub-Style Checks & Version History */}
-                      {(milestone.status === "IN_REVIEW" || milestone.status === "RELEASED" || milestone.testReport) && (
-                        <div className="pt-1">
-                          <MilestoneAutomatedChecksCard
-                            milestoneId={milestone.id}
-                            milestoneTitle={milestone.title}
-                            projectId={projectId}
-                            acceptanceCriteria={milestone.deliverables}
-                          />
-                        </div>
-                      )}
+                      <div className="pt-2">
+                        <MilestoneAutomatedChecksCard
+                          milestoneId={milestone.id}
+                          milestoneTitle={milestone.title}
+                          projectId={projectId}
+                          acceptanceCriteria={milestone.deliverables}
+                        />
+                      </div>
 
                       {/* Review Actions when IN_REVIEW */}
                       {milestone.status === "IN_REVIEW" && (

@@ -135,9 +135,10 @@ export default function MilestoneAutomatedChecksCard({
         const res = await fetch(`/api/milestones/${milestoneId}/deliverable-history`);
         if (res.ok) {
           const data = await res.json();
-          if (isMounted && data.revisions && data.revisions.length > 0) {
-            setHistory(data.revisions);
-            setSelectedRevisionIdx(data.revisions.length - 1); // latest by default
+          const revs = data.revisions || data.data || (Array.isArray(data) ? data : []);
+          if (isMounted && revs && revs.length > 0) {
+            setHistory(revs);
+            setSelectedRevisionIdx(revs.length - 1); // latest by default
           }
         }
       } catch {
@@ -192,8 +193,9 @@ export default function MilestoneAutomatedChecksCard({
 
       if (res.ok) {
         const data = await res.json();
-        if (data.result) {
-          const newRecord: VerificationAuditRecord = data.result;
+        const record = data.result || data.data || data.record;
+        if (record) {
+          const newRecord: VerificationAuditRecord = record;
           setHistory((prev) => [...prev, newRecord]);
           setSelectedRevisionIdx(history.length);
           if (onVerificationComplete) {
@@ -286,7 +288,7 @@ export default function MilestoneAutomatedChecksCard({
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#4f46e5] hover:bg-[#4338ca] text-white text-xs font-bold transition shadow-xs cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? "animate-spin" : ""}`} />
-          <span>{isVerifying ? "Running..." : "Demo"}</span>
+          <span>{isVerifying ? "Running 3-Tier Verification..." : "Run Pre-Flight Verification"}</span>
         </button>
       </div>
     );

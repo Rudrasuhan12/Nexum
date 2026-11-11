@@ -171,6 +171,20 @@ export default function MilestoneDetailsModal({
           </div>
         )}
 
+        {!latestSub && (milestone.workStatus === "AWAITING_CLIENT_REVIEW" || milestone.workStatus === "ACCEPTED" || milestone.workStatus === "REVISIONS_REQUESTED") && (
+          <div className="space-y-2 pt-1">
+            <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-[#4f46e5]" />
+              <span>Autonomous Proof-of-Execution (3-Tier Pre-Flight)</span>
+            </h4>
+            <MilestoneAutomatedChecksCard
+              milestoneId={milestone.id}
+              milestoneTitle={milestone.title}
+              acceptanceCriteria={milestone.acceptanceCriteria}
+            />
+          </div>
+        )}
+
         {/* Acceptance Criteria */}
         <div className="space-y-2">
           <h4 className="text-xs font-bold text-slate-900">Acceptance Criteria</h4>
