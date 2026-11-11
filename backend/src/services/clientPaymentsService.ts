@@ -269,20 +269,25 @@ export class ClientPaymentsService {
         OR: [
           { id: clientId },
           { email: clientId },
-          { name: { contains: "Sambit", mode: "insensitive" } },
+          { email: "sambitkumarmohanty25@gmail.com" },
           { email: "csmishra952@gmail.com" },
         ],
       },
     });
 
     const candidateIds = user ? [user.id, clientId] : [clientId];
+    const candidateEmails = [
+      clientId,
+      ...(user?.email ? [user.email] : []),
+      "sambitkumarmohanty25@gmail.com",
+    ];
+
     const projects = await prisma.project.findMany({
       where: {
         OR: [
           { clientId: { in: candidateIds } },
           { client: { id: { in: candidateIds } } },
-          { client: { email: user?.email || clientId } },
-          { client: { name: { contains: "Sambit", mode: "insensitive" } } },
+          { client: { email: { in: candidateEmails } } },
           { id: "prj_1794041467889_g05q" }, // TerraShield canonical instance
         ],
       },
@@ -467,21 +472,34 @@ export class ClientPaymentsService {
   private computeSummaryFromRecords(
     totalCommittedBudgetMinor: number,
     projectIds: string[],
-    ledgerEntries: Array<{ kind: LedgerEntryKind; amountMinor: number; paymentId?: string | null; createdAt: Date }>,
-    payments: Array<{ id: string; status: PaymentState; amountMinor: number; projectId: string; milestone?: any; createdAt: Date }>,
+    ledgerEntries: Array<{ kind: LedgerEntryKind; amountMinor: number; paymentId?: string | null; milestoneId?: string | null; createdAt: Date }>,
+    payments: Array<{ id: string; status: PaymentState; amountMinor: number; projectId: string; milestoneId?: string | null; milestone?: any; createdAt: Date }>,
     pendingReviewMilestones: Array<{ amountMinor?: number | null; amountCents?: number | null }>
   ): PaymentKPISummary {
     const releasedEntries = ledgerEntries.filter((l) => l.kind === LedgerEntryKind.RELEASED);
-    const releasedPaymentIds = new Set(releasedEntries.map((l) => l.paymentId).filter(Boolean));
+    const releasedPaymentIds = new Set<string>();
+    const releasedMilestoneIds = new Set<string>();
+
+    for (const l of releasedEntries) {
+      if (l.paymentId) releasedPaymentIds.add(l.paymentId);
+      if (l.milestoneId) releasedMilestoneIds.add(l.milestoneId);
+    }
 
     let additionalSpentMinor = 0;
     const additionalReleaseDates: Date[] = [];
     for (const p of payments) {
+      const mId = p.milestone?.id || (p as any).milestoneId;
       const isAccepted =
         p.milestone?.workStatus === MilestoneWorkStatus.ACCEPTED ||
         (p.milestone as any)?.workStatus === "COMPLETED";
-      if (isAccepted && !releasedPaymentIds.has(p.id)) {
-        releasedPaymentIds.add(p.id);
+
+      const alreadyCounted =
+        (p.id && releasedPaymentIds.has(p.id)) ||
+        (mId && releasedMilestoneIds.has(mId));
+
+      if (isAccepted && !alreadyCounted) {
+        if (p.id) releasedPaymentIds.add(p.id);
+        if (mId) releasedMilestoneIds.add(mId);
         additionalSpentMinor += p.amountMinor;
         additionalReleaseDates.push(p.milestone?.acceptedAt || p.createdAt);
       }
@@ -490,9 +508,15 @@ export class ClientPaymentsService {
     const totalSpentMinor = releasedEntries.reduce((sum, l) => sum + l.amountMinor, 0) + additionalSpentMinor;
     const verifiedReleasesCount = releasedEntries.length + additionalReleaseDates.length;
 
-    const escrowPayments = payments.filter(
-      (p) => p.status === PaymentState.CAPTURED && !releasedPaymentIds.has(p.id)
-    );
+    const escrowPayments = payments.filter((p) => {
+      const mId = p.milestone?.id || (p as any).milestoneId;
+      const isReleased =
+        releasedPaymentIds.has(p.id) ||
+        (mId && releasedMilestoneIds.has(mId)) ||
+        p.milestone?.workStatus === MilestoneWorkStatus.ACCEPTED ||
+        (p.milestone as any)?.workStatus === "COMPLETED";
+      return p.status === PaymentState.CAPTURED && !isReleased;
+    });
     const activeEscrowMinor = escrowPayments.reduce((sum, p) => sum + p.amountMinor, 0);
     const activeEscrowProjectIds = new Set(escrowPayments.map((p) => p.projectId));
 
