@@ -21,13 +21,27 @@ export interface SendMessageParams {
 export interface ScopeAmendmentParams {
   projectId: string;
   proposerId: string;
+  proposerRole?: string;
   amendmentType: "AMEND_EXISTING_MILESTONE" | "ADD_NEW_MILESTONE" | "ZERO_COST_TWEAK";
   milestoneId?: string;
   newMilestoneTitle?: string;
   priceDeltaCents: number; // positive = increase, negative = decrease, 0 = unchanged
   timelineDaysDelta: number;
   newAcceptanceCriteria: string[];
+  deliverables?: string[];
   justification: string;
+  brdDocumentUrl?: string;
+  brdDocumentName?: string;
+}
+
+export interface ScopeAmendmentCounterParams {
+  projectId: string;
+  messageId: string;
+  responderId: string;
+  responderRole: string;
+  counterAmountMinor: number;
+  counterDays: number;
+  reasoning: string;
 }
 
 export interface ProposeMeetingParams {
@@ -420,8 +434,12 @@ export class WorkspaceService {
       priceDeltaCents: params.priceDeltaCents,
       timelineDaysDelta: params.timelineDaysDelta,
       newAcceptanceCriteria: params.newAcceptanceCriteria,
+      deliverables: params.deliverables || [],
       justification: params.justification,
+      brdDocumentUrl: params.brdDocumentUrl || null,
+      brdDocumentName: params.brdDocumentName || null,
       proposerId: params.proposerId,
+      proposerRole: params.proposerRole || "CLIENT",
       proposedAt: new Date().toISOString(),
     };
 
@@ -440,7 +458,7 @@ export class WorkspaceService {
       data: {
         conversationId: conversation.id,
         senderId: params.proposerId,
-        senderRole: "CLIENT", // Can also be FREELANCER
+        senderRole: (params.proposerRole || "CLIENT") as any,
         type: "draft_counteroffer_card",
         origin: "WEB",
         originalContent: `Proposed Contract Amendment: ${params.justification} (${fundingRequirement.formattedDelta})`,
@@ -450,13 +468,88 @@ export class WorkspaceService {
           amendmentPayload: draftPayload,
           fundingRequirement,
           status: "PENDING_ACCEPTANCE",
-          clientAccepted: true, // Proposer accepts by default
-          freelancerAccepted: false,
+          clientAccepted: (params.proposerRole || "CLIENT") === "CLIENT",
+          freelancerAccepted: params.proposerRole === "FREELANCER",
+          lastProposedBy: params.proposerId,
+          lastProposedRole: params.proposerRole || "CLIENT",
         } as any,
       },
     });
 
     return amendmentMessage;
+  }
+
+  /**
+   * Submit a counteroffer for a pending scope amendment.
+   */
+  async counterScopeAmendment(params: ScopeAmendmentCounterParams) {
+    const conversation = await this.getOrCreateWorkspaceConversation(params.projectId);
+    const targetMessage = await prisma.workspaceMessage.findUnique({
+      where: { id: params.messageId },
+    });
+
+    if (!targetMessage) {
+      throw new Error("Amendment proposal card not found");
+    }
+
+    const currentMetadata = (targetMessage.metadata as Record<string, any>) || {};
+    const oldPayload = (currentMetadata.amendmentPayload as Record<string, any>) || {};
+
+    const updatedPayload = {
+      ...oldPayload,
+      priceDeltaCents: params.counterAmountMinor,
+      timelineDaysDelta: params.counterDays,
+      counterReasoning: params.reasoning,
+      counteredByUserId: params.responderId,
+      counteredByRole: params.responderRole,
+      counteredAt: new Date().toISOString(),
+    };
+
+    const deltaDollars = (params.counterAmountMinor / 100).toFixed(2);
+    const isPriceIncrease = params.counterAmountMinor > 0;
+    const fundingRequirement = {
+      actionNeeded: isPriceIncrease ? "PAYPAL_DELTA_AUTHORIZATION_OR_RESERVE" : "NO_PAYMENT_REQUIRED",
+      amountDeltaCents: params.counterAmountMinor,
+      formattedDelta: isPriceIncrease ? `+$${deltaDollars}` : `$${deltaDollars}`,
+    };
+
+    const seal = computeTimelineSeal(updatedPayload, conversation.agreementHash);
+
+    const updated = await prisma.workspaceMessage.update({
+      where: { id: params.messageId },
+      data: {
+        type: "draft_counteroffer_card",
+        senderId: params.responderId,
+        senderRole: (params.responderRole || "FREELANCER") as any,
+        originalContent: `Counteroffer Proposed: ${params.reasoning} (${fundingRequirement.formattedDelta}, ${params.counterDays} days)`,
+        sha256Seal: seal,
+        metadata: {
+          ...currentMetadata,
+          amendmentPayload: updatedPayload,
+          fundingRequirement,
+          status: "PENDING_ACCEPTANCE",
+          lastProposedBy: params.responderId,
+          lastProposedRole: params.responderRole,
+          counterReasoning: params.reasoning,
+          counterAmountMinor: params.counterAmountMinor,
+          counterDays: params.counterDays,
+        } as any,
+      },
+    });
+
+    await appendAuditEvent({
+      actorId: params.responderId,
+      action: "AMENDMENT_COUNTEROFFER_SUBMITTED",
+      objectType: "WORKSPACE_MESSAGE",
+      objectId: params.messageId,
+      metadata: {
+        counterAmountMinor: params.counterAmountMinor,
+        counterDays: params.counterDays,
+        reasoning: params.reasoning,
+      },
+    });
+
+    return updated;
   }
 
   /**
@@ -500,6 +593,20 @@ export class WorkspaceService {
       data: { agreementHash: newAgreementVersion },
     });
 
+    // Lookup agreement early so we can attach milestones and compute next version
+    const agreement = await prisma.agreement.findUnique({
+      where: { projectId },
+      include: {
+        versions: { orderBy: { versionNumber: "desc" }, take: 1 },
+        project: {
+          include: {
+            client: true,
+          },
+        },
+        freelancer: true,
+      },
+    });
+
     // Pathway 4A: Amending existing milestone
     if (payload.amendmentType === "AMEND_EXISTING_MILESTONE" && payload.milestoneId) {
       const milestone = await prisma.milestone.findUnique({
@@ -511,51 +618,47 @@ export class WorkspaceService {
           where: { id: milestone.id },
           data: {
             amountCents: newAmountCents,
+            amountMinor: newAmountCents,
           },
         });
       }
     }
 
     // Pathway 4B: Adding brand new milestone
+    let createdMilestoneId: string | null = null;
     if (payload.amendmentType === "ADD_NEW_MILESTONE") {
-      const activeProposal = conversation.project.projectProposals[0];
-      if (activeProposal) {
-        const highestOrder = await prisma.milestone.findFirst({
-          where: { projectId: conversation.project.id },
-          orderBy: { orderIndex: "desc" },
-        });
-        const nextOrderIndex = (highestOrder?.orderIndex || 0) + 1;
+      const highestOrder = await prisma.milestone.findFirst({
+        where: { projectId: conversation.project.id },
+        orderBy: { orderIndex: "desc" },
+      });
+      const nextOrderIndex = (highestOrder?.orderIndex || 0) + 1;
 
-        await prisma.milestone.create({
-          data: {
-            projectId: conversation.project.id,
-            agreementId: conversation.project.agreement?.id,
-            orderIndex: nextOrderIndex,
-            title: (payload.newMilestoneTitle as string) || `Milestone ${nextOrderIndex}: New Addendum Scope`,
-            deliverables: [(payload.justification as string) || "Added via bilateral scope amendment"],
-            amountCents: Number(payload.priceDeltaCents || 0),
-            amountMinor: Number(payload.priceDeltaCents || 0),
-            currency: conversation.project.currency || "USD",
-            criteria: (payload.newAcceptanceCriteria as string[]) || ["Verified implementation per agreed addendum specification"],
-          },
-        });
-      }
+      const deliverables = Array.isArray(payload.deliverables) && payload.deliverables.length > 0
+        ? (payload.deliverables as string[])
+        : [(payload.justification as string) || "Added via bilateral scope amendment"];
+
+      const criteria = Array.isArray(payload.newAcceptanceCriteria) && payload.newAcceptanceCriteria.length > 0
+        ? (payload.newAcceptanceCriteria as string[])
+        : ["Verified implementation per agreed addendum specification"];
+
+      const createdMilestone = await prisma.milestone.create({
+        data: {
+          projectId: conversation.project.id,
+          agreementId: agreement?.id || conversation.project.agreement?.id || null,
+          orderIndex: nextOrderIndex,
+          sequence: nextOrderIndex,
+          title: (payload.newMilestoneTitle as string) || `Milestone ${nextOrderIndex}: New Addendum Scope`,
+          description: (payload.justification as string) || "Added via bilateral scope amendment",
+          deliverables: deliverables,
+          amountCents: Number(payload.priceDeltaCents || 0),
+          amountMinor: Number(payload.priceDeltaCents || 0),
+          currency: conversation.project.currency || "USD",
+          workStatus: MilestoneWorkStatus.UPCOMING,
+          criteria: criteria,
+        },
+      });
+      createdMilestoneId = createdMilestone.id;
     }
-
-    // Update message card to sealed
-    const updated = await prisma.workspaceMessage.update({
-      where: { id: messageId },
-      data: {
-        type: "sent_card",
-        metadata: {
-          ...currentMetadata,
-          status: "SEALED",
-          sealedAgreementHash: newAgreementVersion,
-          sealedAt: new Date().toISOString(),
-          bothPartiesConsensus: true,
-        } as any,
-      },
-    });
 
     // Record decision in ADR subtab
     await prisma.workspaceDecision.create({
@@ -571,24 +674,16 @@ export class WorkspaceService {
       },
     });
 
-    // Synthesize amended contract version (e.g. v2.0) and save under Project Files for both parties
-    try {
-      const agreement = await prisma.agreement.findUnique({
-        where: { projectId },
-        include: {
-          versions: { orderBy: { versionNumber: "desc" }, take: 1 },
-          project: {
-            include: {
-              client: true,
-            },
-          },
-          freelancer: true,
-        },
-      });
+    // Synthesize amended contract version (e.g. v1.1) and save under Project Files for both parties
+    let nextVerNum = 2;
+    let savedFile: any = null;
+    let newVersionString = "v1.1";
 
+    try {
       if (agreement) {
         const latestVer = agreement.versions[0];
-        const nextVerNum = (latestVer?.versionNumber || 1) + 1;
+        nextVerNum = (latestVer?.versionNumber || 1) + 1;
+        newVersionString = nextVerNum === 1 ? "v1.0" : `v1.${nextVerNum - 1}`;
 
         const updatedMilestones = await prisma.milestone.findMany({
           where: { projectId, removedAt: null },
@@ -623,7 +718,7 @@ export class WorkspaceService {
           amendmentNotes: amendmentNote,
         });
 
-        const savedFile = await saveContractAsProjectFile(prisma, {
+        savedFile = await saveContractAsProjectFile(prisma, {
           projectId,
           agreementId: agreement.id,
           versionNumber: nextVerNum,
@@ -680,6 +775,42 @@ export class WorkspaceService {
     } catch (contractErr) {
       console.warn("Failed to generate amended contract version:", contractErr);
     }
+
+    // Update message card to amendment_sealed_card with full consensus metadata
+    const updated = await prisma.workspaceMessage.update({
+      where: { id: messageId },
+      data: {
+        type: "amendment_sealed_card",
+        metadata: {
+          ...currentMetadata,
+          status: "SEALED",
+          sealedAgreementHash: newAgreementVersion,
+          sealedAt: new Date().toISOString(),
+          bothPartiesConsensus: true,
+          acceptedByUserId: responderId,
+          newVersionString,
+          newMilestoneId: createdMilestoneId,
+          finalAmountMinor: Number(payload.priceDeltaCents || 0),
+          finalTimelineDays: Number(payload.timelineDaysDelta || 0),
+          milestoneTitle: (payload.newMilestoneTitle as string) || "New Scope Milestone",
+          contractFileId: savedFile?.file?.id,
+          contractProjectFileId: savedFile?.projectFile?.id,
+        } as any,
+      },
+    });
+
+    await appendAuditEvent({
+      actorId: responderId,
+      action: "SCOPE_AMENDMENT_SEALED",
+      objectType: "WORKSPACE_MESSAGE",
+      objectId: messageId,
+      metadata: {
+        newAgreementVersion,
+        newVersionString,
+        priceDeltaCents: payload.priceDeltaCents,
+        newMilestoneId: createdMilestoneId,
+      },
+    });
 
     return {
       success: true,

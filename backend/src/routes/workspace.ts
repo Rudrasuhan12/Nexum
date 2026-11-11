@@ -306,7 +306,8 @@ router.get("/projects", async (req: Request, res: Response) => {
         agreement: {
           include: {
             freelancer: { select: { id: true, name: true, email: true, timezone: true } },
-            milestones: { orderBy: { orderIndex: "asc" } },
+            milestones: { where: { removedAt: null }, orderBy: { orderIndex: "asc" } },
+            versions: { orderBy: { versionNumber: "desc" }, take: 1 },
           },
         },
         projectProposals: {
@@ -363,7 +364,13 @@ router.get("/projects", async (req: Request, res: Response) => {
           budget: '$' + (p.budgetCents / 100).toLocaleString(),
           duration: p.deadline ? (Math.max(1, Math.round((new Date(p.deadline).getTime() - new Date(p.createdAt).getTime()) / (7 * 24 * 3600 * 1000))) + ' weeks') : 'Flexible',
           startDate: new Date(p.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
-          agreementVersion: 'v' + ((activeProposal as any)?.version || 1),
+          agreementVersion: (() => {
+            const latestVer = p.agreement?.versions?.[0];
+            if (latestVer?.versionNumber) {
+              return latestVer.versionNumber === 1 ? 'v1.0' : `v1.${latestVer.versionNumber - 1}`;
+            }
+            return 'v' + ((activeProposal as any)?.version || 1);
+          })(),
           unreadCount: 0,
           lastMessagePreview: lastMsg?.mediatedContent || lastMsg?.originalContent || 'Workspace ready for collaboration',
           lastActivityTime: lastMsg ? new Date(lastMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Active',
@@ -836,40 +843,81 @@ router.post(
 );
 
 /**
+ * POST /api/workspace/projects/:projectId/amendments/suggest-price
+ * Forensic price & complexity estimation for new milestone addendums.
+ */
+router.post("/projects/:projectId/amendments/suggest-price", async (req: Request, res: Response) => {
+  try {
+    const { title, deliverables, documentText } = req.body;
+    if (!title || typeof title !== "string") {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Title is required for price suggestion",
+          details: null,
+        },
+      });
+    }
+
+    const suggestion = await groqService.suggestAddendumPrice({
+      title: title.trim(),
+      deliverables: typeof deliverables === "string" ? deliverables : undefined,
+      documentText: typeof documentText === "string" ? documentText : undefined,
+    });
+
+    res.json({
+      success: true,
+      data: suggestion,
+    });
+  } catch (err) {
+    console.error("Suggest addendum price error:", err);
+    res.status(500).json({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: err instanceof Error ? err.message : "Failed to generate price suggestion",
+        details: null,
+      },
+    });
+  }
+});
+
+const proposeAmendmentSchema = z.object({
+  proposerId: z.string().min(1, "Proposer ID is required"),
+  proposerRole: z.enum(["CLIENT", "FREELANCER"]).optional(),
+  amendmentType: z.enum(["AMEND_EXISTING_MILESTONE", "ADD_NEW_MILESTONE", "ZERO_COST_TWEAK"]).default("ADD_NEW_MILESTONE"),
+  milestoneId: z.string().optional(),
+  newMilestoneTitle: z.string().optional(),
+  priceDeltaCents: z.number().int().nonnegative().default(0),
+  timelineDaysDelta: z.number().int().nonnegative().default(0),
+  newAcceptanceCriteria: z.array(z.string()).default([]),
+  deliverables: z.array(z.string()).optional(),
+  justification: z.string().min(1, "Justification is required"),
+  brdDocumentUrl: z.string().optional(),
+  brdDocumentName: z.string().optional(),
+});
+
+/**
  * POST /api/workspace/projects/:projectId/amendments/propose
  * Proposes a formal scope amendment (Existing milestone delta or new milestone).
  */
 router.post("/projects/:projectId/amendments/propose", async (req: Request, res: Response) => {
   try {
     const { projectId } = req.params;
-    const {
-      proposerId,
-      amendmentType,
-      milestoneId,
-      newMilestoneTitle,
-      priceDeltaCents,
-      timelineDaysDelta,
-      newAcceptanceCriteria,
-      justification,
-    } = req.body;
+    const parsed = proposeAmendmentSchema.safeParse(req.body);
 
-    if (!proposerId || !justification) {
+    if (!parsed.success) {
       return res.status(400).json({
-        success: false,
-        error: "proposerId and justification are required",
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid proposal payload",
+          details: parsed.error.flatten(),
+        },
       });
     }
 
     const card = await workspaceService.proposeScopeAmendment({
       projectId,
-      proposerId,
-      amendmentType: amendmentType || "AMEND_EXISTING_MILESTONE",
-      milestoneId,
-      newMilestoneTitle,
-      priceDeltaCents: Number(priceDeltaCents || 0),
-      timelineDaysDelta: Number(timelineDaysDelta || 0),
-      newAcceptanceCriteria: newAcceptanceCriteria || [],
-      justification,
+      ...parsed.data,
     });
 
     res.status(201).json({
@@ -879,10 +927,67 @@ router.post("/projects/:projectId/amendments/propose", async (req: Request, res:
   } catch (err) {
     console.error("Propose scope amendment error:", err);
     res.status(500).json({
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to propose amendment",
+      error: {
+        code: "INTERNAL_ERROR",
+        message: err instanceof Error ? err.message : "Failed to propose amendment",
+        details: null,
+      },
     });
   }
+});
+
+const counterAmendmentSchema = z.object({
+  responderId: z.string().min(1, "Responder ID is required"),
+  responderRole: z.enum(["CLIENT", "FREELANCER"]).default("FREELANCER"),
+  counterAmountMinor: z.number().int().positive("Counter amount must be positive"),
+  counterDays: z.number().int().positive("Counter delivery days must be positive"),
+  reasoning: z.string().min(1, "Reasoning is required for counteroffer"),
+});
+
+/**
+ * POST /api/workspace/projects/:projectId/amendments/:messageId/counter
+ * Submits a counteroffer for a pending scope amendment.
+ */
+router.post("/projects/:projectId/amendments/:messageId/counter", async (req: Request, res: Response) => {
+  try {
+    const { projectId, messageId } = req.params;
+    const parsed = counterAmendmentSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid counteroffer payload",
+          details: parsed.error.flatten(),
+        },
+      });
+    }
+
+    const updated = await workspaceService.counterScopeAmendment({
+      projectId,
+      messageId,
+      ...parsed.data,
+    });
+
+    res.json({
+      success: true,
+      data: updated,
+    });
+  } catch (err) {
+    console.error("Counter scope amendment error:", err);
+    res.status(500).json({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: err instanceof Error ? err.message : "Failed to submit counteroffer",
+        details: null,
+      },
+    });
+  }
+});
+
+const respondAmendmentSchema = z.object({
+  responderId: z.string().min(1, "Responder ID is required"),
+  action: z.enum(["ACCEPT", "DECLINE"]),
 });
 
 /**
@@ -892,16 +997,24 @@ router.post("/projects/:projectId/amendments/propose", async (req: Request, res:
 router.post("/projects/:projectId/amendments/:messageId/respond", async (req: Request, res: Response) => {
   try {
     const { projectId, messageId } = req.params;
-    const { responderId, action } = req.body;
+    const parsed = respondAmendmentSchema.safeParse(req.body);
 
-    if (!responderId || !["ACCEPT", "DECLINE"].includes(action)) {
+    if (!parsed.success) {
       return res.status(400).json({
-        success: false,
-        error: "responderId and action ('ACCEPT' | 'DECLINE') are required",
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid response payload",
+          details: parsed.error.flatten(),
+        },
       });
     }
 
-    const result = await workspaceService.respondToScopeAmendment(projectId, messageId, responderId, action);
+    const result = await workspaceService.respondToScopeAmendment(
+      projectId,
+      messageId,
+      parsed.data.responderId,
+      parsed.data.action
+    );
     res.json({
       success: true,
       data: result,
@@ -909,8 +1022,11 @@ router.post("/projects/:projectId/amendments/:messageId/respond", async (req: Re
   } catch (err) {
     console.error("Respond to scope amendment error:", err);
     res.status(500).json({
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to respond to amendment",
+      error: {
+        code: "INTERNAL_ERROR",
+        message: err instanceof Error ? err.message : "Failed to respond to amendment",
+        details: null,
+      },
     });
   }
 });

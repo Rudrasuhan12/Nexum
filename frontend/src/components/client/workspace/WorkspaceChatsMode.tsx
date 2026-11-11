@@ -31,6 +31,7 @@ import {
   Layers,
   Package,
   Download,
+  Scale,
 } from "lucide-react";
 import {
   WorkspaceProject,
@@ -70,6 +71,8 @@ import ProjectHandoverBanner from "@/components/handover/ProjectHandoverBanner";
 import ProjectHandoverModal from "@/components/handover/ProjectHandoverModal";
 import HandoverChecklistView from "@/components/handover/HandoverChecklistView";
 import BilateralContractModal from "@/components/workspace/BilateralContractModal";
+import MilestoneAddendumModal from "@/components/workspace/MilestoneAddendumModal";
+import CounterofferModal from "@/components/workspace/CounterofferModal";
 import { parseMeetingSlot, formatDualTimezoneSlot, formatInTimezone } from "@/lib/timezone-utils";
 
 interface WorkspaceChatsModeProps {
@@ -164,6 +167,13 @@ export default function WorkspaceChatsMode({
   const [isPostponeMilestoneModalOpen, setIsPostponeMilestoneModalOpen] = useState(false);
   const [selectedMilestoneForPostpone, setSelectedMilestoneForPostpone] = useState<any>(null);
   const [reviewVersionTarget, setReviewVersionTarget] = useState("Version 4");
+
+  // Milestone Addendum & Counteroffer Modal States
+  const [isAddendumModalOpen, setIsAddendumModalOpen] = useState(false);
+  const [addendumInitialTitle, setAddendumInitialTitle] = useState("");
+  const [addendumInitialDesc, setAddendumInitialDesc] = useState("");
+  const [isCounterofferModalOpen, setIsCounterofferModalOpen] = useState(false);
+  const [counterTargetCard, setCounterTargetCard] = useState<any>(null);
 
   const timelineEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1477,78 +1487,220 @@ export default function WorkspaceChatsMode({
                   );
                 }
 
-                // CARD TYPE C: Draft counteroffer mediation card
+                // CARD TYPE C: Scope Amendment Proposal & Counteroffer Card
                 if (item.type === "draft_counteroffer_card") {
+                  const meta = (item as any).metadata || {};
+                  const payload = meta.amendmentPayload || {};
+                  const isAmendedMilestone = Boolean(payload.newMilestoneTitle || payload.justification);
+                  const isProposer = meta.lastProposedRole === "CLIENT" || meta.lastProposedBy === user?.id;
+
+                  const budgetDelta = payload.priceDeltaCents || meta.counterAmountMinor || 0;
+                  const daysDelta = payload.timelineDaysDelta || meta.counterDays || 0;
+                  const displayTitle = payload.newMilestoneTitle || meta.counterofferDetails?.title || "Milestone Addendum Proposal";
+
                   return (
                     <div
                       key={item.id}
-                      className="p-5 rounded-2xl border border-slate-200/80 bg-white shadow-xs space-y-3.5 animate-in fade-in duration-200"
+                      className="p-5 rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50/50 via-white to-amber-50/20 shadow-xs space-y-3.5 animate-in fade-in duration-200"
                     >
                       <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-1.5 font-bold text-slate-800">
-                          <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>Nexum AI · {item.timestamp}</span>
+                        <span className="flex items-center gap-1.5 font-bold text-amber-950">
+                          <Scale className="w-4 h-4 text-amber-600" />
+                          <span>Nexum Bilateral Negotiation · Scope Addendum</span>
                         </span>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                          {item.badgeText}
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 uppercase tracking-wider">
+                          {meta.counterReasoning ? "Counteroffer Active" : "Pending Consensus"}
                         </span>
                       </div>
 
-                      <p className="text-xs sm:text-[13px] text-slate-700 leading-relaxed">
-                        {item.summaryText}
-                      </p>
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-slate-900">{displayTitle}</h4>
+                        <p className="text-xs text-slate-700 leading-relaxed font-sans">
+                          {payload.justification || item.summaryText || item.bubbleText}
+                        </p>
+                      </div>
 
-                      {/* Counteroffer Spec Box */}
-                      {item.counterofferDetails && (
-                        <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 space-y-2 text-xs">
-                          <div className="flex justify-between py-0.5 border-b border-slate-100">
-                            <span className="text-slate-400">Counteroffer</span>
-                            <span className="font-bold text-slate-900">{item.counterofferDetails.title}</span>
+                      {/* Financial & Schedule Delta Metrics */}
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="p-2.5 rounded-xl bg-white border border-amber-200 shadow-2xs">
+                          <div className="text-[10px] text-slate-400 uppercase font-bold">Escrow Budget</div>
+                          <div className="text-sm font-bold text-emerald-700 mt-0.5">
+                            +${(budgetDelta / 100).toLocaleString()} USD
                           </div>
-                          <div className="flex justify-between py-0.5 border-b border-slate-100">
-                            <span className="text-slate-400">Price change</span>
-                            <span className="font-bold text-indigo-600">{item.counterofferDetails.priceChange}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white border border-amber-200 shadow-2xs">
+                          <div className="text-[10px] text-slate-400 uppercase font-bold">Timeline</div>
+                          <div className="text-sm font-bold text-slate-800 mt-0.5">
+                            +{daysDelta} Days
                           </div>
-                          <div className="flex justify-between py-0.5 border-b border-slate-100">
-                            <span className="text-slate-400">Schedule</span>
-                            <span className="text-slate-800 font-medium">{item.counterofferDetails.schedule}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white border border-amber-200 shadow-2xs">
+                          <div className="text-[10px] text-slate-400 uppercase font-bold">Target Agreement</div>
+                          <div className="text-sm font-bold text-indigo-700 mt-0.5">
+                            v1.1 Revision
                           </div>
-                          <div className="flex justify-between py-0.5">
-                            <span className="text-slate-400">Expires</span>
-                            <span className="text-slate-800 font-mono">{item.counterofferDetails.expires}</span>
+                        </div>
+                      </div>
+
+                      {/* Counteroffer Rationale (if countered) */}
+                      {meta.counterReasoning && (
+                        <div className="p-3 rounded-xl bg-amber-100/60 border border-amber-200 text-xs text-amber-950 space-y-1">
+                          <div className="font-bold flex items-center gap-1.5">
+                            <MessageSquare className="w-3.5 h-3.5 text-amber-700" />
+                            <span>Counteroffer Rationale:</span>
                           </div>
+                          <p className="leading-relaxed">&ldquo;{meta.counterReasoning}&rdquo;</p>
                         </div>
                       )}
 
-                      {/* Actions */}
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        {item.actions?.primaryLabel && (
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteCardAction(item, item.actions?.primaryAction)}
-                            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                      {/* BRD Document attachment (if uploaded) */}
+                      {payload.brdDocumentUrl && (
+                        <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                          <span className="flex items-center gap-1.5 text-slate-700 font-medium">
+                            <FileText className="w-3.5 h-3.5 text-purple-600" />
+                            <span>Attached Spec: {payload.brdDocumentName || "BRD Document"}</span>
+                          </span>
+                          <a
+                            href={payload.brdDocumentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-purple-600 font-bold hover:underline"
                           >
-                            {item.actions.primaryLabel}
-                          </button>
+                            View Document →
+                          </a>
+                        </div>
+                      )}
+
+                      {/* Actions: Accept, Counteroffer, Decline */}
+                      <div className="pt-1 border-t border-amber-100 flex flex-wrap items-center justify-between gap-2">
+                        {!isProposer ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                showToast("Accepting scope amendment and sealing Agreement v1.1...");
+                                const res = await respondToScopeAmendment(selectedProjectId, item.id, {
+                                  responderId: user?.id || "usr_client_alex",
+                                  action: "ACCEPT",
+                                });
+                                if (res.success) {
+                                  showToast("Consensus reached! Agreement v1.1 is now canonical and sealed.");
+                                  setRefreshTrigger((n) => n + 1);
+                                } else {
+                                  showToast(res.error || "Failed to accept amendment");
+                                }
+                              }}
+                              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Accept & Seal Agreement (v1.1)</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCounterTargetCard(item);
+                                setIsCounterofferModalOpen(true);
+                              }}
+                              className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Scale className="w-3.5 h-3.5" />
+                              <span>Counteroffer with Reasoning</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                showToast("Declining amendment proposal...");
+                                const res = await respondToScopeAmendment(selectedProjectId, item.id, {
+                                  responderId: user?.id || "usr_client_alex",
+                                  action: "DECLINE",
+                                });
+                                if (res.success) {
+                                  showToast("Amendment proposal declined.");
+                                  setRefreshTrigger((n) => n + 1);
+                                } else {
+                                  showToast(res.error || "Failed to decline");
+                                }
+                              }}
+                              className="px-3 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold transition cursor-pointer"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-amber-800 font-medium flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-amber-600" />
+                            <span>
+                              Delivered to {selectedProject?.freelancerName || "counterpart"}. Awaiting mutual consensus or counteroffer.
+                            </span>
+                          </div>
                         )}
-                        {item.actions?.secondaryLabel && (
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteCardAction(item, item.actions?.secondaryAction)}
-                            className="px-3.5 py-2 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer shadow-2xs"
-                          >
-                            {item.actions.secondaryLabel}
-                          </button>
-                        )}
-                        {item.actions?.tertiaryLabel && (
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteCardAction(item, item.actions?.tertiaryAction)}
-                            className="text-xs font-semibold text-slate-600 hover:text-slate-900 hover:underline cursor-pointer pl-1 transition"
-                          >
-                            {item.actions.tertiaryLabel}
-                          </button>
-                        )}
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          SHA-256 Consensus Enforced
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // CARD TYPE C1: Sealed Amendment Agreement v1.1
+                if (item.type === "amendment_sealed_card") {
+                  const meta = (item as any).metadata || {};
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-5 rounded-2xl border-2 border-emerald-300 bg-gradient-to-br from-emerald-50/70 via-white to-indigo-50/30 shadow-xs space-y-3.5 animate-in fade-in duration-200"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="flex items-center gap-1.5 font-bold text-emerald-950">
+                          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                          <span>Nexum Canonical Agreement Seal · Ratified</span>
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          {meta.newVersionString || "v1.1"} ACTIVE
+                        </span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-slate-900">
+                          {meta.milestoneTitle || "Cumulative Scope Milestone"} Sealed
+                        </h4>
+                        <p className="text-xs text-slate-700 leading-relaxed font-sans">
+                          Both client and freelancer agreed and ratified this scope addendum. Milestone #4 has been added to the active project timeline, and the revised legal contract has been archived under Project Files.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="p-2.5 rounded-xl bg-white border border-emerald-200 shadow-2xs">
+                          <div className="text-[10px] text-slate-400 uppercase font-bold">Escrow Budget</div>
+                          <div className="text-sm font-bold text-emerald-700 mt-0.5">
+                            +${((meta.finalAmountMinor || 0) / 100).toLocaleString()} USD
+                          </div>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white border border-emerald-200 shadow-2xs">
+                          <div className="text-[10px] text-slate-400 uppercase font-bold">Delivery Delta</div>
+                          <div className="text-sm font-bold text-slate-800 mt-0.5">
+                            +{meta.finalTimelineDays || 0} Days
+                          </div>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white border border-emerald-200 shadow-2xs">
+                          <div className="text-[10px] text-slate-400 uppercase font-bold">Agreement Hash</div>
+                          <div className="text-xs font-mono font-bold text-indigo-700 mt-0.5 truncate">
+                            {String(meta.sealedAgreementHash || "canonical_v1.1").slice(0, 16)}...
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-1 flex items-center justify-between text-xs border-t border-emerald-100">
+                        <span className="text-[10px] text-slate-400">
+                          Sealed at {meta.sealedAt ? new Date(meta.sealedAt).toLocaleTimeString() : item.timestamp}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("files")}
+                          className="text-emerald-700 font-bold hover:underline cursor-pointer"
+                        >
+                          View Revised Contract in Files →
+                        </button>
                       </div>
                     </div>
                   );
@@ -1827,22 +1979,71 @@ export default function WorkspaceChatsMode({
                       )}
 
                       {Array.isArray(meta.decisions) && meta.decisions.length > 0 && (
-                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5 text-xs">
-                          <div className="font-bold text-slate-800 text-[11px] uppercase tracking-wider">
-                            Agreed Consensus Decisions (ADRs):
+                        <div className="p-3.5 rounded-xl bg-purple-50/50 border border-purple-200/80 space-y-2.5 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-purple-950 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                              <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                              <span>Agreed Consensus Decisions & Add-ons (ADRs):</span>
+                            </span>
+                            <span className="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full font-bold">
+                              {meta.decisions.length} Agreed Scope {meta.decisions.length === 1 ? "Item" : "Items"}
+                            </span>
                           </div>
-                          <ul className="space-y-1 text-slate-700">
+                          <ul className="space-y-2 text-slate-700">
                             {meta.decisions.map((dec: any, idx: number) => (
-                              <li key={idx} className="flex items-start gap-1.5">
-                                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0 mt-0.5" />
-                                <span>
-                                  <strong>{dec.title}:</strong> {dec.description}
-                                </span>
+                              <li key={idx} className="p-2.5 rounded-xl bg-white border border-purple-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                                <div className="space-y-0.5">
+                                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                    <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                                    <span>{dec.title}</span>
+                                  </div>
+                                  <div className="text-slate-600 text-[11px] leading-relaxed">
+                                    {dec.description}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAddendumInitialTitle(dec.title || "Agreed Scope Addendum");
+                                    setAddendumInitialDesc(dec.description || "");
+                                    setIsAddendumModalOpen(true);
+                                  }}
+                                  className="self-end sm:self-center px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>+ Formalize as Milestone Addendum</span>
+                                </button>
                               </li>
                             ))}
                           </ul>
                         </div>
                       )}
+
+                      {/* Cumulative Milestone Formalization Trigger */}
+                      <div className="p-3 rounded-xl bg-gradient-to-r from-purple-100/60 via-indigo-50 to-white border border-purple-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="space-y-0.5">
+                          <div className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
+                            <Layers className="w-3.5 h-3.5 text-purple-600" />
+                            <span>Cumulative Milestone Negotiation Engine</span>
+                          </div>
+                          <div className="text-[11px] text-purple-800/80">
+                            Create a new milestone with BRD specs, AI price suggestions, and bilateral negotiation towards Agreement v1.1.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const firstDec = meta.decisions?.[0];
+                            setAddendumInitialTitle(firstDec?.title || meta.title || "Add New Milestone Addendum");
+                            setAddendumInitialDesc(firstDec?.description || meta.executiveSummary || "");
+                            setIsAddendumModalOpen(true);
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Formalize Scope Addendum</span>
+                        </button>
+                      </div>
 
                       <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
                         <span>Dual SHA-256 Verified · Synchronized to Kanban Tasks & Decisions</span>
@@ -3878,6 +4079,56 @@ export default function WorkspaceChatsMode({
       showToast("Bilateral agreement ratified! Escrow deposit initiated.");
     }}
   />
+
+  {/* Milestone Addendum Creation Modal */}
+  <MilestoneAddendumModal
+    isOpen={isAddendumModalOpen}
+    onClose={() => {
+      setIsAddendumModalOpen(false);
+      setAddendumInitialTitle("");
+      setAddendumInitialDesc("");
+    }}
+    projectId={selectedProjectId}
+    initialTitle={addendumInitialTitle}
+    initialDescription={addendumInitialDesc}
+    userRole="CLIENT"
+    userId={user?.id || "usr_client_alex"}
+    currency="USD"
+    onSuccess={() => setRefreshTrigger((n) => n + 1)}
+    showToast={showToast}
+  />
+
+  {/* Counteroffer Proposal Modal */}
+  {counterTargetCard && (
+    <CounterofferModal
+      isOpen={isCounterofferModalOpen}
+      onClose={() => {
+        setIsCounterofferModalOpen(false);
+        setCounterTargetCard(null);
+      }}
+      projectId={selectedProjectId}
+      messageId={counterTargetCard.id}
+      currentAmountMinor={
+        counterTargetCard.metadata?.amendmentPayload?.priceDeltaCents ||
+        counterTargetCard.metadata?.counterAmountMinor ||
+        150000
+      }
+      currentDays={
+        counterTargetCard.metadata?.amendmentPayload?.timelineDaysDelta ||
+        counterTargetCard.metadata?.counterDays ||
+        14
+      }
+      currentTitle={
+        counterTargetCard.metadata?.amendmentPayload?.newMilestoneTitle ||
+        "Milestone Addendum"
+      }
+      responderId={user?.id || "usr_client_alex"}
+      responderRole="CLIENT"
+      currency="USD"
+      onSuccess={() => setRefreshTrigger((n) => n + 1)}
+      showToast={showToast}
+    />
+  )}
 
   {/* Toast Notification */}
       {toastMessage && (
