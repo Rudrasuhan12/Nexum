@@ -31,7 +31,7 @@ import {
 import DashboardSidebar from "@/components/DashboardSidebar";
 import DashboardTopHeader from "@/components/DashboardTopHeader";
 import { useAuth } from "@/context/AuthContext";
-import { fetchProjectById, saveProject } from "@/lib/api-client";
+import { fetchProjectById, saveProject, fetchClientFreelancers } from "@/lib/api-client";
 import UserAvatar from "@/components/UserAvatar";
 
 const PROJECT_CATEGORIES: Record<string, string[]> = {
@@ -148,6 +148,41 @@ function PostNewProjectContent() {
 
   // Wizard Step: 1: Details, 2: Requirements, 3: Budget & Timeline, 4: Preferences, 5: Review & Publish
   const [currentStep, setCurrentStep] = useState(1);
+
+  // Dynamic matching talent fetched from backend database
+  const [dynamicMatchingFreelancers, setDynamicMatchingFreelancers] = useState<Array<{
+    name: string;
+    role: string;
+    rating: string;
+    rate: string;
+    avatar: string;
+  }>>([]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadTalent() {
+      try {
+        const res = await fetchClientFreelancers({ limit: 4 });
+        if (active && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          setDynamicMatchingFreelancers(
+            res.data.map((f: any) => ({
+              name: f.name || "Freelancer",
+              role: f.title || f.role || "Verified Specialist",
+              rating: typeof f.rating === "number" ? f.rating.toFixed(1) : String(f.rating || "5.0"),
+              rate: f.hourlyRate ? `$${f.hourlyRate}/hr` : (f.rate || "$60/hr"),
+              avatar: f.avatar || f.avatarUrl || "",
+            }))
+          );
+        }
+      } catch {
+        // Fallback to preview array
+      }
+    }
+    loadTalent();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Step 1: Project Details (Clean un-mocked baseline)
   const [title, setTitle] = useState("");
@@ -2762,55 +2797,58 @@ function PostNewProjectContent() {
               )}
 
               {/* Contextual Card 2: Matching Talent Preview (Shown on Step 2 & 4) */}
-              {(currentStep === 2 || currentStep === 4) && (
-                <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3 animate-in fade-in duration-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-900">Matching Freelancers</h3>
-                      <p className="text-[10.5px] text-slate-400">{MATCHING_FREELANCERS_PREVIEW.length} verified candidates available</p>
-                    </div>
-                    <Link
-                      href="/client/freelancers"
-                      className="text-[11px] font-bold text-[#4f46e5] hover:underline"
-                    >
-                      View All
-                    </Link>
-                  </div>
-
-                  <div className="space-y-2.5">
-                    {MATCHING_FREELANCERS_PREVIEW.map((freelancer) => (
-                      <div
-                        key={freelancer.name}
-                        className="p-2.5 rounded-xl border border-slate-100 hover:border-slate-200 bg-slate-50/50 flex items-center justify-between gap-2.5 transition"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <UserAvatar
-                            name={freelancer.name}
-                            avatarUrl={freelancer.avatar}
-                            size="sm"
-                            className="rounded-full"
-                          />
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-900 truncate">
-                              {freelancer.name}
-                            </p>
-                            <p className="text-[10.5px] text-slate-500 truncate">
-                              ★ {freelancer.rating} · {freelancer.rate}
-                            </p>
-                          </div>
-                        </div>
-
-                        <Link
-                          href="/client/freelancers"
-                          className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-[#4f46e5] font-bold text-[10px] shrink-0 hover:bg-[#eef2ff]"
-                        >
-                          Profile
-                        </Link>
+              {(currentStep === 2 || currentStep === 4) && (() => {
+                const candidates = dynamicMatchingFreelancers.length > 0 ? dynamicMatchingFreelancers : MATCHING_FREELANCERS_PREVIEW;
+                return (
+                  <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-900">Matching Freelancers</h3>
+                        <p className="text-[10.5px] text-slate-400">{candidates.length} verified candidates available</p>
                       </div>
-                    ))}
+                      <Link
+                        href="/client/freelancers"
+                        className="text-[11px] font-bold text-[#4f46e5] hover:underline"
+                      >
+                        View All
+                      </Link>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {candidates.map((freelancer) => (
+                        <div
+                          key={freelancer.name}
+                          className="p-2.5 rounded-xl border border-slate-100 hover:border-slate-200 bg-slate-50/50 flex items-center justify-between gap-2.5 transition"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <UserAvatar
+                              name={freelancer.name}
+                              avatarUrl={freelancer.avatar}
+                              size="sm"
+                              className="rounded-full"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 truncate">
+                                {freelancer.name}
+                              </p>
+                              <p className="text-[10.5px] text-slate-500 truncate">
+                                ★ {freelancer.rating} · {freelancer.rate}
+                              </p>
+                            </div>
+                          </div>
+
+                          <Link
+                            href="/client/freelancers"
+                            className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-[#4f46e5] font-bold text-[10px] shrink-0 hover:bg-[#eef2ff]"
+                          >
+                            Profile
+                          </Link>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Contextual Card 3: Escrow & Budget Protection (Shown on Step 3) */}
               {currentStep === 3 && (
