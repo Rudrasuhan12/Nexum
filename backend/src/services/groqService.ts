@@ -21,6 +21,13 @@ export interface GroqMeetingSynthesisResult {
   };
 }
 
+export interface AddendumPriceSuggestion {
+  suggestedAmountMinor: number;
+  suggestedTimelineDays: number;
+  complexity: "LOW" | "MEDIUM" | "HIGH" | "COMPLEX";
+  reasoning: string;
+}
+
 export class GroqService {
   private apiKey: string | undefined;
 
@@ -194,6 +201,121 @@ Detect any verbal scope creep: if either party agreed to add features or change 
     } catch {
       return "🤖 *Nexum AI*: Copilot is currently active and guarding project state.";
     }
+  }
+
+  /**
+   * Forensic Price & Complexity Estimation for New Milestone Addendums
+   */
+  async suggestAddendumPrice(input: {
+    title: string;
+    deliverables?: string;
+    documentText?: string;
+  }): Promise<AddendumPriceSuggestion> {
+    const combinedContext = `Milestone Title: ${input.title}\nDeliverables & Specs:\n${input.deliverables || "Standard software feature deliverable"}\n${input.documentText ? `BRD Specifications:\n${input.documentText.slice(0, 3000)}` : ""}`;
+
+    if (!this.apiKey) {
+      return this.deterministicPriceFallback(input.title, input.deliverables);
+    }
+
+    const systemPrompt = `You are the Nexum Protocol Scope & Pricing Forensics Engine.
+Analyze the proposed milestone title, deliverables, and specifications for a custom software contract.
+Estimate a fair, realistic escrow budget in integer minor units (US cents, e.g. 200000 = $2,000.00 USD) and realistic delivery timeline in calendar days.
+Output strictly valid JSON with this exact schema:
+{
+  "suggestedAmountMinor": 200000,
+  "suggestedTimelineDays": 14,
+  "complexity": "LOW" | "MEDIUM" | "HIGH" | "COMPLEX",
+  "reasoning": "2-3 concise sentences detailing technical complexity, architectural requirements, test coverage, and cost rationale."
+}`;
+
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: combinedContext },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+          max_tokens: 500,
+        }),
+      });
+
+      if (!response.ok) {
+        return this.deterministicPriceFallback(input.title, input.deliverables);
+      }
+
+      const json = (await response.json()) as any;
+      const content = json.choices?.[0]?.message?.content;
+      if (!content) return this.deterministicPriceFallback(input.title, input.deliverables);
+
+      const parsed = JSON.parse(content);
+      const amount = typeof parsed.suggestedAmountMinor === "number" && parsed.suggestedAmountMinor > 0
+        ? Math.round(parsed.suggestedAmountMinor)
+        : 200000;
+      const days = typeof parsed.suggestedTimelineDays === "number" && parsed.suggestedTimelineDays > 0
+        ? Math.round(parsed.suggestedTimelineDays)
+        : 14;
+      const complexity = ["LOW", "MEDIUM", "HIGH", "COMPLEX"].includes(parsed.complexity)
+        ? parsed.complexity
+        : "MEDIUM";
+      const reasoning = parsed.reasoning || `Estimated based on technical scope and delivery requirements for ${input.title}.`;
+
+      return {
+        suggestedAmountMinor: amount,
+        suggestedTimelineDays: days,
+        complexity,
+        reasoning,
+      };
+    } catch (err) {
+      console.warn("[GroqService] suggestAddendumPrice fallback:", err);
+      return this.deterministicPriceFallback(input.title, input.deliverables);
+    }
+  }
+
+  private deterministicPriceFallback(title: string, deliverables?: string): AddendumPriceSuggestion {
+    const text = `${title} ${deliverables || ""}`.toLowerCase();
+    const isAi = /ai|machine learning|predict|model|deep learning|vision|hazard|earthquake|flood/i.test(text);
+    const isComplex = /blockchain|smart contract|crypto|compliance|pci|security|payment gateway/i.test(text);
+    const isSimple = /ui tweak|css|button|landing page|copy|banner|favicon/i.test(text);
+
+    if (isAi) {
+      return {
+        suggestedAmountMinor: 200000,
+        suggestedTimelineDays: 14,
+        complexity: "HIGH",
+        reasoning: "AI and hazard prediction engines require data preprocessing, geospatial/timeseries inference algorithms, and robust edge-case validation.",
+      };
+    }
+    if (isComplex) {
+      return {
+        suggestedAmountMinor: 250000,
+        suggestedTimelineDays: 18,
+        complexity: "COMPLEX",
+        reasoning: "Financial, gateway, or high-security integrations require comprehensive idempotency testing, dual-signature consensus, and security auditing.",
+      };
+    }
+    if (isSimple) {
+      return {
+        suggestedAmountMinor: 50000,
+        suggestedTimelineDays: 5,
+        complexity: "LOW",
+        reasoning: "Straightforward frontend interface modification with minimal architectural overhead and standard component verification.",
+      };
+    }
+
+    return {
+      suggestedAmountMinor: 150000,
+      suggestedTimelineDays: 10,
+      complexity: "MEDIUM",
+      reasoning: "Full-stack feature delivery encompassing API routes, database schema extensions, and authenticated UI view rendering.",
+    };
   }
 
   private deterministicFallback(transcript: string): GroqMeetingSynthesisResult {

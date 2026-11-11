@@ -4478,17 +4478,61 @@ export async function sendWorkspaceMessage(
 /**
  * Propose a scope amendment (Existing milestone delta or new milestone)
  */
+/**
+ * Ask Nexum AI to suggest price, delivery timeline, and technical complexity for a proposed milestone addendum
+ */
+export async function suggestAddendumPrice(
+  projectId: string,
+  payload: {
+    title: string;
+    deliverables?: string;
+    documentText?: string;
+  }
+): Promise<{
+  success: boolean;
+  data?: {
+    suggestedAmountMinor: number;
+    suggestedTimelineDays: number;
+    complexity: "LOW" | "MEDIUM" | "HIGH" | "COMPLEX";
+    reasoning: string;
+  };
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/workspace/projects/${projectId}/amendments/suggest-price`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || json.error || "Failed to generate price suggestion" };
+    }
+    return json;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to suggest price";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Propose a formal scope amendment (Existing milestone delta or new milestone addendum)
+ */
 export async function proposeScopeAmendment(
   projectId: string,
   payload: {
     proposerId: string;
+    proposerRole?: "CLIENT" | "FREELANCER";
     amendmentType: "AMEND_EXISTING_MILESTONE" | "ADD_NEW_MILESTONE" | "ZERO_COST_TWEAK";
     milestoneId?: string;
     newMilestoneTitle?: string;
     priceDeltaCents: number;
     timelineDaysDelta: number;
     newAcceptanceCriteria: string[];
+    deliverables?: string[];
     justification: string;
+    brdDocumentUrl?: string;
+    brdDocumentName?: string;
   }
 ): Promise<{
   success: boolean;
@@ -4501,9 +4545,48 @@ export async function proposeScopeAmendment(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    return await res.json();
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || json.error || "Failed to propose amendment" };
+    }
+    return json;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to propose amendment";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Submit counteroffer on a proposed scope amendment
+ */
+export async function counterScopeAmendment(
+  projectId: string,
+  messageId: string,
+  payload: {
+    responderId: string;
+    responderRole: "CLIENT" | "FREELANCER";
+    counterAmountMinor: number;
+    counterDays: number;
+    reasoning: string;
+  }
+): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/workspace/projects/${projectId}/amendments/${messageId}/counter`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || json.error || "Failed to submit counteroffer" };
+    }
+    return json;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to submit counteroffer";
     return { success: false, error: msg };
   }
 }
@@ -4529,7 +4612,11 @@ export async function respondToScopeAmendment(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    return await res.json();
+    const json = await res.json();
+    if (!res.ok) {
+      return { success: false, error: json.error?.message || json.error || "Failed to respond to amendment" };
+    }
+    return json;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to respond to amendment";
     return { success: false, error: msg };
