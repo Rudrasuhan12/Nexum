@@ -61,10 +61,14 @@ export default function BilateralContractModal({
         if (res.success && res.data) {
           setAgreementData(res.data);
           const activeVer = res.data.activeVersion || res.data.versions?.[0];
-          const md =
+          let md =
             activeVer?.terms?.contractMarkdown ||
             activeVer?.contractMarkdown ||
             "";
+          // Normalize version string representation (e.g. v2.0 -> v1.1)
+          if (activeVer?.versionNumber === 2 && md.includes("v2.0")) {
+            md = md.replace(/v2\.0/g, "v1.1");
+          }
           setContractMarkdown(md);
         } else {
           const errText =
@@ -122,14 +126,21 @@ export default function BilateralContractModal({
     terms?.freelancerEmail ||
     "";
 
-  const totalAmountMinor = terms?.totalAmountMinor || agreementData?.project?.budgetCents || 0;
+  const milestonesList = terms?.milestones || agreementData?.milestones || agreementData?.project?.milestones || [];
+  const cumulativeMilestonesTotal = milestonesList.length > 0
+    ? milestonesList.reduce((acc: number, m: any) => acc + (m.amountMinor || m.amountCents || 0), 0)
+    : 0;
+
+  const totalAmountMinor = terms?.totalAmountMinor || (cumulativeMilestonesTotal > 0 ? cumulativeMilestonesTotal : agreementData?.project?.budgetCents || 0);
   const currency = terms?.currency || agreementData?.project?.currency || "USD";
   const totalDisplay = `$${(totalAmountMinor / 100).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })} ${currency}`;
 
-  const milestonesList = terms?.milestones || agreementData?.milestones || [];
+  const verNum = activeVer?.versionNumber || 1;
+  const versionString = terms?.versionString || (verNum <= 1 ? "v1.0" : `v1.${verNum - 1}`);
+
   const firstMilestone = milestonesList[0];
   const firstMilestoneAmount = firstMilestone
     ? `$${((firstMilestone.amountMinor || firstMilestone.amountCents || 0) / 100).toLocaleString("en-US", {
@@ -151,7 +162,7 @@ export default function BilateralContractModal({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Contract_Agreement_v${activeVer?.versionNumber || 1}.0.md`;
+    a.download = `Contract_Agreement_${versionString}.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -406,12 +417,12 @@ export default function BilateralContractModal({
                   }`}
                 >
                   {isRatified
-                    ? "v1.0 Active & Ratified"
-                    : `v${activeVer?.versionNumber || 1}.0 Bilateral Draft (Pending Approval)`}
+                    ? `${versionString} Active & Ratified`
+                    : `${versionString} Bilateral Draft (Pending Approval)`}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-mono">
-                Document Ref: NEXUM-AGR-{agreementData?.id?.slice(0, 10).toUpperCase() || "CANONICAL"}-v{activeVer?.versionNumber || 1}.0
+                Document Ref: NEXUM-AGR-{agreementData?.id?.slice(0, 10).toUpperCase() || "CANONICAL"}-{versionString}
               </p>
             </div>
           </div>
@@ -470,7 +481,7 @@ export default function BilateralContractModal({
                   </p>
                 </div>
                 <div className="text-left sm:text-right font-mono text-[11px] text-slate-500 space-y-0.5">
-                  <div>Ref: <strong className="text-slate-900">NEXUM-AGR-v{activeVer?.versionNumber || 1}.0</strong></div>
+                  <div>Ref: <strong className="text-slate-900">NEXUM-AGR-{versionString}</strong></div>
                   <div>Status: <strong className={isRatified ? "text-emerald-700" : "text-amber-700"}>
                     {isRatified ? "RATIFIED & BINDING" : "PENDING MUTUAL SIGNATURE"}
                   </strong></div>

@@ -267,16 +267,20 @@ export class WorkspaceService {
       orderBy: { createdAt: "desc" },
     });
 
-    const mappedFiles = projectFiles.map((pf) => ({
-      id: pf.id,
-      fileId: pf.fileId,
-      name: pf.name,
-      size: `${Math.max(1, Math.round(pf.file.sizeBytes / 1024))} KB`,
-      date: pf.createdAt.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }),
-      type: pf.name.endsWith(".md") ? "MD" : pf.name.endsWith(".pdf") ? "PDF" : "DOC",
-      url: `/api/files/${pf.fileId}`,
-      versionNumber: pf.versionNumber,
-    }));
+    const mappedFiles = projectFiles.map((pf) => {
+      let name = pf.name;
+      if (name === "Contract_Agreement_v2.0.md") name = "Contract_Agreement_v1.1.md";
+      return {
+        id: pf.id,
+        fileId: pf.fileId,
+        name,
+        size: `${Math.max(1, Math.round(pf.file.sizeBytes / 1024))} KB`,
+        date: pf.createdAt.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }),
+        type: name.endsWith(".md") ? "MD" : name.endsWith(".pdf") ? "PDF" : "DOC",
+        url: `/api/files/${pf.fileId}`,
+        versionNumber: pf.versionNumber,
+      };
+    });
 
     (conversation as any).files = mappedFiles;
 
@@ -691,17 +695,19 @@ export class WorkspaceService {
         });
 
         const amendmentNote = `Scope Amendment (${payload.amendmentType}): ${(payload.justification as string) || "Bilateral scope revision"}. Price delta: ${payload.priceDeltaCents ? `+$${(Number(payload.priceDeltaCents) / 100).toFixed(2)}` : "$0.00"}. Timeline delta: ${payload.timelineDaysDelta || 0} days.`;
+        const newTotalAmountMinor = updatedMilestones.reduce((acc, m) => acc + (m.amountMinor || m.amountCents || 0), 0);
 
         const newContractMarkdown = generateContractMarkdown({
           agreementId: agreement.id,
           versionNumber: nextVerNum,
+          versionString: newVersionString,
           projectTitle: agreement.project.title,
           projectDescription: agreement.project.description || "",
           clientName: agreement.project.client?.name || "Client",
           clientEmail: agreement.project.client?.email || undefined,
           freelancerName: agreement.freelancer?.name || "Freelancer",
           freelancerEmail: agreement.freelancer?.email || undefined,
-          totalAmountMinor: updatedMilestones.reduce((acc, m) => acc + (m.amountMinor || m.amountCents || 0), 0),
+          totalAmountMinor: newTotalAmountMinor,
           currency: agreement.project.currency || "USD",
           durationWeeks: 4,
           milestones: updatedMilestones.map((m) => ({
@@ -722,6 +728,7 @@ export class WorkspaceService {
           projectId,
           agreementId: agreement.id,
           versionNumber: nextVerNum,
+          versionString: newVersionString,
           contractMarkdown: newContractMarkdown,
           uploadedBy: responderId,
         });
@@ -738,6 +745,9 @@ export class WorkspaceService {
             contentHash: newContentHash,
             activatedAt: new Date(),
             terms: {
+              totalAmountMinor: newTotalAmountMinor,
+              currency: agreement.project.currency || "USD",
+              versionString: newVersionString,
               scope: agreement.project.description || "",
               contractMarkdown: newContractMarkdown,
               contractFileId: savedFile.file.id,
@@ -770,6 +780,12 @@ export class WorkspaceService {
         await prisma.agreement.update({
           where: { id: agreement.id },
           data: { activeVersionId: newVer.id },
+        });
+
+        // Keep project budgetCents synchronized with cumulative milestones total
+        await prisma.project.update({
+          where: { id: projectId },
+          data: { budgetCents: newTotalAmountMinor },
         });
       }
     } catch (contractErr) {

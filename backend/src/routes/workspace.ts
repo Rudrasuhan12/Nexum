@@ -342,6 +342,9 @@ router.get("/projects", async (req: Request, res: Response) => {
           ? p.projectMilestones
           : [];
 
+        const sumMilestonesMinor = rawMilestones.reduce((acc: number, m: any) => acc + (m.amountMinor || m.amountCents || 0), 0);
+        const effectiveBudgetCents = sumMilestonesMinor > 0 ? sumMilestonesMinor : p.budgetCents;
+
         return {
           id: p.id,
           name: p.title,
@@ -361,7 +364,7 @@ router.get("/projects", async (req: Request, res: Response) => {
             : "Asia/Kolkata",
           status: p.state === 'ACTIVE' ? 'Active project' : p.state,
           statusColor: p.state === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80' : 'bg-slate-100 text-slate-700 border-slate-200',
-          budget: '$' + (p.budgetCents / 100).toLocaleString(),
+          budget: '$' + (effectiveBudgetCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           duration: p.deadline ? (Math.max(1, Math.round((new Date(p.deadline).getTime() - new Date(p.createdAt).getTime()) / (7 * 24 * 3600 * 1000))) + ' weeks') : 'Flexible',
           startDate: new Date(p.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
           agreementVersion: (() => {
