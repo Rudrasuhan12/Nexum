@@ -227,14 +227,16 @@ export function useWebRTC({
     // Receive incoming remote tracks and accumulate them into a unified MediaStream
     pc.ontrack = (event) => {
       console.log(`[WebRTC] Received remote track: ${event.track.kind}, id: ${event.track.id}`);
+      event.track.enabled = true;
+
       setRemoteStream((prev) => {
-        if (prev) {
-          prev.addTrack(event.track);
-          return new MediaStream(prev.getTracks());
+        const stream = prev || new MediaStream();
+        const existing = stream.getTracks().find((t) => t.kind === event.track.kind);
+        if (existing) {
+          stream.removeTrack(existing);
         }
-        return event.streams && event.streams[0]
-          ? event.streams[0]
-          : new MediaStream([event.track]);
+        stream.addTrack(event.track);
+        return stream;
       });
     };
 
@@ -276,6 +278,8 @@ export function useWebRTC({
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
+            channelCount: 1,
+            sampleRate: 48000,
           },
         });
         if (!active) {
@@ -294,7 +298,9 @@ export function useWebRTC({
           if (audioSender) {
             await audioSender.replaceTrack(track);
           } else {
-            pc.addTrack(track, stream);
+            try {
+              pc.addTrack(track, stream);
+            } catch {}
           }
         }
       } catch (err) {
@@ -538,6 +544,8 @@ export function useWebRTC({
               echoCancellation: true,
               noiseSuppression: true,
               autoGainControl: true,
+              channelCount: 1,
+              sampleRate: 48000,
             },
           });
           audioTrack = stream.getAudioTracks()[0];
@@ -549,15 +557,14 @@ export function useWebRTC({
 
         setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
 
-        const pc = pcRef.current || createPC();
-        const audioSender = getAudioSender(pc);
-
-        if (audioSender && audioTrack) {
-          await audioSender.replaceTrack(audioTrack);
-        } else if (audioTrack) {
-          try {
-            pc.addTrack(audioTrack, localStreamRef.current);
-          } catch {}
+        const pc = pcRef.current;
+        if (pc) {
+          const audioSender = getAudioSender(pc);
+          if (audioSender && audioTrack) {
+            if (audioSender.track !== audioTrack) {
+              await audioSender.replaceTrack(audioTrack);
+            }
+          }
         }
 
         setIsMicOn(true);
@@ -576,7 +583,7 @@ export function useWebRTC({
       setIsMicOn(false);
       sigSend({ type: "media_state", micOn: false, videoOn: isVideoOn, screenSharing: isScreenSharing });
     }
-  }, [isMicOn, isVideoOn, isScreenSharing, createPC, sigSend]);
+  }, [isMicOn, isVideoOn, isScreenSharing, sigSend]);
 
   // ─── Toggle Camera ────────────────────────────────────────────────────────
   const toggleVideo = useCallback(async () => {
@@ -707,44 +714,37 @@ export function useWebRTC({
     }
   }, [localStream, isMicOn]);
 
-  // ─── Real-time Remote Speaking Detection ───────────────────────────────────
+  // ─── Native WebRTC Remote Speaking Detection (Zero AudioContext Interference) ─
   useEffect(() => {
-    if (!remoteStream) {
-      setIsSpeakingRemote(false);
-      return;
-    }
-    const audioTrack = remoteStream.getAudioTracks()[0];
-    if (!audioTrack) {
+    if (!isConnected) {
       setIsSpeakingRemote(false);
       return;
     }
 
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const source = audioCtx.createMediaStreamSource(new MediaStream([audioTrack]));
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      let animId: number;
+    let intervalId: any;
+    const checkStats = async () => {
+      const pc = pcRef.current;
+      if (!pc || pc.signalingState === "closed" || pc.connectionState === "closed") {
+        setIsSpeakingRemote(false);
+        return;
+      }
+      try {
+        const report = await pc.getStats();
+        let speaking = false;
+        report.forEach((stat) => {
+          if (stat.type === "inbound-rtp" && stat.kind === "audio") {
+            if (typeof stat.audioLevel === "number") {
+              speaking = stat.audioLevel > 0.02;
+            }
+          }
+        });
+        setIsSpeakingRemote(speaking);
+      } catch {}
+    };
 
-      const check = () => {
-        analyser.getByteFrequencyData(data);
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) sum += data[i];
-        setIsSpeakingRemote(sum / data.length > 12);
-        animId = requestAnimationFrame(check);
-      };
-      check();
-
-      return () => {
-        cancelAnimationFrame(animId);
-        audioCtx.close().catch(() => {});
-      };
-    } catch {
-      return () => {};
-    }
-  }, [remoteStream]);
+    intervalId = setInterval(checkStats, 200);
+    return () => clearInterval(intervalId);
+  }, [isConnected]);
 
   // ─── Send Chat Message ────────────────────────────────────────────────────
   const sendChat = useCallback((text: string) => {
@@ -755,7 +755,9 @@ export function useWebRTC({
   // ─── Send Caption ─────────────────────────────────────────────────────────
   const sendCaption = useCallback(
     (text: string, isFinal: boolean, isScopeAlert?: boolean, isCommitment?: boolean) => {
+      if (!text.trim()) return;
       sigSend({ type: "caption", text, isFinal, isScopeAlert, isCommitment });
+      setLiveCaption(`[${userName}]: "${text}"`);
       if (isFinal) {
         const entry: CaptionEntry = {
           id: `${userId}_${Date.now()}_${Math.random()}`,
@@ -769,7 +771,6 @@ export function useWebRTC({
           isMe: true,
         };
         setCaptions((prev) => [...prev, entry]);
-        setLiveCaption(`[${userName}]: "${text}"`);
       }
     },
     [sigSend, userId, userName]

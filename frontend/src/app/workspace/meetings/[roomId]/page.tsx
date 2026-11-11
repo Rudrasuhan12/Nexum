@@ -140,11 +140,31 @@ function MeetingRoomContent() {
 
   const unlockAudio = useCallback(() => {
     if (remoteAudioRef.current) {
-      remoteAudioRef.current.play().then(() => {
-        setAudioAutoplayBlocked(false);
-      }).catch(() => {});
+      remoteAudioRef.current.muted = false;
+      remoteAudioRef.current.volume = 1.0;
+      remoteAudioRef.current
+        .play()
+        .then(() => {
+          setAudioAutoplayBlocked(false);
+        })
+        .catch(() => {});
     }
   }, []);
+
+  // ─── Auto-unlock audio on any first user interaction (Google Meet standard) ─
+  useEffect(() => {
+    const handleFirstInteraction = () => {
+      unlockAudio();
+    };
+    window.addEventListener("click", handleFirstInteraction, { once: true });
+    window.addEventListener("keydown", handleFirstInteraction, { once: true });
+    window.addEventListener("touchstart", handleFirstInteraction, { once: true });
+    return () => {
+      window.removeEventListener("click", handleFirstInteraction);
+      window.removeEventListener("keydown", handleFirstInteraction);
+      window.removeEventListener("touchstart", handleFirstInteraction);
+    };
+  }, [unlockAudio]);
 
   // ─── Clock ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -184,17 +204,24 @@ function MeetingRoomContent() {
   // ─── Wire local stream to <video> ────────────────────────────────────────────
   useEffect(() => {
     if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+      if (localVideoRef.current.srcObject !== localStream) {
+        localVideoRef.current.srcObject = localStream;
+      }
     }
   }, [localStream, isVideoOn]);
 
   // ─── Wire remote stream to <video> and dedicated <audio> ─────────────────────
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+      if (remoteVideoRef.current.srcObject !== remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
+      }
     }
     if (remoteAudioRef.current && remoteStream) {
-      remoteAudioRef.current.srcObject = remoteStream;
+      if (remoteAudioRef.current.srcObject !== remoteStream) {
+        remoteAudioRef.current.srcObject = remoteStream;
+      }
+      remoteAudioRef.current.muted = false;
       remoteAudioRef.current.volume = 1.0;
       const playPromise = remoteAudioRef.current.play();
       if (playPromise !== undefined) {
@@ -234,9 +261,8 @@ function MeetingRoomContent() {
         recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
-        // Auto-detect browser/user locale for highest native accent accuracy (e.g. en-IN, en-US, en-GB)
-        const userLocale = typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US";
-        recognition.lang = userLocale.startsWith("en") ? userLocale : "en-US";
+        // Prioritize global English acoustic model for highest technical & conversational accuracy
+        recognition.lang = "en-US";
         recognition.maxAlternatives = 1;
 
         recognition.onresult = (event: any) => {
@@ -341,6 +367,23 @@ function MeetingRoomContent() {
       onClick={unlockAudio}
       className="h-screen w-screen bg-[#202124] text-[#e3e3e3] flex flex-col overflow-hidden font-sans select-none"
     >
+      {/* ── Dedicated Remote Audio Sink (Always mounted, sr-only, NEVER display:none) ── */}
+      <audio
+        ref={remoteAudioRef}
+        autoPlay
+        playsInline
+        controls={false}
+        style={{
+          position: "fixed",
+          top: "-9999px",
+          left: "-9999px",
+          width: "1px",
+          height: "1px",
+          opacity: 0,
+          pointerEvents: "none",
+        }}
+      />
+
       {/* ── Browser Autoplay Audio Unlock Banner ────────────────────────────── */}
       {audioAutoplayBlocked && (
         <div
@@ -446,9 +489,6 @@ function MeetingRoomContent() {
 
             {/* TILE 2: Remote Participant ────────────────────────────────────── */}
             <div className={`relative rounded-2xl bg-[#282a2d] overflow-hidden flex flex-col border ${isSpeakingRemote ? "border-[#81c995] ring-2 ring-[#81c995]/40" : remotePeer?.micOn ? "border-white/30" : "border-[#3c4043]"} transition-all duration-200`}>
-              {/* Dedicated audio element ensures incoming sound always plays */}
-              <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
-
               {remoteStream && remoteStream.getVideoTracks().some((t) => t.enabled && t.readyState === "live") ? (
                 <video
                   ref={remoteVideoRef}
@@ -721,7 +761,10 @@ function MeetingRoomContent() {
           {/* Mic */}
           <button
             type="button"
-            onClick={toggleMic}
+            onClick={async () => {
+              unlockAudio();
+              await toggleMic();
+            }}
             title={isMicOn ? "Turn off mic (Ctrl+D)" : "Turn on mic (Ctrl+D)"}
             className={`w-12 h-12 rounded-full flex items-center justify-center transition cursor-pointer ${
               isMicOn ? "bg-[#3c4043] hover:bg-[#4a4d51] text-white" : "bg-[#f28b82]/20 hover:bg-[#f28b82]/30 text-[#f28b82] border border-[#f28b82]/40"
@@ -733,7 +776,10 @@ function MeetingRoomContent() {
           {/* Camera */}
           <button
             type="button"
-            onClick={toggleVideo}
+            onClick={async () => {
+              unlockAudio();
+              await toggleVideo();
+            }}
             title={isVideoOn ? "Turn off camera (Ctrl+E)" : "Turn on camera (Ctrl+E)"}
             className={`w-12 h-12 rounded-full flex items-center justify-center transition cursor-pointer ${
               isVideoOn ? "bg-[#3c4043] hover:bg-[#4a4d51] text-white" : "bg-[#f28b82]/20 hover:bg-[#f28b82]/30 text-[#f28b82] border border-[#f28b82]/40"
@@ -745,7 +791,10 @@ function MeetingRoomContent() {
           {/* CC */}
           <button
             type="button"
-            onClick={() => setIsCCOn(!isCCOn)}
+            onClick={() => {
+              unlockAudio();
+              setIsCCOn(!isCCOn);
+            }}
             title="Toggle closed captions"
             className={`w-12 h-12 rounded-full flex items-center justify-center text-xs font-bold transition cursor-pointer ${
               isCCOn ? "bg-[#8ab4f8] text-[#202124]" : "bg-[#3c4043] hover:bg-[#4a4d51] text-[#9aa0a6]"
