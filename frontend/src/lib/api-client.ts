@@ -4649,7 +4649,8 @@ export async function submitMeetingNotetakerSynthesis(
   projectId: string,
   meetingId: string,
   payload: {
-    executiveSummary: string;
+    transcript?: string;
+    executiveSummary?: string;
     actionItems: Array<{ task: string; assigneeId?: string; dueDate?: string }>;
     decisions: Array<{ title: string; description: string }>;
     transcriptSegments?: Array<{ speaker: string; timestamp: string; text: string }>;
