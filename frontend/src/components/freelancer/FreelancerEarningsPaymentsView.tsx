@@ -134,9 +134,9 @@ export default function FreelancerEarningsPaymentsView({
 
         if (sumRes.success && sumRes.summary) {
           const s = sumRes.summary;
-          const availableVal = s.availableMinor / 100;
-          const pendingVal = s.inReviewMinor / 100;
-          const totalVal = (s.availableMinor + s.withdrawnMinor) / 100;
+          const availableVal = (s.availableMinor || 0) / 100;
+          const pendingVal = ((s.inReviewMinor || 0) + (s.fundedMinor || 0)) / 100;
+          const totalVal = ((s.availableMinor || 0) + (s.withdrawnMinor || 0)) / 100;
 
           setKpis({
             completedProjectsCount: (s as any).completedProjectsCount ?? 0,
@@ -150,8 +150,8 @@ export default function FreelancerEarningsPaymentsView({
             pendingAmountDisplay: `$${pendingVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
             availableForPayout: availableVal,
             availableForPayoutDisplay: `$${availableVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
-            totalWithdrawn: s.withdrawnMinor / 100,
-            totalWithdrawnDisplay: `$${(s.withdrawnMinor / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
+            totalWithdrawn: (s.withdrawnMinor || 0) / 100,
+            totalWithdrawnDisplay: `$${((s.withdrawnMinor || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`,
           });
           setCategories((s as any).categoriesDistribution || []);
         } else {
@@ -190,10 +190,18 @@ export default function FreelancerEarningsPaymentsView({
             amount: m.amountMinor / 100,
             formattedAmount: `$${(m.amountMinor / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             isCredit: true,
-            status: m.workStatus === "ACCEPTED"
-              ? (m.earningsLabel === "Available" ? "Completed" : "Pending")
-              : "Under Review",
-            statusVariant: (m.workStatus === "ACCEPTED" && m.earningsLabel === "Available") ? "green" : "amber",
+            status: (() => {
+              if (m.workStatus === "ACCEPTED" || m.workStatus === "COMPLETED") return "Completed";
+              if (m.workStatus === "AWAITING_CLIENT_REVIEW") return "Under Review";
+              if (m.paymentStatus === "CAPTURED" || m.earningsLabel === "Funded" || m.earningsLabel === "Available" || m.workStatus === "IN_PROGRESS") return "Received";
+              return "Pending";
+            })(),
+            statusVariant: (() => {
+              if (m.workStatus === "ACCEPTED" || m.workStatus === "COMPLETED") return "green";
+              if (m.workStatus === "AWAITING_CLIENT_REVIEW") return "amber";
+              if (m.paymentStatus === "CAPTURED" || m.earningsLabel === "Funded" || m.earningsLabel === "Available" || m.workStatus === "IN_PROGRESS") return "green";
+              return "amber";
+            })(),
             paymentRail: "PayPal Consensus Ledger",
             proofHash: `sha256_${m.id.slice(0, 16)}`,
           }));

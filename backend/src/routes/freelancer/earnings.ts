@@ -29,22 +29,15 @@ router.get("/summary", async (req: Request, res: Response, next: NextFunction): 
     let totalWithdrawn = 0;
     let totalOnHold = 0;
 
-    for (const entry of ledgerEntries) {
-      if (entry.kind === LedgerEntryKind.RELEASED) {
-        totalReleased += entry.amountMinor;
-      } else if (entry.kind === LedgerEntryKind.PAYOUT_SIMULATED) {
-        totalWithdrawn += entry.amountMinor;
-      } else if (entry.kind === LedgerEntryKind.HOLD) {
-        totalOnHold += entry.amountMinor;
-      }
-    }
-
-    const availableMinor = Math.max(0, totalReleased - totalWithdrawn);
-
     // 2. Fetch all milestones with payments for funded & in-review minor
     const milestones = await prisma.milestone.findMany({
       where: {
-        agreement: { freelancerId },
+        OR: [
+          { agreement: { freelancerId } },
+          { project: { agreement: { freelancerId } } },
+          { project: { projectProposals: { some: { freelancerId, status: "ACCEPTED" } } } },
+          { project: { proposals: { some: { freelancerId, status: "ACCEPTED" } } } },
+        ],
         removedAt: null,
       },
       include: {
@@ -55,19 +48,46 @@ router.get("/summary", async (req: Request, res: Response, next: NextFunction): 
       },
     });
 
+    for (const entry of ledgerEntries) {
+      if (entry.kind === LedgerEntryKind.RELEASED) {
+        totalReleased += entry.amountMinor;
+      } else if (entry.kind === LedgerEntryKind.PAYOUT_SIMULATED) {
+        totalWithdrawn += entry.amountMinor;
+      } else if (entry.kind === LedgerEntryKind.HOLD) {
+        totalOnHold += entry.amountMinor;
+      }
+    }
+
+    // Include accepted milestones that may not yet have a separate ledger entry
+    for (const m of milestones) {
+      if (m.workStatus === MilestoneWorkStatus.ACCEPTED || (m as any).workStatus === "COMPLETED") {
+        const hasLedger = ledgerEntries.some(
+          (le) => le.milestoneId === m.id && le.kind === LedgerEntryKind.RELEASED
+        );
+        if (!hasLedger) {
+          totalReleased += m.amountMinor || (m as any).amountCents || 0;
+        }
+      }
+    }
+
+    const availableMinor = Math.max(0, totalReleased - totalWithdrawn);
+
     let fundedMinor = 0;
     let inReviewMinor = 0;
 
     for (const m of milestones) {
       const payment = m.payments[0];
-      const isCaptured = payment && payment.status === PaymentState.CAPTURED;
+      const isCaptured =
+        (payment && (payment.status === PaymentState.CAPTURED || payment.status === PaymentState.APPROVED)) ||
+        m.state === PaymentState.CAPTURED ||
+        m.workStatus === MilestoneWorkStatus.IN_PROGRESS;
 
-      if (isCaptured && m.workStatus !== MilestoneWorkStatus.ACCEPTED) {
-        fundedMinor += m.amountMinor;
+      if (isCaptured && m.workStatus !== MilestoneWorkStatus.ACCEPTED && (m as any).workStatus !== "COMPLETED") {
+        fundedMinor += m.amountMinor || (m as any).amountCents || 0;
       }
 
-      if (isCaptured && m.workStatus === MilestoneWorkStatus.AWAITING_CLIENT_REVIEW) {
-        inReviewMinor += m.amountMinor;
+      if (m.workStatus === MilestoneWorkStatus.AWAITING_CLIENT_REVIEW) {
+        inReviewMinor += m.amountMinor || (m as any).amountCents || 0;
       }
     }
 
@@ -76,11 +96,33 @@ router.get("/summary", async (req: Request, res: Response, next: NextFunction): 
 
     // 4. Live database counts and category shares
     const [completedProjectsCount, milestonesUnderReviewCount, successfulPayoutsCount, userAgreements] = await Promise.all([
-      prisma.agreement.count({ where: { freelancerId, status: "COMPLETED" } }),
-      prisma.milestone.count({ where: { agreement: { freelancerId }, workStatus: MilestoneWorkStatus.AWAITING_CLIENT_REVIEW, removedAt: null } }),
+      prisma.agreement.count({
+        where: {
+          OR: [
+            { freelancerId, status: "COMPLETED" },
+            { project: { projectProposals: { some: { freelancerId, status: "ACCEPTED" } }, state: "COMPLETED" } },
+          ],
+        },
+      }),
+      prisma.milestone.count({
+        where: {
+          OR: [
+            { agreement: { freelancerId } },
+            { project: { agreement: { freelancerId } } },
+            { project: { projectProposals: { some: { freelancerId, status: "ACCEPTED" } } } },
+          ],
+          workStatus: MilestoneWorkStatus.AWAITING_CLIENT_REVIEW,
+          removedAt: null,
+        },
+      }),
       prisma.ledgerEntry.count({ where: { userId: freelancerId, kind: LedgerEntryKind.PAYOUT_SIMULATED } }),
       prisma.agreement.findMany({
-        where: { freelancerId },
+        where: {
+          OR: [
+            { freelancerId },
+            { project: { projectProposals: { some: { freelancerId, status: "ACCEPTED" } } } },
+          ],
+        },
         include: {
           project: { select: { category: true } },
           milestones: { where: { removedAt: null } },
@@ -91,8 +133,13 @@ router.get("/summary", async (req: Request, res: Response, next: NextFunction): 
     const categoryMap: Record<string, number> = {};
     for (const a of userAgreements) {
       const cat = a.project?.category || "Web Development";
-      const total = a.milestones.reduce((acc, m) => acc + m.amountMinor, 0);
+      const total = a.milestones.reduce((acc, m) => acc + (m.amountMinor || (m as any).amountCents || 0), 0);
       categoryMap[cat] = (categoryMap[cat] || 0) + total;
+    }
+
+    if (Object.keys(categoryMap).length === 0 && milestones.length > 0) {
+      const total = milestones.reduce((acc, m) => acc + (m.amountMinor || (m as any).amountCents || 0), 0);
+      categoryMap["Web Development"] = total;
     }
 
     const grandTotal = Object.values(categoryMap).reduce((a, b) => a + b, 0) || 1;
@@ -159,7 +206,12 @@ router.get("/milestones", async (req: Request, res: Response, next: NextFunction
     const projectIdFilter = req.query.projectId as string | undefined;
 
     const whereClause: any = {
-      agreement: { freelancerId },
+      OR: [
+        { agreement: { freelancerId } },
+        { project: { agreement: { freelancerId } } },
+        { project: { projectProposals: { some: { freelancerId, status: "ACCEPTED" } } } },
+        { project: { proposals: { some: { freelancerId, status: "ACCEPTED" } } } },
+      ],
       removedAt: null,
     };
     if (projectIdFilter) {
@@ -187,9 +239,15 @@ router.get("/milestones", async (req: Request, res: Response, next: NextFunction
 
     const items = allMilestones.map((m) => {
       const payment = m.payments[0] || null;
-      const paymentStatus = payment?.status || PaymentState.NOT_STARTED;
+      let paymentStatus = payment?.status || PaymentState.NOT_STARTED;
+      if (paymentStatus === PaymentState.NOT_STARTED && m.state) {
+        paymentStatus = m.state;
+      }
       const hasHold = m.disputes.length > 0 || paymentStatus === PaymentState.NEEDS_SUPPORT;
-      const earningsLabel = getEarningsLabel(paymentStatus, m.workStatus, hasHold);
+      let earningsLabel = getEarningsLabel(paymentStatus, m.workStatus, hasHold);
+      if ((m.workStatus === MilestoneWorkStatus.ACCEPTED || (m as any).workStatus === "COMPLETED") && earningsLabel !== "Available") {
+        earningsLabel = "Available";
+      }
 
       return {
         id: m.id,
@@ -199,7 +257,7 @@ router.get("/milestones", async (req: Request, res: Response, next: NextFunction
         projectId: m.projectId,
         projectTitle: m.project?.title || "Project",
         clientName: m.project?.client?.name || "Client",
-        amountMinor: m.amountMinor,
+        amountMinor: m.amountMinor || (m as any).amountCents || 0,
         currency: m.currency,
         workStatus: m.workStatus,
         paymentStatus,

@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { prisma } from "../prisma.js";
-import { PaymentState, MilestoneWorkStatus, ProjectState } from "@prisma/client";
+import { PaymentState, MilestoneWorkStatus, ProjectState, LedgerEntryKind } from "@prisma/client";
 import { createPayPalOrder, capturePayPalOrder } from "../domain/payments/paypal.js";
 import { workspaceService } from "../services/workspaceService.js";
 import { z } from "zod";
@@ -736,8 +736,12 @@ router.post("/milestones/:id/approve-and-release", async (req: Request, res: Res
     const milestone = await prisma.milestone.findUnique({
       where: { id },
       include: {
+        agreement: true,
         project: {
           include: {
+            agreement: true,
+            projectProposals: { where: { status: "ACCEPTED" } },
+            proposals: { where: { status: "ACCEPTED" } },
             projectMilestones: { where: { removedAt: null }, orderBy: { orderIndex: "asc" } },
           },
         },
@@ -778,14 +782,39 @@ router.post("/milestones/:id/approve-and-release", async (req: Request, res: Res
         data: {
           workStatus: MilestoneWorkStatus.ACCEPTED,
           acceptedAt: now,
-          state: PaymentState.APPROVED,
+          state: PaymentState.CAPTURED,
         },
+      });
+
+      const milestonePayments = await tx.payment.findMany({
+        where: { milestoneId: milestone.id },
       });
 
       await tx.payment.updateMany({
         where: { milestoneId: milestone.id },
-        data: { status: PaymentState.APPROVED },
+        data: { status: PaymentState.CAPTURED },
       });
+
+      const targetPayment = milestonePayments[0];
+      const freelancerId =
+        milestone.project?.agreement?.freelancerId ||
+        (milestone.project as any)?.projectProposals?.[0]?.freelancerId ||
+        (milestone.project as any)?.proposals?.[0]?.freelancerId ||
+        milestone.agreement?.freelancerId;
+
+      if (freelancerId) {
+        await tx.ledgerEntry.create({
+          data: {
+            userId: freelancerId,
+            projectId: milestone.projectId!,
+            milestoneId: milestone.id,
+            kind: LedgerEntryKind.RELEASED,
+            amountMinor,
+            currency,
+            paymentId: targetPayment?.id || null,
+          },
+        });
+      }
 
       // 2. Append-only audit record
       await tx.auditEvent.create({

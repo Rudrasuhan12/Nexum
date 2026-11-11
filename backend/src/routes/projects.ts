@@ -38,6 +38,10 @@ async function resolveClientId(req: Request): Promise<string> {
     }
   }
 
+  // Check internal proxy headers
+  const headerId = (req.headers["x-client-id"] as string) || (req.headers["x-user-id"] as string);
+  if (headerId && headerId.trim()) return headerId.trim();
+
   // Fallback to body or query if client is calling from Next.js proxy
   const fallback =
     (req.body?.clientId as string) ||

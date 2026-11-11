@@ -1,32 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getAllOpenProjectsFromStore } from "@/lib/projects-store";
-
-const BACKEND_URL =
-  process.env.BACKEND_URL ||
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  "http://localhost:4000";
+import { getBackendUrl } from "@/lib/backend-url";
 
 const FALLBACK_RENDER_URL = "https://nexum-79g2.onrender.com";
 
 function getTargetUrls(pathWithQuery: string): string[] {
+  const backendBase = getBackendUrl();
   const isCloudOrProd =
     process.env.VERCEL === "1" ||
     process.env.NODE_ENV === "production" ||
     (typeof window === "undefined" && Boolean(process.env.AWS_REGION));
 
   const isLocalhost =
-    !BACKEND_URL ||
-    BACKEND_URL.includes("localhost") ||
-    BACKEND_URL.includes("127.0.0.1");
+    !backendBase ||
+    backendBase.includes("localhost") ||
+    backendBase.includes("127.0.0.1");
 
   // In production / Vercel cloud serverless, never block on unreachable localhost
   if (isCloudOrProd && isLocalhost) {
     return [`${FALLBACK_RENDER_URL}/api/freelancer/${pathWithQuery}`];
   }
 
-  const primary = `${BACKEND_URL}/api/freelancer/${pathWithQuery}`;
-  if (isLocalhost && !BACKEND_URL.includes("onrender.com")) {
+  const primary = `${backendBase}/api/freelancer/${pathWithQuery}`;
+  if (isLocalhost && !backendBase.includes("onrender.com")) {
     return [primary, `${FALLBACK_RENDER_URL}/api/freelancer/${pathWithQuery}`];
   }
   return [primary];
