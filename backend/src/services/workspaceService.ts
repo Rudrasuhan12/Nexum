@@ -1024,39 +1024,58 @@ export class WorkspaceService {
     // 1. Automatically convert action items to Kanban Tasks (Subtab 4)
     if (params.actionItems && params.actionItems.length > 0) {
       for (const item of params.actionItems) {
-        await prisma.workspaceTask.create({
-          data: {
-            projectId: meeting.conversation.projectId,
-            conversationId: meeting.conversationId,
-            title: item.task,
-            description: `Auto-extracted by Nexum AI Notetaker from sync meeting: ${meeting.title}`,
-            status: "TODO" as any,
-            priority: "MEDIUM",
-            assignedToId: item.assigneeId || null,
-            origin: "AI_MEETING_EXTRACTED",
-            meetingId: meeting.id,
-            dueDate: item.dueDate ? new Date(item.dueDate) : null,
-          },
-        });
+        try {
+          let validAssigneeId: string | null = null;
+          if (item.assigneeId) {
+            const userExists = await prisma.user.findUnique({
+              where: { id: item.assigneeId },
+              select: { id: true },
+            });
+            if (userExists) {
+              validAssigneeId = userExists.id;
+            }
+          }
+
+          await prisma.workspaceTask.create({
+            data: {
+              projectId: meeting.conversation.projectId,
+              conversationId: meeting.conversationId,
+              title: item.task,
+              description: `Auto-extracted by Nexum AI Notetaker from sync meeting: ${meeting.title}`,
+              status: "TODO" as any,
+              priority: "MEDIUM",
+              assignedToId: validAssigneeId,
+              origin: "AI_MEETING_EXTRACTED",
+              meetingId: meeting.id,
+              dueDate: item.dueDate ? new Date(item.dueDate) : null,
+            },
+          });
+        } catch (taskErr) {
+          console.warn("[WorkspaceService] Action item task creation caught:", taskErr);
+        }
       }
     }
 
     // 2. Automatically convert agreed decisions to ADRs (Subtab 6)
     if (params.decisions && params.decisions.length > 0) {
       for (const d of params.decisions) {
-        await prisma.workspaceDecision.create({
-          data: {
-            conversationId: meeting.conversationId,
-            title: d.title,
-            description: d.description,
-            signedByClient: false,
-            signedByFreelancer: false,
-            status: "PROPOSED",
-            sha256Hash: computeCanonicalHash(d),
-            origin: "AI_MEETING_EXTRACTED",
-            meetingId: meeting.id,
-          },
-        });
+        try {
+          await prisma.workspaceDecision.create({
+            data: {
+              conversationId: meeting.conversationId,
+              title: d.title,
+              description: d.description,
+              signedByClient: false,
+              signedByFreelancer: false,
+              status: "PROPOSED",
+              sha256Hash: computeCanonicalHash(d),
+              origin: "AI_MEETING_EXTRACTED",
+              meetingId: meeting.id,
+            },
+          });
+        } catch (decisionErr) {
+          console.warn("[WorkspaceService] Decision ADR creation caught:", decisionErr);
+        }
       }
     }
 
@@ -1083,6 +1102,32 @@ export class WorkspaceService {
         } as any,
       },
     });
+
+    // 3b. Update any existing meeting_confirmed_card in this conversation to status: COMPLETED
+    try {
+      const confirmedCards = await prisma.workspaceMessage.findMany({
+        where: {
+          conversationId: meeting.conversationId,
+          type: "meeting_confirmed_card",
+        },
+      });
+      for (const card of confirmedCards) {
+        const meta = (card.metadata as any) || {};
+        if (meta.meetingId === meeting.id || meta.roomUrl === meeting.roomUrl) {
+          await prisma.workspaceMessage.update({
+            where: { id: card.id },
+            data: {
+              metadata: {
+                ...meta,
+                status: "COMPLETED",
+              },
+            },
+          });
+        }
+      }
+    } catch (cardErr) {
+      console.warn("[WorkspaceService] Failed to update meeting_confirmed_card status:", cardErr);
+    }
 
     // 4. Verbal Scope Creep Detection: Draft an Amendment Card if verbal change was detected
     if (params.verbalScopeAlert && params.verbalScopeAlert.detected) {

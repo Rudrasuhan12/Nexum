@@ -65,7 +65,7 @@ Detect any verbal scope creep: if either party agreed to add features or change 
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: `Meeting Transcript:\n\n${input.transcript}` },
@@ -90,8 +90,12 @@ Detect any verbal scope creep: if either party agreed to add features or change 
 
       const parsed = JSON.parse(content);
       const actionItems = Array.isArray(parsed.actionItems) && parsed.actionItems.length > 0
-        ? parsed.actionItems
-        : [{ task: "Execute discussed action items", assigneeId: "usr_freelancer_sambit", dueDate: "2026-11-06" }];
+        ? parsed.actionItems.map((item: any) => ({
+            task: item.task || "Execute discussed action item",
+            dueDate: item.dueDate || undefined,
+            assigneeId: undefined,
+          }))
+        : [{ task: "Execute discussed action items", dueDate: new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0] }];
       const decisions = Array.isArray(parsed.decisions) && parsed.decisions.length > 0
         ? parsed.decisions
         : [{ title: "Consensus Agreement", description: "Bilateral alignment reached on discussed technical deliverables and timeline." }];
@@ -166,7 +170,7 @@ Detect any verbal scope creep: if either party agreed to add features or change 
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
           messages: [
             {
               role: "system",
@@ -203,13 +207,11 @@ Detect any verbal scope creep: if either party agreed to add features or change 
           task: hasWebhook
             ? "Complete PayPal REST v2 webhook retry test suite"
             : "Deliver scheduled milestone package",
-          assigneeId: "usr_freelancer_sambit",
-          dueDate: "2026-11-06",
+          dueDate: new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0],
         },
         {
           task: "Verify responsive modal touch targets and payment flow",
-          assigneeId: "usr_client_alex",
-          dueDate: "2026-11-07",
+          dueDate: new Date(Date.now() + 4 * 86400000).toISOString().split("T")[0],
         },
       ],
       decisions: [
