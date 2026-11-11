@@ -141,15 +141,25 @@ export default function ProjectMilestonesTab({
                     {ms.amountDisplay}
                   </p>
 
-                  <div className="mt-2">
+                  <div className="mt-2 flex items-center gap-1.5 flex-wrap justify-end">
                     {ms.workStatus === "ACCEPTED" || ms.workStatus === "AWAITING_CLIENT_REVIEW" ? (
-                      <button
-                        type="button"
-                        onClick={() => onOpenDetailsModal(ms)}
-                        className="py-1.5 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 transition shadow-2xs cursor-pointer"
-                      >
-                        View Details
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onOpenDetailsModal(ms)}
+                          className="py-1.5 px-3 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-xs font-bold text-[#4f46e5] transition shadow-2xs cursor-pointer flex items-center gap-1.5"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>Proof of Execution</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenDetailsModal(ms)}
+                          className="py-1.5 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 transition shadow-2xs cursor-pointer"
+                        >
+                          Details
+                        </button>
+                      </>
                     ) : (
                       <button
                         type="button"

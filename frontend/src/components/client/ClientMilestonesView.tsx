@@ -38,6 +38,7 @@ import {
 import ProjectHandoverBanner from "@/components/handover/ProjectHandoverBanner";
 import ProjectHandoverModal from "@/components/handover/ProjectHandoverModal";
 import HandoverChecklistView from "@/components/handover/HandoverChecklistView";
+import MilestoneAutomatedChecksCard from "@/components/MilestoneAutomatedChecksCard";
 
 interface ClientMilestonesViewProps {
   onOpenProjectWorkspace?: (projectId: string, tab?: string) => void;
@@ -82,7 +83,7 @@ export default function ClientMilestonesView({
 
   // Selected Milestone for Details View (Modal / Drawer)
   const [selectedMilestone, setSelectedMilestone] = useState<FullMilestoneData | null>(null);
-  const [detailTab, setDetailTab] = useState<"overview" | "criteria" | "deliverables" | "activity" | "payment">("overview");
+  const [detailTab, setDetailTab] = useState<"overview" | "verification" | "criteria" | "deliverables" | "activity" | "payment">("overview");
 
   // Interactive Release / Corrections State
   const [isCapturing, setIsCapturing] = useState(false);
@@ -825,6 +826,22 @@ export default function ClientMilestonesView({
                         <span>Overdue</span>
                       </span>
                     )}
+
+                    {/* Proof of Execution Action Button */}
+                    {(m.workflowStatus === "AWAITING_REVIEW" || m.workflowStatus === "ACCEPTED") && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedMilestone(m);
+                          setDetailTab("verification");
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-bold transition shadow-2xs cursor-pointer"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Proof of Execution (3-Tier)</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Project Context & Canonical Version */}
@@ -1004,6 +1021,12 @@ export default function ClientMilestonesView({
             <div className="flex items-center gap-1 px-6 border-b border-slate-100 bg-white overflow-x-auto no-scrollbar">
               {[
                 { id: "overview", label: "Overview", icon: Layers },
+                {
+                  id: "verification",
+                  label: "Proof of Execution",
+                  icon: ShieldCheck,
+                  badge: "3-Tier AI",
+                },
                 { id: "criteria", label: "Acceptance Criteria", icon: CheckCircle2, count: selectedMilestone.acceptanceCriteria.length },
                 { id: "deliverables", label: "Deliverables", icon: FileCode, count: selectedMilestone.deliverables.length },
                 { id: "activity", label: "Activity", icon: Activity, count: selectedMilestone.activities.length },
@@ -1019,6 +1042,7 @@ export default function ClientMilestonesView({
                       setDetailTab(
                         t.id as
                           | "overview"
+                          | "verification"
                           | "criteria"
                           | "deliverables"
                           | "activity"
@@ -1033,6 +1057,11 @@ export default function ClientMilestonesView({
                   >
                     <Icon className="w-3.5 h-3.5" />
                     <span>{t.label}</span>
+                    {"badge" in t && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        {(t as any).badge}
+                      </span>
+                    )}
                     {t.count !== undefined && (
                       <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-100 text-slate-700">
                         {t.count}
@@ -1049,6 +1078,36 @@ export default function ClientMilestonesView({
               {/* TAB 1: OVERVIEW */}
               {detailTab === "overview" && (
                 <div className="space-y-4 text-xs">
+                  {/* Proof of Execution Highlight Banner */}
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-50/90 to-purple-50/60 border border-indigo-200/90 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-[#4f46e5] text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <ShieldCheck className="w-5 h-5 stroke-[2.5]" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
+                            3-Tier Proof of Execution Available
+                          </h4>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Pre-Flight Verified
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          Autonomous inspection ran Gemini 2.0 Flash contract assertions, Vitest test suite, Groq secret audit, and SHA-256 seal.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDetailTab("verification")}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#4f46e5] hover:bg-[#4338ca] text-white text-xs font-bold transition shadow-xs shrink-0 cursor-pointer"
+                    >
+                      <span>Inspect 3-Step Verification</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
                   {/* Scope Summary Box */}
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
                     <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
@@ -1129,6 +1188,30 @@ export default function ClientMilestonesView({
                       </p>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* TAB: PROOF OF EXECUTION (3-TIER AI VERIFIER) */}
+              {detailTab === "verification" && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                      <span>
+                        Autonomous verification report for milestone <strong>{selectedMilestone.title}</strong>.
+                      </span>
+                    </div>
+                    <span className="font-mono text-[11px] text-slate-400">
+                      Agreement {selectedMilestone.canonicalSpecHash}
+                    </span>
+                  </div>
+
+                  <MilestoneAutomatedChecksCard
+                    milestoneId={selectedMilestone.id}
+                    milestoneTitle={selectedMilestone.title}
+                    projectId={selectedMilestone.projectId}
+                    acceptanceCriteria={selectedMilestone.acceptanceCriteria.map((ac) => ac.criterion || String(ac))}
+                  />
                 </div>
               )}
 

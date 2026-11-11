@@ -20,7 +20,15 @@ export async function GET(
       });
       if (res.ok) {
         const json = await res.json();
-        return NextResponse.json(json);
+        const revisions = json.data || json.revisions || (Array.isArray(json) ? json : []);
+        return NextResponse.json({
+          success: true,
+          milestoneId: id,
+          count: revisions.length,
+          revisions,
+          data: revisions,
+          latest: revisions[revisions.length - 1] || null,
+        });
       }
     } catch {
       // Backend offline or local development fallback
