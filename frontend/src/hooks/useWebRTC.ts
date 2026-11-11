@@ -1,14 +1,17 @@
 /**
- * useWebRTC - Production-Grade WebRTC Engine
+ * useWebRTC - Production-Grade WebRTC Engine v2
  *
- * Guarantees:
- *  1. Single Offer Initiator (No offer glare/collision)
- *  2. Perfect Negotiation Glare Resolver with rollback fallback
- *  3. Dynamic IP/Host Signaling Resolution (connects correctly across LAN/WAN/production)
- *  4. Native Hardware Audio Pipeline (AEC + NS + AGC) with auto-initialization on room entry
- *  5. Audio & Video Transceivers reserved upfront
- *  6. Buffered ICE Candidate Queue
- *  7. Reliable mute/unmute via track.enabled (never drops connection)
+ * Key guarantees:
+ *  1. NO silent/dummy tracks — empty transceivers until real mic arrives
+ *  2. replaceTrack() hot-swaps real mic into transceiver after getUserMedia
+ *  3. Perfect Negotiation pattern (no offer glare)
+ *  4. onnegotiationneeded handler for late track additions
+ *  5. Local speaking detection uses CLONED track (never steals from WebRTC)
+ *  6. Remote speaking detection uses pc.getStats() polling
+ *  7. All state synced via refs to prevent stale closures
+ *  8. Buffered ICE Candidate Queue
+ *  9. Dynamic IP/Host Signaling Resolution
+ * 10. Diagnostic stats logging every 5s for debugging
  */
 
 "use client";
@@ -46,28 +49,25 @@ function buildIceServers(): RTCIceServer[] {
 
 const ICE_SERVERS = buildIceServers();
 
-function createSilentAudioTrack(): MediaStreamTrack | null {
-  if (typeof window === "undefined") return null;
+// Transceiver-based sender lookup (never uses .kind on sender — uses receiver.track.kind)
+async function getAudioMediaStream(): Promise<MediaStream> {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const dst = ctx.createMediaStreamDestination();
-    const gain = ctx.createGain();
-    gain.gain.value = 0;
-    osc.connect(gain);
-    gain.connect(dst);
-    osc.start();
-    const track = dst.stream.getAudioTracks()[0];
-    track.enabled = true;
-    return track;
-  } catch {
-    return null;
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+  } catch (err) {
+    console.warn("[WebRTC] Hardware-constrained getUserMedia failed, trying fallback { audio: true }:", err);
+    return await navigator.mediaDevices.getUserMedia({ audio: true });
   }
 }
 
 function getAudioSender(pc: RTCPeerConnection): RTCRtpSender | undefined {
   const transceiver = pc.getTransceivers().find(
-    (t) => t.sender.track?.kind === "audio" || t.receiver.track?.kind === "audio"
+    (t) => t.receiver.track?.kind === "audio" || t.sender.track?.kind === "audio"
   );
   if (transceiver) return transceiver.sender;
   return pc.getSenders().find((s) => s.track?.kind === "audio");
@@ -75,7 +75,7 @@ function getAudioSender(pc: RTCPeerConnection): RTCRtpSender | undefined {
 
 function getVideoSender(pc: RTCPeerConnection): RTCRtpSender | undefined {
   const transceiver = pc.getTransceivers().find(
-    (t) => t.sender.track?.kind === "video" || t.receiver.track?.kind === "video"
+    (t) => t.receiver.track?.kind === "video" || t.sender.track?.kind === "video"
   );
   if (transceiver) return transceiver.sender;
   return pc.getSenders().find((s) => s.track?.kind === "video");
@@ -156,6 +156,12 @@ export function useWebRTC({
   const iceCandidateQueue = useRef<RTCIceCandidateInit[]>([]);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Refs to avoid stale closures in WebSocket and PeerConnection callbacks
+  const isMicOnRef = useRef(true);
+  const isVideoOnRef = useRef(false);
+  const isScreenSharingRef = useRef(false);
+  const makingOfferRef = useRef(false);
+
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [remotePeers, setRemotePeers] = useState<Map<string, RemotePeer>>(new Map());
@@ -168,6 +174,11 @@ export function useWebRTC({
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isSpeakingMe, setIsSpeakingMe] = useState(false);
   const [isSpeakingRemote, setIsSpeakingRemote] = useState(false);
+
+  // Keep refs in sync with React state (for use inside callbacks)
+  useEffect(() => { isMicOnRef.current = isMicOn; }, [isMicOn]);
+  useEffect(() => { isVideoOnRef.current = isVideoOn; }, [isVideoOn]);
+  useEffect(() => { isScreenSharingRef.current = isScreenSharing; }, [isScreenSharing]);
 
   // Dynamic signaling endpoint
   const signalingUrl = resolveSignalingUrl(backendUrl);
@@ -193,31 +204,33 @@ export function useWebRTC({
     }
   }, []);
 
-  // Create or return RTCPeerConnection
+  // ─── Create or return RTCPeerConnection ────────────────────────────────────
   const createPC = useCallback(() => {
     if (pcRef.current && pcRef.current.signalingState !== "closed") {
       return pcRef.current;
     }
 
-    console.log("[WebRTC] Creating new RTCPeerConnection...");
+    console.log("[WebRTC] Creating new RTCPeerConnection");
+    console.log("[WebRTC] ICE servers:", ICE_SERVERS.length, "(TURN configured:", ICE_SERVERS.some((s) => String(s.urls).startsWith("turn")), ")");
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     pcRef.current = pc;
-    if (typeof window !== "undefined") {
-      (window as any).__debug_pc = pc;
-    }
 
-    const localAudioTrack = localStreamRef.current?.getAudioTracks()[0] || createSilentAudioTrack();
+    // Get local tracks IF mic is already ready (may or may not be — getUserMedia is async)
+    const localAudioTrack = localStreamRef.current?.getAudioTracks()[0] || null;
     const localVideoTrack = localStreamRef.current?.getVideoTracks()[0] || null;
 
-    // Upfront transceivers guarantee audio and video m-lines in SDP offer & answer
+    // Reserve audio & video transceivers upfront — guarantees m-lines in SDP
+    // If real track is ready, bind it directly. If not, empty transceiver (no dummy track).
     try {
       if (localAudioTrack) {
         pc.addTransceiver(localAudioTrack, {
           direction: "sendrecv",
-          streams: [localStreamRef.current || new MediaStream([localAudioTrack])],
+          streams: localStreamRef.current ? [localStreamRef.current] : [],
         });
+        console.log("[WebRTC] ✓ Audio transceiver created WITH real mic track");
       } else {
         pc.addTransceiver("audio", { direction: "sendrecv" });
+        console.log("[WebRTC] Audio transceiver created empty (mic not ready — will replaceTrack later)");
       }
 
       if (localVideoTrack) {
@@ -235,6 +248,7 @@ export function useWebRTC({
     // Relay local ICE candidates
     pc.onicecandidate = ({ candidate }) => {
       if (candidate && remoteUserIdRef.current) {
+        console.log(`[WebRTC] ICE candidate: type=${candidate.type} protocol=${candidate.protocol} addr=${candidate.address}`);
         sigSend({
           type: "ice_candidate",
           targetUserId: remoteUserIdRef.current,
@@ -243,13 +257,29 @@ export function useWebRTC({
       }
     };
 
-    // Receive incoming remote tracks and accumulate them into a unified MediaStream
+    // Diagnostic: ICE connection state changes
+    pc.oniceconnectionstatechange = () => {
+      console.log("[WebRTC] ICE connection state →", pc.iceConnectionState);
+      if (pc.iceConnectionState === "failed") {
+        console.error("[WebRTC] ❌ ICE FAILED — TURN relay may not be working");
+      }
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        console.log("[WebRTC] ✓ ICE connected — media should be flowing");
+      }
+    };
+
+    pc.onicegatheringstatechange = () => {
+      console.log("[WebRTC] ICE gathering state →", pc.iceGatheringState);
+    };
+
+    // Receive incoming remote tracks
     pc.ontrack = (event) => {
-      console.log(`[WebRTC] Received remote track: ${event.track.kind}, id: ${event.track.id}`);
+      console.log(`[WebRTC] ✓ Remote track received: kind=${event.track.kind} id=${event.track.id} enabled=${event.track.enabled} readyState=${event.track.readyState}`);
       event.track.enabled = true;
 
       setRemoteStream((prev) => {
         const stream = prev ? new MediaStream(prev.getTracks()) : new MediaStream();
+        // Replace existing track of same kind to avoid duplicates
         const existing = stream.getTracks().find((t) => t.kind === event.track.kind);
         if (existing) {
           stream.removeTrack(existing);
@@ -259,18 +289,43 @@ export function useWebRTC({
       });
     };
 
+    // Handle renegotiation (fires when tracks are added/removed after initial SDP exchange)
+    pc.onnegotiationneeded = async () => {
+      if (!remoteUserIdRef.current) return;
+      try {
+        makingOfferRef.current = true;
+        console.log("[WebRTC] onnegotiationneeded — sending new offer");
+        const offer = await pc.createOffer();
+        if (pc.signalingState !== "stable") {
+          console.log("[WebRTC] onnegotiationneeded — signaling not stable, aborting");
+          return;
+        }
+        await pc.setLocalDescription(offer);
+        sigSend({
+          type: "offer",
+          targetUserId: remoteUserIdRef.current,
+          sdp: pc.localDescription,
+        });
+      } catch (err) {
+        console.error("[WebRTC] onnegotiationneeded error:", err);
+      } finally {
+        makingOfferRef.current = false;
+      }
+    };
+
     pc.onconnectionstatechange = () => {
-      console.log("[WebRTC] Connection state changed to:", pc.connectionState);
+      console.log("[WebRTC] Connection state →", pc.connectionState);
     };
 
     return pc;
   }, [sigSend]);
 
-  // Initiate an offer to target peer
+  // ─── Initiate an offer to target peer ──────────────────────────────────────
   const initiateOffer = useCallback(async (targetUserId: string) => {
     try {
       const pc = createPC();
       remoteUserIdRef.current = targetUserId;
+      makingOfferRef.current = true;
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: true,
@@ -284,47 +339,56 @@ export function useWebRTC({
       console.log(`[WebRTC] Sent offer to ${targetUserId}`);
     } catch (err) {
       console.error("[WebRTC] Create offer error:", err);
+    } finally {
+      makingOfferRef.current = false;
     }
   }, [createPC, sigSend]);
 
-  // Auto-initialize microphone on room entry (Google Meet default behavior)
+  // ─── Auto-initialize microphone on room entry ─────────────────────────────
   useEffect(() => {
     let active = true;
     async function initAudio() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1,
-            sampleRate: 48000,
-          },
-        });
+        console.log("[WebRTC] Requesting microphone access...");
+        const stream = await getAudioMediaStream();
         if (!active) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
 
+        console.log("[WebRTC] ✓ Microphone acquired successfully");
         localStreamRef.current = stream;
         setLocalStream(stream);
         setIsMicOn(true);
+        isMicOnRef.current = true;
 
+        // If PeerConnection already exists (signaling connected before mic was ready),
+        // hot-swap the real mic track into the audio transceiver via replaceTrack.
+        // replaceTrack does NOT require SDP renegotiation — it seamlessly swaps the
+        // media source on the existing SRTP stream.
         const pc = pcRef.current;
-        if (pc) {
-          const track = stream.getAudioTracks()[0];
+        if (pc && pc.signalingState !== "closed") {
+          const audioTrack = stream.getAudioTracks()[0];
           const audioSender = getAudioSender(pc);
           if (audioSender) {
-            await audioSender.replaceTrack(track);
+            console.log("[WebRTC] Hot-swapping real mic into existing transceiver via replaceTrack...");
+            await audioSender.replaceTrack(audioTrack);
+            console.log("[WebRTC] ✓ replaceTrack completed — real mic now in WebRTC pipeline");
           } else {
+            console.warn("[WebRTC] No audio sender found — adding track directly");
             try {
-              pc.addTrack(track, stream);
-            } catch {}
+              pc.addTrack(audioTrack, stream);
+            } catch (e) {
+              console.warn("[WebRTC] addTrack failed:", e);
+            }
           }
+        } else {
+          console.log("[WebRTC] PC not yet created — mic track will be used when createPC() runs");
         }
       } catch (err) {
-        console.warn("[WebRTC] Auto audio acquisition skipped or permission not granted:", err);
+        console.warn("[WebRTC] Microphone access denied:", err);
         setIsMicOn(false);
+        isMicOnRef.current = false;
       }
     }
     initAudio();
@@ -333,7 +397,7 @@ export function useWebRTC({
     };
   }, []);
 
-  // Connect WebSocket signaling
+  // ─── Connect WebSocket signaling ──────────────────────────────────────────
   const connectSignaling = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
 
@@ -351,8 +415,8 @@ export function useWebRTC({
         userName,
         role,
         avatar: avatar || "",
-        micOn: isMicOn,
-        videoOn: isVideoOn,
+        micOn: isMicOnRef.current,
+        videoOn: isVideoOnRef.current,
       }));
     };
 
@@ -381,9 +445,8 @@ export function useWebRTC({
         setRemotePeers(peerMap);
 
         if (others.length > 0) {
-          // Prepare our PeerConnection to receive the offer from the existing peer
+          // We are the new arrival — prepare PC and wait for the existing peer's offer
           createPC();
-          // DO NOT initiate offer here. The existing peer will initiate offer upon receiving peer_joined!
           console.log("[WebRTC] Waiting for offer from existing room host...");
         }
         return;
@@ -412,21 +475,24 @@ export function useWebRTC({
         return;
       }
 
-      // 3. Receive SDP offer
+      // 3. Receive SDP offer — Perfect Negotiation pattern
       if (type === "offer") {
         const { fromUserId, sdp } = msg;
         remoteUserIdRef.current = fromUserId;
         const pc = createPC();
         try {
-          // Perfect negotiation glare resolver:
-          // If we are in have-local-offer, polite peer rolls back to accept incoming offer
-          if (pc.signalingState !== "stable") {
-            const isPolite = String(userId) < String(fromUserId);
-            if (!isPolite) {
-              console.warn("[WebRTC] Impolite peer ignoring colliding offer from", fromUserId);
-              return;
-            }
-            console.log("[WebRTC] Polite peer rolling back local offer to accept incoming offer");
+          // Perfect negotiation glare resolution
+          const offerCollision = makingOfferRef.current || pc.signalingState !== "stable";
+          const isPolite = String(userId) < String(fromUserId);
+          const ignoreOffer = !isPolite && offerCollision;
+
+          if (ignoreOffer) {
+            console.warn("[WebRTC] Impolite peer ignoring colliding offer from", fromUserId);
+            return;
+          }
+
+          if (offerCollision) {
+            console.log("[WebRTC] Polite peer rolling back to accept incoming offer");
             await pc.setLocalDescription({ type: "rollback" });
           }
 
@@ -455,7 +521,7 @@ export function useWebRTC({
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(sdp));
             await flushIceCandidates(pc);
-            console.log("[WebRTC] Set remote answer successfully. Call active!");
+            console.log("[WebRTC] ✓ Answer accepted — call is active!");
           } catch (err) {
             console.error("[WebRTC] Error setting remote answer:", err);
           }
@@ -561,7 +627,7 @@ export function useWebRTC({
     };
   }, [roomId, userId, userName, role, avatar, signalingUrl, sigSend, createPC, initiateOffer, flushIceCandidates]);
 
-  // ─── Toggle Microphone (Real Audio Stream Management) ──────────────────────
+  // ─── Toggle Microphone ────────────────────────────────────────────────────
   const toggleMic = useCallback(async () => {
     if (!isMicOn) {
       // Turn mic ON
@@ -571,15 +637,7 @@ export function useWebRTC({
           audioTrack = localStreamRef.current.getAudioTracks()[0];
           audioTrack.enabled = true;
         } else {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              channelCount: 1,
-              sampleRate: 48000,
-            },
-          });
+          const stream = await getAudioMediaStream();
           audioTrack = stream.getAudioTracks()[0];
           if (!localStreamRef.current) {
             localStreamRef.current = new MediaStream();
@@ -587,25 +645,29 @@ export function useWebRTC({
           localStreamRef.current.addTrack(audioTrack);
         }
 
-        setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+        setLocalStream(new MediaStream(localStreamRef.current!.getTracks()));
 
         const pc = pcRef.current;
-        if (pc) {
+        if (pc && audioTrack) {
           const audioSender = getAudioSender(pc);
-          if (audioSender && audioTrack) {
+          if (audioSender) {
             if (audioSender.track !== audioTrack) {
               await audioSender.replaceTrack(audioTrack);
+            }
+            // Ensure the sender's track is enabled
+            if (audioSender.track) {
+              audioSender.track.enabled = true;
             }
           }
         }
 
         setIsMicOn(true);
-        sigSend({ type: "media_state", micOn: true, videoOn: isVideoOn, screenSharing: isScreenSharing });
+        sigSend({ type: "media_state", micOn: true, videoOn: isVideoOnRef.current, screenSharing: isScreenSharingRef.current });
       } catch (err) {
         console.warn("[WebRTC] Mic access denied:", err);
       }
     } else {
-      // Turn mic OFF (mute track so peer connection remains active without drops)
+      // Turn mic OFF (disable track — keeps connection active)
       if (localStreamRef.current) {
         for (const t of localStreamRef.current.getAudioTracks()) {
           t.enabled = false;
@@ -613,9 +675,9 @@ export function useWebRTC({
         setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
       }
       setIsMicOn(false);
-      sigSend({ type: "media_state", micOn: false, videoOn: isVideoOn, screenSharing: isScreenSharing });
+      sigSend({ type: "media_state", micOn: false, videoOn: isVideoOnRef.current, screenSharing: isScreenSharingRef.current });
     }
-  }, [isMicOn, isVideoOn, isScreenSharing, sigSend]);
+  }, [isMicOn, sigSend]);
 
   // ─── Toggle Camera ────────────────────────────────────────────────────────
   const toggleVideo = useCallback(async () => {
@@ -637,7 +699,7 @@ export function useWebRTC({
           localStreamRef.current.addTrack(videoTrack);
         }
 
-        setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+        setLocalStream(new MediaStream(localStreamRef.current!.getTracks()));
 
         const pc = pcRef.current || createPC();
         const videoSender = getVideoSender(pc);
@@ -646,12 +708,12 @@ export function useWebRTC({
           await videoSender.replaceTrack(videoTrack);
         } else if (videoTrack) {
           try {
-            pc.addTrack(videoTrack, localStreamRef.current);
+            pc.addTrack(videoTrack, localStreamRef.current!);
           } catch {}
         }
 
         setIsVideoOn(true);
-        sigSend({ type: "media_state", micOn: isMicOn, videoOn: true, screenSharing: isScreenSharing });
+        sigSend({ type: "media_state", micOn: isMicOnRef.current, videoOn: true, screenSharing: isScreenSharingRef.current });
       } catch (err) {
         console.warn("[WebRTC] Camera access denied:", err);
       }
@@ -664,9 +726,9 @@ export function useWebRTC({
         setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
       }
       setIsVideoOn(false);
-      sigSend({ type: "media_state", micOn: isMicOn, videoOn: false, screenSharing: isScreenSharing });
+      sigSend({ type: "media_state", micOn: isMicOnRef.current, videoOn: false, screenSharing: isScreenSharingRef.current });
     }
-  }, [isVideoOn, isMicOn, isScreenSharing, createPC, sigSend]);
+  }, [isVideoOn, createPC, sigSend]);
 
   // ─── Toggle Screen Share ──────────────────────────────────────────────────
   const toggleScreenShare = useCallback(async () => {
@@ -687,7 +749,7 @@ export function useWebRTC({
         };
 
         setIsScreenSharing(true);
-        sigSend({ type: "media_state", micOn: isMicOn, videoOn: isVideoOn, screenSharing: true });
+        sigSend({ type: "media_state", micOn: isMicOnRef.current, videoOn: isVideoOnRef.current, screenSharing: true });
       } catch (err) {
         console.warn("[WebRTC] Screen share cancelled:", err);
       }
@@ -700,14 +762,14 @@ export function useWebRTC({
       const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
       const videoSender = pc ? getVideoSender(pc) : undefined;
       if (videoSender && cameraTrack) {
-        videoSender.replaceTrack(isVideoOn ? cameraTrack : null).catch(console.warn);
+        videoSender.replaceTrack(isVideoOnRef.current ? cameraTrack : null).catch(console.warn);
       }
       setIsScreenSharing(false);
-      sigSend({ type: "media_state", micOn: isMicOn, videoOn: isVideoOn, screenSharing: false });
+      sigSend({ type: "media_state", micOn: isMicOnRef.current, videoOn: isVideoOnRef.current, screenSharing: false });
     }
-  }, [isScreenSharing, isMicOn, isVideoOn, createPC, sigSend]);
+  }, [isScreenSharing, createPC, sigSend]);
 
-  // ─── Real-time Local Speaking Detection ────────────────────────────────────
+  // ─── Local Speaking Detection (CLONED track — never interferes with WebRTC) ─
   useEffect(() => {
     if (!localStream || !isMicOn) {
       setIsSpeakingMe(false);
@@ -720,8 +782,11 @@ export function useWebRTC({
     }
 
     try {
+      // CRITICAL: Clone the track so the original stays exclusively in the WebRTC pipeline.
+      // createMediaStreamSource on the original track can steal audio data from WebRTC on mobile.
+      const clonedTrack = audioTrack.clone();
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const source = audioCtx.createMediaStreamSource(new MediaStream([audioTrack]));
+      const source = audioCtx.createMediaStreamSource(new MediaStream([clonedTrack]));
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
       source.connect(analyser);
@@ -739,6 +804,7 @@ export function useWebRTC({
 
       return () => {
         cancelAnimationFrame(animId);
+        clonedTrack.stop(); // Stop the clone (not the original!)
         audioCtx.close().catch(() => {});
       };
     } catch {
@@ -746,14 +812,14 @@ export function useWebRTC({
     }
   }, [localStream, isMicOn]);
 
-  // ─── Native WebRTC Remote Speaking Detection (Zero AudioContext Interference) ─
+  // ─── Remote Speaking Detection (getStats polling — zero AudioContext) ──────
   useEffect(() => {
     if (!isConnected) {
       setIsSpeakingRemote(false);
       return;
     }
 
-    let intervalId: any;
+    let intervalId: ReturnType<typeof setInterval>;
     const checkStats = async () => {
       const pc = pcRef.current;
       if (!pc || pc.signalingState === "closed" || pc.connectionState === "closed") {
@@ -776,6 +842,61 @@ export function useWebRTC({
 
     intervalId = setInterval(checkStats, 200);
     return () => clearInterval(intervalId);
+  }, [isConnected]);
+
+  // ─── Diagnostic: Log WebRTC stats every 5s ────────────────────────────────
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const logStats = async () => {
+      const pc = pcRef.current;
+      if (!pc || pc.connectionState === "closed") return;
+
+      try {
+        const report = await pc.getStats();
+        let audioBytesSent = 0;
+        let audioBytesReceived = 0;
+        let audioPacketsSent = 0;
+        let audioPacketsReceived = 0;
+        let audioPacketsLost = 0;
+        let localCandidateType = "";
+        let remoteCandidateType = "";
+
+        report.forEach((stat) => {
+          if (stat.type === "outbound-rtp" && stat.kind === "audio") {
+            audioBytesSent = stat.bytesSent || 0;
+            audioPacketsSent = stat.packetsSent || 0;
+          }
+          if (stat.type === "inbound-rtp" && stat.kind === "audio") {
+            audioBytesReceived = stat.bytesReceived || 0;
+            audioPacketsReceived = stat.packetsReceived || 0;
+            audioPacketsLost = stat.packetsLost || 0;
+          }
+          if (stat.type === "candidate-pair" && stat.state === "succeeded") {
+            const localId = stat.localCandidateId;
+            const remoteId = stat.remoteCandidateId;
+            report.forEach((s) => {
+              if (s.id === localId) localCandidateType = s.candidateType || "";
+              if (s.id === remoteId) remoteCandidateType = s.candidateType || "";
+            });
+          }
+        });
+
+        console.log(
+          `[WebRTC Stats] audio: sent=${audioBytesSent}B/${audioPacketsSent}pkt recv=${audioBytesReceived}B/${audioPacketsReceived}pkt lost=${audioPacketsLost}pkt | ICE=${pc.iceConnectionState} | candidates: local=${localCandidateType} remote=${remoteCandidateType}`
+        );
+
+        if (audioBytesSent === 0 && audioPacketsSent === 0) {
+          console.warn("[WebRTC] ⚠ Zero audio bytes sent — mic track may not be attached");
+        }
+        if (audioBytesReceived === 0 && audioPacketsReceived === 0) {
+          console.warn("[WebRTC] ⚠ Zero audio bytes received — remote peer may not be sending");
+        }
+      } catch {}
+    };
+
+    const id = setInterval(logStats, 5000);
+    return () => clearInterval(id);
   }, [isConnected]);
 
   // ─── Send Chat Message ────────────────────────────────────────────────────
