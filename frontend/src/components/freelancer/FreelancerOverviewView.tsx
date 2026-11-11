@@ -52,9 +52,11 @@ export default function FreelancerOverviewView({
     let mounted = true;
     async function loadDashboard() {
       try {
-        const res = await fetchFreelancerDashboard();
+        const targetUserId = freelancer?.id || freelancer?.email;
+        const res = await fetchFreelancerDashboard(targetUserId);
         if (mounted && res.success && res.dashboard) {
-          setDashboardData(res.dashboard);
+          const payload = (res.dashboard as any)?.dashboard || (res.dashboard as any)?.data || res.dashboard;
+          setDashboardData(payload);
         }
       } catch (err) {
         console.warn("Using fallback dashboard data", err);
@@ -64,7 +66,7 @@ export default function FreelancerOverviewView({
     }
     loadDashboard();
     return () => { mounted = false; };
-  }, []);
+  }, [freelancer?.id, freelancer?.email]);
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const statusDropdownRef = useRef<HTMLDivElement>(null);
 

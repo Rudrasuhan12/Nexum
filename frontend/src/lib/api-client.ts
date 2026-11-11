@@ -3490,14 +3490,20 @@ export async function fetchMonthlyEarnings(): Promise<{
   }
 }
 
-export async function fetchFreelancerDashboard(): Promise<{
+export async function fetchFreelancerDashboard(userId?: string): Promise<{
   success: boolean;
   dashboard?: DashboardSummaryData;
   error?: string;
 }> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/freelancer/dashboard`, {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (userId) {
+      headers["x-user-id"] = userId;
+    }
+    const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+    const res = await fetch(`${BACKEND_URL}/api/freelancer/dashboard${query}`, {
       method: "GET",
+      headers,
       credentials: "include",
     });
     const json = await res.json();
