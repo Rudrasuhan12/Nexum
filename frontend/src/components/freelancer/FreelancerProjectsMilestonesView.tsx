@@ -17,6 +17,7 @@ import {
 import {
   fetchActiveProjects,
   submitMilestoneDeliverable,
+  submitWorkspaceDeliverable,
   fetchProjectTasks,
   fetchProjectFiles,
   createProjectTask,
@@ -476,19 +477,40 @@ export default function FreelancerProjectsMilestonesView({
     setMobileView("workspace");
   };
 
-  const handleDeliverableSubmitted = (submission: MilestoneSubmission) => {
+  const handleDeliverableSubmitted = async (submission: MilestoneSubmission) => {
     if (!submittingMilestone || !selectedProject) return;
 
     const links: string[] = [];
     if (submission.githubPrUrl) links.push(submission.githubPrUrl);
     if (submission.demoUrl) links.push(submission.demoUrl);
 
-    submitMilestoneDeliverable(submittingMilestone.id, {
-      note: submission.completionNote || submission.deliverableDescription || "Deliverable submitted",
-      links: links.length > 0 ? links : undefined,
-    }).catch((err) => {
+    let fileBase64: string | undefined;
+    if (submission.file) {
+      fileBase64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const res = reader.result as string;
+          resolve(res.includes(",") ? res.split(",")[1] : res);
+        };
+        reader.onerror = () => resolve("");
+        reader.readAsDataURL(submission.file as Blob);
+      });
+    }
+
+    try {
+      await submitWorkspaceDeliverable(selectedProject.id, {
+        milestoneId: submittingMilestone.id,
+        freelancerId: "usr_freelancer_sambit",
+        repoUrl: submission.githubPrUrl,
+        previewUrl: submission.demoUrl,
+        notes: submission.completionNote || submission.deliverableDescription || "Deliverable submitted",
+        fileBase64,
+        fileName: submission.attachmentName || submission.file?.name,
+        fileSize: submission.attachmentSize,
+      });
+    } catch (err) {
       console.warn("Backend deliverable sync:", err);
-    });
+    }
 
     setProjects((prevProjects) =>
       prevProjects.map((p) => {

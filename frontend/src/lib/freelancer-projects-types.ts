@@ -79,6 +79,8 @@ export interface MilestoneSubmission {
   demoCredentialsText?: string;
   attachmentName?: string;
   attachmentSize?: string;
+  file?: File;
+  fileBase64?: string;
   criteriaChecked: string[];
   clientFeedback?: {
     decision: "ACCEPTED" | "REVISIONS_REQUESTED" | "DISPUTED";

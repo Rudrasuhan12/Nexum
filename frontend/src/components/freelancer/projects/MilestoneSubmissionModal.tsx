@@ -28,20 +28,16 @@ export default function MilestoneSubmissionModal({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const [completionNote, setCompletionNote] = useState(
-    "All acceptance criteria have been implemented, tested and deployed to staging for client review."
+    "All acceptance criteria have been implemented and tested for client review."
   );
   const [deliverableDescription, setDeliverableDescription] = useState(
     `Deliverable submission for ${milestone.title}`
   );
-  const [githubPrUrl, setGithubPrUrl] = useState(
-    "https://github.com/shopkart/storefront/pull/15"
-  );
-  const [demoUrl, setDemoUrl] = useState("https://staging.shopkart.nexum.dev");
-  const [demoCredentialsText, setDemoCredentialsText] = useState(
-    "Client: demo@shopkart.com / DemoPass2026!\nAdmin: admin@shopkart.com / AdminSecure99#"
-  );
-  const [attachmentName, setAttachmentName] = useState("deliverables-package.zip");
-  const [attachmentSize, setAttachmentSize] = useState("4.8 MB");
+  const [githubPrUrl, setGithubPrUrl] = useState("");
+  const [demoUrl, setDemoUrl] = useState("");
+  const [demoCredentialsText, setDemoCredentialsText] = useState("");
+  const [attachmentName, setAttachmentName] = useState("");
+  const [attachmentSize, setAttachmentSize] = useState("");
   const normalizedCriteria: string[] = React.useMemo(() => {
     if (!Array.isArray(milestone.acceptanceCriteria)) return [];
     return milestone.acceptanceCriteria
@@ -80,6 +76,10 @@ export default function MilestoneSubmissionModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!githubPrUrl.trim() && !selectedFile) {
+      setErrorMsg("Please upload a codebase archive (.zip) OR provide a GitHub Repository/PR URL.");
+      return;
+    }
     if (!completionNote.trim()) {
       setErrorMsg("Please provide a completion note explaining the delivery.");
       return;
@@ -107,8 +107,9 @@ export default function MilestoneSubmissionModal({
       githubPrUrl: githubPrUrl.trim() || undefined,
       demoUrl: demoUrl.trim() || undefined,
       demoCredentialsText: demoCredentialsText.trim() || undefined,
-      attachmentName: attachmentName.trim() || undefined,
-      attachmentSize: attachmentSize || "3.2 MB",
+      attachmentName: selectedFile ? selectedFile.name : (attachmentName.trim() || undefined),
+      attachmentSize: selectedFile ? attachmentSize : (attachmentSize || undefined),
+      file: selectedFile || undefined,
       criteriaChecked: checkedCriteria,
     };
 
