@@ -140,6 +140,14 @@ function MeetingRoomContent() {
   const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
 
   const unlockAudio = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const dummyCtx = new AudioCtx();
+        dummyCtx.resume().then(() => dummyCtx.close()).catch(() => {});
+      }
+    } catch {}
+
     if (remoteAudioRef.current) {
       remoteAudioRef.current.muted = false;
       remoteAudioRef.current.volume = 1.0;
@@ -368,13 +376,13 @@ function MeetingRoomContent() {
       onClick={unlockAudio}
       className="h-screen w-screen bg-[#202124] text-[#e3e3e3] flex flex-col overflow-hidden font-sans select-none"
     >
-      {/* ── Dedicated Remote Audio Sink (Always mounted, in-viewport for Mobile WebKit, opacity:0) ── */}
+      {/* ── Dedicated Remote Audio Sink (Always mounted, in-viewport for Mobile WebKit, 0.01 opacity avoids power suspension) ── */}
       <audio
         ref={remoteAudioRef}
         autoPlay
         playsInline
         controls={false}
-        className="fixed bottom-0 right-0 w-1 h-1 opacity-0 pointer-events-none z-0"
+        style={{ position: "fixed", bottom: 0, right: 0, width: "1px", height: "1px", opacity: 0.01, pointerEvents: "none", zIndex: -1 }}
       />
 
       {/* ── Browser Autoplay Audio Unlock Banner ────────────────────────────── */}
@@ -482,7 +490,7 @@ function MeetingRoomContent() {
 
             {/* TILE 2: Remote Participant ────────────────────────────────────── */}
             <div className={`relative rounded-2xl bg-[#282a2d] overflow-hidden flex flex-col border ${isSpeakingRemote ? "border-[#81c995] ring-2 ring-[#81c995]/40" : remotePeer?.micOn ? "border-white/30" : "border-[#3c4043]"} transition-all duration-200`}>
-              {remoteStream && remoteStream.getVideoTracks().some((t) => t.enabled && t.readyState === "live") ? (
+              {remotePeer?.videoOn && remoteStream && remoteStream.getVideoTracks().some((t) => t.enabled && t.readyState === "live") ? (
                 <video
                   ref={remoteVideoRef}
                   autoPlay
@@ -496,7 +504,7 @@ function MeetingRoomContent() {
                     name={remotePeer?.userName || counterpartName}
                     src={remotePeer?.avatar}
                     size="lg"
-                    speaking={isSpeakingRemote || !!remotePeer?.micOn}
+                    speaking={isSpeakingRemote}
                   />
                   {!remotePeer && (
                     <span className="text-xs text-[#9aa0a6] text-center px-4">
