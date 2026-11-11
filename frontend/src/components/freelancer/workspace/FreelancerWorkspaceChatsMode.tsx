@@ -2052,15 +2052,19 @@ export default function FreelancerWorkspaceChatsMode({
                   return (
                     <div
                       key={item.id}
-                      className="p-5 rounded-2xl border-2 border-emerald-300 bg-gradient-to-br from-emerald-50/70 via-white to-indigo-50/40 shadow-xs space-y-3.5 animate-in fade-in duration-200"
+                      className={`p-5 rounded-2xl border-2 ${meta.status === "COMPLETED" ? "border-purple-300 bg-gradient-to-br from-purple-50/70 via-white to-indigo-50/40" : "border-emerald-300 bg-gradient-to-br from-emerald-50/70 via-white to-indigo-50/40"} shadow-xs space-y-3.5 animate-in fade-in duration-200`}
                     >
                       <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-1.5 font-bold text-emerald-950">
-                          <Video className="w-4 h-4 text-emerald-600" />
-                          <span>Bilateral Sync Call Confirmed</span>
+                        <span className="flex items-center gap-1.5 font-bold text-slate-900">
+                          <Video className={`w-4 h-4 ${meta.status === "COMPLETED" ? "text-purple-600" : "text-emerald-600"}`} />
+                          <span>{meta.status === "COMPLETED" ? "Bilateral Sync Call Completed" : "Bilateral Sync Call Confirmed"}</span>
                         </span>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          Scheduled
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          meta.status === "COMPLETED"
+                            ? "bg-purple-100 text-purple-800 border border-purple-200"
+                            : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                        }`}>
+                          {meta.status === "COMPLETED" ? "Call Completed" : "Scheduled"}
                         </span>
                       </div>
 
@@ -2076,39 +2080,48 @@ export default function FreelancerWorkspaceChatsMode({
                         </div>
                       </div>
 
-                      <div className="p-3 rounded-xl bg-white border border-emerald-100 text-xs text-slate-600 space-y-1">
+                      <div className="p-3 rounded-xl bg-white border border-slate-100 text-xs text-slate-600 space-y-1">
                         <div className="flex items-center gap-1.5 font-semibold text-indigo-900">
                           <Bot className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>Nexum AI Multilingual Notetaker Active</span>
+                          <span>Nexum AI Multilingual Notetaker {meta.status === "COMPLETED" ? "Synthesis Archived" : "Active"}</span>
                         </div>
                         <p className="text-[11px] text-slate-500">
-                          Notetaker will transcribe the call, flag verbal scope creep in real-time, and extract action items into your Kanban tasks.
+                          {meta.status === "COMPLETED"
+                            ? "Call completed and synthesized into action items, ADR decisions, and scope consensus below."
+                            : "Notetaker will transcribe the call, flag verbal scope creep in real-time, and extract action items into your Kanban tasks."}
                         </p>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                        <a
-                          href={fullRoomUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-2 cursor-pointer active:scale-98"
-                        >
-                          <Video className="w-4 h-4" />
-                          <span>Join Video Call</span>
-                        </a>
-
-                        {gcalUrl && (
+                      {meta.status === "COMPLETED" ? (
+                        <div className="flex items-center gap-2 pt-1 text-xs font-semibold text-purple-700 bg-purple-50/80 px-3.5 py-2 rounded-xl border border-purple-200">
+                          <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+                          <span>Meeting brief & AI synthesis attached below</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-2.5 pt-1">
                           <a
-                            href={gcalUrl}
+                            href={fullRoomUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-2 cursor-pointer active:scale-98"
                           >
-                            <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Add to Google Calendar</span>
+                            <Video className="w-4 h-4" />
+                            <span>Join Video Call</span>
                           </a>
-                        )}
-                      </div>
+
+                          {gcalUrl && (
+                            <a
+                              href={gcalUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Add to Google Calendar</span>
+                            </a>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 }
