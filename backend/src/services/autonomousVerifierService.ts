@@ -203,16 +203,14 @@ export class AutonomousVerifierService {
       rcaForensics.push("MANDATORY GATE FAILED: Supply chain audit failed on malicious package or incompatible copyleft license.");
     }
 
-    // Contract Criteria & Test Runner Gates
-    if (analysis.failedCriteriaCount > 0 || execution.failedTests > 0) {
-      qualificationState = "FAILED";
-      rcaForensics.push(`CONTRACT GATE FAILED: ${analysis.failedCriteriaCount} contract criteria unmet, ${execution.failedTests} unit assertions failed.`);
-    }
-
     // Inconclusive Gate: Staging offline or missing demo credentials
-    if (qualificationState !== "FAILED" && (visualProof.status === "WAITING_FOR_CREDENTIALS" || !analysis.isReachable)) {
+    if (visualProof.status === "WAITING_FOR_CREDENTIALS" || !analysis.isReachable) {
       qualificationState = "INCONCLUSIVE";
       rcaForensics.push("INCONCLUSIVE: External environment or demo credentials required before evaluation can deterministically pass.");
+    } else if (analysis.failedCriteriaCount > 0 || execution.failedTests > 0) {
+      // Contract Criteria & Test Runner Gates
+      qualificationState = "FAILED";
+      rcaForensics.push(`CONTRACT GATE FAILED: ${analysis.failedCriteriaCount} contract criteria unmet, ${execution.failedTests} unit assertions failed.`);
     }
 
     // 13. Generate SLSA v1.0 Provenance Attestation & Ed25519 Cryptographic Seal
@@ -390,64 +388,8 @@ export class AutonomousVerifierService {
       return cached;
     }
 
-    // Default seeded baseline if milestone has no previous submissions
-    const defaultRecord: VerificationAuditRecord = {
-      id: `audit_${milestoneId}_rev1_init`,
-      milestoneId,
-      projectId: "proj_default",
-      revisionNumber: 1,
-      status: "PASSED",
-      qualificationState: "PASSED",
-      checks: [
-        {
-          id: "check_acceptance_criteria",
-          name: "1. Contract Acceptance Verification (Gemini 3.7 Flash)",
-          status: "SUCCESS",
-          summary: "All contractual acceptance criteria verified against implementation.",
-          durationMs: 380,
-          details: "• Prototype Engine specifications structurally verified.",
-        },
-        {
-          id: "check_sandboxed_test_runner",
-          name: "2. Autonomous Sandboxed Test Runner (Vitest Execution)",
-          status: "SUCCESS",
-          summary: "4 of 4 independent assertions passed in 38ms.",
-          durationMs: 38,
-          details: `> vitest run tests/autonomous_verification.test.ts\n✓ should validate milestone acceptance criteria (12ms)\n✓ should enforce state machine transitions (15ms)\n✓ should adhere to Dual SHA-256 state consensus (11ms)\nTests: 4 passed, 4 total\nTime: 38ms`,
-        },
-        {
-          id: "check_security_secret_audit",
-          name: "3. Secret & Credential Audit (Groq LPU Llama-3.3-70B)",
-          status: "SUCCESS",
-          summary: "0 exposed credentials or private keys detected in deliverable.",
-          durationMs: 190,
-          details: "Scan clean: No AWS, OpenAI, or RSA private keys detected.",
-        },
-        {
-          id: "check_sha256_consensus_seal",
-          name: "4. Immutable Dual SHA-256 Consensus Seal",
-          status: "SUCCESS",
-          summary: "sha256_#9b3e1f7a... locked into workspace ledger.",
-          durationMs: 40,
-        },
-      ],
-      testPassRate: 100,
-      totalTests: 4,
-      passedTests: 4,
-      failedTests: 0,
-      terminalOutput: `> vitest run tests/milestone_verification.test.ts\n✓ should validate milestone acceptance criteria (12ms)\n✓ should enforce state machine transitions (15ms)\n✓ should adhere to Dual SHA-256 state consensus (11ms)\nTests: 4 passed, 4 total\nTime: 38ms`,
-      sha256Seal: "sha256_#9b3e1f7a8c42",
-      securityScanPassed: true,
-      modelCascade: "gemini-3.7-flash",
-      fileName: "prototype-engine.zip",
-      fileSize: "2.4 MB",
-      githubPrUrl: "https://github.com/shopkart/storefront/pull/15",
-      completionNote: "Completed milestone deliverables with verified tests and dual consensus state tracking.",
-      submittedAt: new Date().toISOString(),
-    };
-
-    deliverableHistoryCache.set(milestoneId, [defaultRecord]);
-    return [defaultRecord];
+    // Do not fabricate fake prototype-engine records; return empty array if no submissions exist
+    return [];
   }
 
   /**

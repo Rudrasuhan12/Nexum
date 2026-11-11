@@ -4538,9 +4538,12 @@ export async function submitWorkspaceDeliverable(
   payload: {
     milestoneId: string;
     freelancerId: string;
-    repoUrl: string;
+    repoUrl?: string;
     previewUrl?: string;
     notes: string;
+    fileBase64?: string;
+    fileName?: string;
+    fileSize?: string;
   }
 ): Promise<{
   success: boolean;

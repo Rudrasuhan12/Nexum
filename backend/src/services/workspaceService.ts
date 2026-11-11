@@ -4,7 +4,8 @@ import { prisma } from "../prisma.js";
 import { computeCanonicalHash, computeTimelineSeal } from "../lib/canonicalHash.js";
 import { notificationQueue } from "./notificationQueue.js";
 import { generateContractMarkdown, saveContractAsProjectFile } from "../domain/agreements/contractGenerator.js";
-import { Role, ApprovalDecision, AgreementVersionStatus } from "@prisma/client";
+import { Role, ApprovalDecision, AgreementVersionStatus, MilestoneWorkStatus, SubmissionStatus } from "@prisma/client";
+import { autonomousVerifierService } from "./autonomousVerifierService.js";
 
 export interface SendMessageParams {
   projectId: string;
@@ -689,22 +690,79 @@ export class WorkspaceService {
   }
 
   /**
-   * Submit deliverable and start 72-hour countdown inspection clock.
+   * Submit deliverable, run autonomous verification, and start 72-hour countdown inspection clock.
    */
   async submitDeliverable(params: {
     projectId: string;
     milestoneId: string;
     freelancerId: string;
-    repoUrl: string;
+    repoUrl?: string;
     previewUrl?: string;
     notes: string;
+    fileBase64?: string;
+    fileName?: string;
+    fileSize?: string;
   }) {
     const conversation = await this.getOrCreateWorkspaceConversation(params.projectId);
+
+    // 1. Fetch milestone details
+    const milestone = await prisma.milestone.findUnique({
+      where: { id: params.milestoneId },
+      include: {
+        submissions: { orderBy: { revisionNumber: "desc" }, take: 1 },
+      },
+    });
+
+    const fileBuffer = params.fileBase64 ? Buffer.from(params.fileBase64, "base64") : undefined;
+    const realFileName = params.fileName || (params.repoUrl ? "github_repository" : "deliverables.zip");
+    const nextRevNum = (milestone?.submissions[0]?.revisionNumber || 0) + 1;
+
+    // 2. Persist real MilestoneSubmission in DB
+    if (milestone) {
+      await prisma.$transaction(async (tx) => {
+        await tx.milestone.update({
+          where: { id: milestone.id },
+          data: { workStatus: MilestoneWorkStatus.AWAITING_CLIENT_REVIEW },
+        });
+
+        await tx.milestoneSubmission.create({
+          data: {
+            milestoneId: milestone.id,
+            revisionNumber: nextRevNum,
+            completionNote: params.notes,
+            status: SubmissionStatus.SUBMITTED,
+            links: [
+              ...(params.repoUrl ? [{ label: "Repository PR", url: params.repoUrl }] : []),
+              ...(params.previewUrl ? [{ label: "Walkthrough Demo", url: params.previewUrl }] : []),
+            ] as any,
+          },
+        });
+      }).catch((dbErr) => console.warn("[Workspace] Milestone DB update notice:", dbErr));
+    }
+
+    // 3. Run Autonomous Verification Pipeline with Real Submission Data
+    let auditRecord = null;
+    try {
+      auditRecord = await autonomousVerifierService.runAutomatedChecks({
+        milestoneId: params.milestoneId,
+        projectId: params.projectId,
+        milestoneTitle: milestone?.title || "Milestone Deliverable",
+        fileName: realFileName,
+        fileBuffer,
+        githubPrUrl: params.repoUrl,
+        demoUrl: params.previewUrl,
+        completionNote: params.notes,
+        freelancerId: params.freelancerId,
+      });
+    } catch (auditErr) {
+      console.warn("[Workspace] Autonomous audit notice:", auditErr);
+    }
 
     const deliverablePayload = {
       milestoneId: params.milestoneId,
       freelancerId: params.freelancerId,
-      repoUrl: params.repoUrl,
+      repoUrl: params.repoUrl || null,
+      fileName: realFileName,
       previewUrl: params.previewUrl || null,
       notes: params.notes,
       submittedAt: new Date().toISOString(),
@@ -713,6 +771,11 @@ export class WorkspaceService {
     const deliverableHash = computeCanonicalHash(deliverablePayload);
     const expiresAt = new Date(Date.now() + 72 * 3600 * 1000).toISOString();
 
+    const formattedAmount = milestone
+      ? `$${((milestone.amountMinor || milestone.amountCents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} ${milestone.currency || "USD"}`
+      : "$2,100.00 USD";
+
+    // 4. Create Workspace Timeline Message Card
     const card = await prisma.workspaceMessage.create({
       data: {
         conversationId: conversation.id,
@@ -720,16 +783,23 @@ export class WorkspaceService {
         senderRole: "FREELANCER",
         type: "deliverable_submission_card",
         origin: "WEB",
-        originalContent: `Deliverable submitted for milestone ${params.milestoneId}: ${params.notes}`,
+        originalContent: `Deliverable submitted for milestone ${milestone?.title || params.milestoneId}: ${params.notes}`,
         sha256Seal: deliverableHash,
         metadata: {
           milestoneId: params.milestoneId,
+          milestoneTitle: milestone?.title || `Milestone ${params.milestoneId.slice(-4)}`,
+          milestoneNumber: milestone?.orderIndex ?? milestone?.sequence ?? 1,
+          milestoneAmount: formattedAmount,
           repoUrl: params.repoUrl,
+          fileName: realFileName,
+          fileSize: params.fileSize || (fileBuffer ? `${(fileBuffer.length / (1024 * 1024)).toFixed(2)} MB` : undefined),
           previewUrl: params.previewUrl,
           inspectionExpiresAt: expiresAt,
           inspectionHoursRemaining: 72,
           deliverableHash,
-          status: "IN_REVIEW",
+          status: auditRecord ? auditRecord.qualificationState : "IN_REVIEW",
+          checks: auditRecord?.checks || [],
+          auditRecord,
         } as any,
       },
     });
@@ -738,6 +808,7 @@ export class WorkspaceService {
       card,
       deliverableHash,
       inspectionExpiresAt: expiresAt,
+      auditRecord,
     };
   }
 

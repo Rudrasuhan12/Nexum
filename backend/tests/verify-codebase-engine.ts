@@ -224,11 +224,19 @@ async function runEnterpriseEngineTests() {
   console.log("✓ TEST 7A PASSED: Inconclusive state correctly held escrow without penalizing freelancer.\n");
 
   console.log(">>> TEST 7B: Full Passed Qualification (Valid Deliverables + Demo Credentials Provided)");
+  const validZip = createTestZip({
+    "turbo.json": JSON.stringify({ pipeline: { build: { outputs: ["dist/**"] } } }),
+    "pnpm-workspace.yaml": "packages:\n  - 'packages/*'\n  - 'examples/*'",
+    "examples/basic/index.ts": "export function run() { return true; }",
+    "packages/core/index.ts": "export function core() { return 'active'; }",
+  });
+
   const passedResult = await autonomousVerifierService.runAutomatedChecks({
     milestoneId: "ms_e2e_passed",
     projectId: "prj_e2e_eval",
     milestoneTitle: "Milestone 1: Vercel AI Integration & Protected Dashboard UI",
-    githubPrUrl: "https://github.com/vercel/ai",
+    fileName: "deliverables-package.zip",
+    fileBuffer: validZip,
     demoCredentialsText: "Client: demo@shopkart.com / DemoPass2026!",
     deliverablesList: [
       "Core monorepo packages configured with pnpm workspace",

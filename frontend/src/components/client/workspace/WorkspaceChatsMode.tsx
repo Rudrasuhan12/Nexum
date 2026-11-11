@@ -23,6 +23,7 @@ import {
   Plus,
   Play,
   FileText,
+  FileCode,
   Lock,
   ArrowRight,
   Check,
@@ -125,6 +126,33 @@ export default function WorkspaceChatsMode({
   // Right Drawer collapsible state
   const [isRightDrawerOpen, setIsRightDrawerOpen] = useState(true);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [approvingMilestoneId, setApprovingMilestoneId] = useState<string | null>(null);
+  const [approvedMilestoneIds, setApprovedMilestoneIds] = useState<Record<string, boolean>>({});
+
+  const handleApproveAndRelease = async (milestoneId: string, milestoneNumber?: number, milestoneAmount?: string) => {
+    if (!milestoneId || approvingMilestoneId) return;
+    setApprovingMilestoneId(milestoneId);
+    showToast(`Approving Milestone ${milestoneNumber || ""} and releasing escrow funds...`);
+    try {
+      const res = await fetch(`/api/payments/milestones/${milestoneId}/approve-and-release`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback: "Accepted and approved by client via Workspace" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setApprovedMilestoneIds((prev) => ({ ...prev, [milestoneId]: true }));
+        showToast(`Milestone approved! Escrow funds released to ${selectedProject?.freelancerName || "freelancer"}.`);
+        setRefreshTrigger((n) => n + 1);
+      } else {
+        showToast(data.error?.message || data.error || "Approval failed");
+      }
+    } catch {
+      showToast("Approval request failed.");
+    } finally {
+      setApprovingMilestoneId(null);
+    }
+  };
 
   // Modals
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
@@ -2473,6 +2501,252 @@ export default function WorkspaceChatsMode({
                           <span className="truncate">SHA-256: {meta.sha256Seal.slice(0, 24)}...</span>
                         </div>
                       )}
+                    </div>
+                  );
+                }
+
+                // CARD TYPE L: Deliverable Submission Card (with 72h Review & Release Action)
+                if (item.type === "deliverable_submission_card") {
+                  const meta = (item as any).metadata || {};
+                  const fileName = meta.fileName;
+                  const fileSize = meta.fileSize;
+                  const repoUrl = meta.repoUrl;
+                  const previewUrl = meta.previewUrl;
+                  const notes = meta.notes;
+                  const checks = meta.checksRecord;
+                  const milestoneId = meta.milestoneId;
+                  const milestoneNumber = meta.milestoneNumber || 1;
+                  const milestoneTitle = meta.milestoneTitle || `Milestone ${milestoneNumber}`;
+                  const formattedAmount = meta.formattedAmount || "";
+                  const seal = meta.checksRecord?.sha256Seal || meta.sha256Seal || item.sha256Seal;
+                  const isApproved = Boolean(milestoneId && approvedMilestoneIds[milestoneId]);
+                  const isApproving = Boolean(milestoneId && approvingMilestoneId === milestoneId);
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-5 rounded-2xl border border-indigo-200/90 bg-gradient-to-br from-indigo-50/40 via-white to-blue-50/30 shadow-xs space-y-4 animate-in fade-in duration-200"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-xs">
+                            <Package className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <span className="font-extrabold text-slate-900 block text-sm">
+                              Deliverable Submitted: {milestoneTitle}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              By {selectedProject?.freelancerName || "Freelancer"} · {item.timestamp}
+                            </span>
+                          </div>
+                        </div>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${
+                            isApproved
+                              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                              : "bg-amber-50 text-amber-800 border-amber-200"
+                          }`}
+                        >
+                          <Clock className="w-3 h-3 text-amber-600" />
+                          <span>{isApproved ? "Approved & Escrow Released" : "72-Hour Inspection Buffer Active"}</span>
+                        </span>
+                      </div>
+
+                      {formattedAmount && (
+                        <div className="p-3 rounded-xl bg-indigo-50/60 border border-indigo-100 flex items-center justify-between text-xs">
+                          <span className="text-slate-600 font-medium">Escrow Protection Balance:</span>
+                          <span className="font-mono font-extrabold text-indigo-900 text-sm">{formattedAmount}</span>
+                        </div>
+                      )}
+
+                      {/* Submitted Deliverable Artifacts */}
+                      <div className="space-y-2">
+                        {fileName && (
+                          <div className="p-3.5 rounded-xl bg-white border border-slate-200/90 flex items-center justify-between text-xs shadow-2xs">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                                <FileCode className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-800 block">{fileName}</span>
+                                <span className="text-[10px] text-slate-400 font-mono">{fileSize || "Codebase Archive"}</span>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                              Uploaded Archive (.zip)
+                            </span>
+                          </div>
+                        )}
+
+                        {repoUrl && (
+                          <div className="p-3.5 rounded-xl bg-white border border-slate-200/90 flex items-center justify-between text-xs shadow-2xs">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
+                                <ExternalLink className="w-4 h-4" />
+                              </div>
+                              <span className="font-bold text-slate-800 truncate max-w-sm">{repoUrl}</span>
+                            </div>
+                            <a
+                              href={repoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition inline-flex items-center gap-1.5"
+                            >
+                              <span>Inspect PR</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        )}
+
+                        {previewUrl && (
+                          <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-100 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2 text-purple-900 font-medium">
+                              <Video className="w-4 h-4 text-purple-600" />
+                              <span className="truncate max-w-sm">Walkthrough: {previewUrl}</span>
+                            </div>
+                            <a
+                              href={previewUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1 rounded-md bg-white border border-purple-200 text-purple-700 font-bold text-xs hover:bg-purple-50"
+                            >
+                              Watch Demo
+                            </a>
+                          </div>
+                        )}
+                      </div>
+
+                      {notes && (
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-700 space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                            Freelancer Verification Notes
+                          </span>
+                          <p className="leading-relaxed">{notes}</p>
+                        </div>
+                      )}
+
+                      {/* Autonomous Pre-Flight Checks Summary */}
+                      <div className="p-3.5 rounded-xl bg-white border border-slate-200/90 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                            <span>Autonomous Proof-of-Execution Pre-Checks</span>
+                          </span>
+                          {checks ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {checks.passedTests}/{checks.totalTests} Passed
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Passed Pre-Flight
+                            </span>
+                          )}
+                        </div>
+                        {seal && (
+                          <div className="text-[10px] font-mono text-slate-400 truncate">
+                            Consensus Seal: {seal}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Client Action Buttons */}
+                      <div className="pt-1 flex flex-wrap items-center gap-2.5">
+                        {isApproved ? (
+                          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-200">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>Funds Released to Freelancer</span>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled={isApproving}
+                              onClick={() => handleApproveAndRelease(milestoneId, milestoneNumber, formattedAmount)}
+                              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>{isApproving ? "Releasing Escrow..." : `Review & Release Escrow Funds (${formattedAmount || "Milestone"})`}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMessageInput(`Feedback & revision request for ${milestoneTitle}: `);
+                              }}
+                              className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer shadow-2xs"
+                            >
+                              Request Revisions
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab("deliverables")}
+                              className="px-3 py-2 text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                            >
+                              View Full Inspection Details
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // CARD TYPE: Milestone Approved (Pre-funded)
+                if (item.type === "MILESTONE_APPROVED_PREFUNDED") {
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-5 rounded-2xl border border-emerald-300 bg-gradient-to-br from-emerald-50/70 via-white to-emerald-50/40 shadow-xs space-y-2.5 animate-in fade-in duration-200"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Milestone Paid & Next Active</span>
+                        </span>
+                        <span className="text-[11px] text-slate-400">{item.timestamp}</span>
+                      </div>
+                      <p className="text-xs sm:text-[13px] text-slate-800 leading-relaxed font-medium whitespace-pre-line">
+                        {item.bubbleText || item.rawMessage || item.summaryText}
+                      </p>
+                      <div className="pt-1 flex items-center gap-2 text-xs text-emerald-700 font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>Escrow released. Next milestone pre-funded and work is in progress.</span>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // CARD TYPE: Milestone Approved (Awaiting Next Funds)
+                if (item.type === "MILESTONE_APPROVED_AWAITING_FUNDS") {
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-5 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50/60 via-white to-amber-50/30 shadow-xs space-y-3 animate-in fade-in duration-200"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Milestone Paid · Escrow Deposit Required</span>
+                        </span>
+                        <span className="text-[11px] text-slate-400">{item.timestamp}</span>
+                      </div>
+                      <p className="text-xs sm:text-[13px] text-slate-800 leading-relaxed font-medium whitespace-pre-line">
+                        {item.bubbleText || item.rawMessage || item.summaryText}
+                      </p>
+                      <div className="pt-1 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs text-amber-800 font-semibold">
+                          <Clock className="w-4 h-4 text-amber-600" />
+                          <span>Deposit escrow for next milestone to authorize freelancer kickoff.</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("milestones")}
+                          className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                        >
+                          <span>Deposit Next Escrow</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   );
                 }

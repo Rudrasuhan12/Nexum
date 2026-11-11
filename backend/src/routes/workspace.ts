@@ -922,12 +922,12 @@ router.post("/projects/:projectId/amendments/:messageId/respond", async (req: Re
 router.post("/projects/:projectId/deliverables/submit", async (req: Request, res: Response) => {
   try {
     const { projectId } = req.params;
-    const { milestoneId, freelancerId, repoUrl, previewUrl, notes } = req.body;
+    const { milestoneId, freelancerId, repoUrl, previewUrl, notes, fileBase64, fileName, fileSize } = req.body;
 
-    if (!milestoneId || !freelancerId || !repoUrl) {
+    if (!milestoneId || !freelancerId || (!repoUrl && !fileName && !fileBase64)) {
       return res.status(400).json({
         success: false,
-        error: "milestoneId, freelancerId, and repoUrl are required",
+        error: "milestoneId, freelancerId, and either repoUrl or an uploaded codebase archive are required",
       });
     }
 
@@ -938,6 +938,9 @@ router.post("/projects/:projectId/deliverables/submit", async (req: Request, res
       repoUrl,
       previewUrl,
       notes: notes || "Milestone deliverable submitted for review.",
+      fileBase64,
+      fileName,
+      fileSize,
     });
 
     res.status(201).json({
