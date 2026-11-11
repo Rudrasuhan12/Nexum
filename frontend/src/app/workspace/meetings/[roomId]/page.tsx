@@ -102,7 +102,8 @@ function MeetingRoomContent() {
   const myRole = (user?.role || searchParams.get("role") || "FREELANCER").toUpperCase();
   const myName = user?.name || (myRole === "CLIENT" ? "Client" : "Freelancer");
   const myAvatar = user?.avatar || "";
-  const myId = user?.id || `${myRole}_${Date.now()}`;
+  const tabSessionIdRef = useRef(Math.random().toString(36).substring(2, 8));
+  const myId = user?.id ? `${user.id}_${tabSessionIdRef.current}` : `${myRole}_${Date.now()}_${tabSessionIdRef.current}`;
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
   // ─── WebRTC hook ─────────────────────────────────────────────────────────────
@@ -367,21 +368,13 @@ function MeetingRoomContent() {
       onClick={unlockAudio}
       className="h-screen w-screen bg-[#202124] text-[#e3e3e3] flex flex-col overflow-hidden font-sans select-none"
     >
-      {/* ── Dedicated Remote Audio Sink (Always mounted, sr-only, NEVER display:none) ── */}
+      {/* ── Dedicated Remote Audio Sink (Always mounted, in-viewport for Mobile WebKit, opacity:0) ── */}
       <audio
         ref={remoteAudioRef}
         autoPlay
         playsInline
         controls={false}
-        style={{
-          position: "fixed",
-          top: "-9999px",
-          left: "-9999px",
-          width: "1px",
-          height: "1px",
-          opacity: 0,
-          pointerEvents: "none",
-        }}
+        className="fixed bottom-0 right-0 w-1 h-1 opacity-0 pointer-events-none z-0"
       />
 
       {/* ── Browser Autoplay Audio Unlock Banner ────────────────────────────── */}
@@ -516,8 +509,8 @@ function MeetingRoomContent() {
               {/* Bottom name pill */}
               <div className="absolute bottom-3 left-3">
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-sm text-xs font-medium text-white">
-                  {remotePeer && !remotePeer.micOn && <MicOff className="w-3 h-3 text-[#f28b82]" />}
-                  <span>{remotePeer?.userName || counterpartName}</span>
+                  {remotePeer && remotePeer.micOn === false && <MicOff className="w-3 h-3 text-[#f28b82]" />}
+                  <span>{remotePeer?.userName || counterpartName} {remotePeer?.role ? `(${remotePeer.role.toLowerCase()})` : ""}</span>
                 </div>
               </div>
             </div>
@@ -610,8 +603,10 @@ function MeetingRoomContent() {
                       <div className="text-sm font-medium text-white truncate">{p.userName}</div>
                       <div className="text-xs text-[#9aa0a6]">{p.role}</div>
                     </div>
-                    {p.micOn !== undefined && (
-                      p.micOn ? <Mic className="w-4 h-4 text-[#81c995]" /> : <MicOff className="w-4 h-4 text-[#f28b82]" />
+                    {p.micOn === false ? (
+                      <MicOff className="w-4 h-4 text-[#f28b82]" />
+                    ) : (
+                      <Mic className="w-4 h-4 text-[#81c995]" />
                     )}
                   </div>
                 ))}

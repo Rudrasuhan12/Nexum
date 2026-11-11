@@ -22,8 +22,8 @@ function buildIceServers(): RTCIceServer[] {
     { urls: "stun:stun1.l.google.com:19302" },
   ];
 
-  const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
-  const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+  const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME || "0f63bbad439c1563dfea1379";
+  const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL || "HeTQ52tEAHGgmf4r";
 
   if (turnUsername && turnCredential) {
     const defaultUrls = [
@@ -45,6 +45,25 @@ function buildIceServers(): RTCIceServer[] {
 }
 
 const ICE_SERVERS = buildIceServers();
+
+function createSilentAudioTrack(): MediaStreamTrack | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const dst = ctx.createMediaStreamDestination();
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    osc.connect(gain);
+    gain.connect(dst);
+    osc.start();
+    const track = dst.stream.getAudioTracks()[0];
+    track.enabled = true;
+    return track;
+  } catch {
+    return null;
+  }
+}
 
 function getAudioSender(pc: RTCPeerConnection): RTCRtpSender | undefined {
   const transceiver = pc.getTransceivers().find(
@@ -187,7 +206,7 @@ export function useWebRTC({
       (window as any).__debug_pc = pc;
     }
 
-    const localAudioTrack = localStreamRef.current?.getAudioTracks()[0] || null;
+    const localAudioTrack = localStreamRef.current?.getAudioTracks()[0] || createSilentAudioTrack();
     const localVideoTrack = localStreamRef.current?.getVideoTracks()[0] || null;
 
     // Upfront transceivers guarantee audio and video m-lines in SDP offer & answer
@@ -195,7 +214,7 @@ export function useWebRTC({
       if (localAudioTrack) {
         pc.addTransceiver(localAudioTrack, {
           direction: "sendrecv",
-          streams: localStreamRef.current ? [localStreamRef.current] : [],
+          streams: [localStreamRef.current || new MediaStream([localAudioTrack])],
         });
       } else {
         pc.addTransceiver("audio", { direction: "sendrecv" });
@@ -230,13 +249,13 @@ export function useWebRTC({
       event.track.enabled = true;
 
       setRemoteStream((prev) => {
-        const stream = prev || new MediaStream();
+        const stream = prev ? new MediaStream(prev.getTracks()) : new MediaStream();
         const existing = stream.getTracks().find((t) => t.kind === event.track.kind);
         if (existing) {
           stream.removeTrack(existing);
         }
         stream.addTrack(event.track);
-        return stream;
+        return new MediaStream(stream.getTracks());
       });
     };
 
@@ -332,6 +351,8 @@ export function useWebRTC({
         userName,
         role,
         avatar: avatar || "",
+        micOn: isMicOn,
+        videoOn: isVideoOn,
       }));
     };
 
@@ -350,7 +371,11 @@ export function useWebRTC({
         const others = (msg.participants as any[]).filter((p: any) => p.userId !== userId);
         const peerMap = new Map<string, RemotePeer>();
         for (const p of others) {
-          peerMap.set(p.userId, { ...p });
+          peerMap.set(p.userId, {
+            ...p,
+            micOn: p.micOn !== false,
+            videoOn: !!p.videoOn,
+          });
           remoteUserIdRef.current = p.userId;
         }
         setRemotePeers(peerMap);
@@ -366,11 +391,18 @@ export function useWebRTC({
 
       // 2. Another peer joined: WE are the existing peer, so WE initiate the offer
       if (type === "peer_joined") {
-        const { userId: uid, userName: uName, role: uRole, avatar: uAvatar } = msg;
+        const { userId: uid, userName: uName, role: uRole, avatar: uAvatar, micOn: uMic, videoOn: uVid } = msg;
         remoteUserIdRef.current = uid;
         setRemotePeers((prev) => {
           const next = new Map(prev);
-          next.set(uid, { userId: uid, userName: uName, role: uRole, avatar: uAvatar });
+          next.set(uid, {
+            userId: uid,
+            userName: uName,
+            role: uRole,
+            avatar: uAvatar,
+            micOn: uMic !== false,
+            videoOn: !!uVid,
+          });
           return next;
         });
 

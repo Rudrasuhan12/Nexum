@@ -22,6 +22,8 @@ interface SignalingPeer {
   userName: string;
   role: string;
   avatar?: string;
+  micOn?: boolean;
+  videoOn?: boolean;
 }
 
 interface Room {
@@ -95,7 +97,7 @@ export function attachSignalingServer(server: http.Server): WebSocketServer {
 
       // ─── JOIN ───────────────────────────────────────────────────────────────
       if (type === "join") {
-        const { roomId, userId, userName, role, avatar } = msg;
+        const { roomId, userId, userName, role, avatar, micOn, videoOn } = msg;
         if (!roomId || !userId) {
           sendErr(ws, "JOIN_MISSING_FIELDS", "roomId and userId required");
           return;
@@ -121,6 +123,8 @@ export function attachSignalingServer(server: http.Server): WebSocketServer {
           userName: userName || "Participant",
           role: role || "FREELANCER",
           avatar: avatar || "",
+          micOn: micOn !== false,
+          videoOn: !!videoOn,
         };
         room.peers.set(userId, peer);
 
@@ -130,6 +134,8 @@ export function attachSignalingServer(server: http.Server): WebSocketServer {
           userName: p.userName,
           role: p.role,
           avatar: p.avatar,
+          micOn: p.micOn !== false,
+          videoOn: !!p.videoOn,
         }));
         ws.send(JSON.stringify({ type: "joined", participants }));
 
@@ -140,6 +146,8 @@ export function attachSignalingServer(server: http.Server): WebSocketServer {
           userName: peer.userName,
           role: peer.role,
           avatar: peer.avatar,
+          micOn: peer.micOn !== false,
+          videoOn: !!peer.videoOn,
         }, userId);
 
         console.log(`[Signaling] ${userName} (${role}) joined room ${roomId}. Peers: ${room.peers.size}`);
@@ -247,6 +255,11 @@ export function attachSignalingServer(server: http.Server): WebSocketServer {
       // ─── MEDIA STATE NOTIFICATION ──────────────────────────────────────────
       if (type === "media_state") {
         const { micOn, videoOn, screenSharing } = msg;
+        const peer = room.peers.get(currentUserId);
+        if (peer) {
+          if (micOn !== undefined) peer.micOn = !!micOn;
+          if (videoOn !== undefined) peer.videoOn = !!videoOn;
+        }
         broadcast(room, {
           type: "media_state",
           fromUserId: currentUserId,
