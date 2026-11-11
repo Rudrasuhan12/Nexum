@@ -46,6 +46,22 @@ function buildIceServers(): RTCIceServer[] {
 
 const ICE_SERVERS = buildIceServers();
 
+function getAudioSender(pc: RTCPeerConnection): RTCRtpSender | undefined {
+  const transceiver = pc.getTransceivers().find(
+    (t) => t.sender.track?.kind === "audio" || t.receiver.track?.kind === "audio"
+  );
+  if (transceiver) return transceiver.sender;
+  return pc.getSenders().find((s) => s.track?.kind === "audio");
+}
+
+function getVideoSender(pc: RTCPeerConnection): RTCRtpSender | undefined {
+  const transceiver = pc.getTransceivers().find(
+    (t) => t.sender.track?.kind === "video" || t.receiver.track?.kind === "video"
+  );
+  if (transceiver) return transceiver.sender;
+  return pc.getSenders().find((s) => s.track?.kind === "video");
+}
+
 function resolveSignalingUrl(configuredBackendUrl: string): string {
   if (typeof window !== "undefined") {
     const currentHost = window.location.hostname;
@@ -167,27 +183,34 @@ export function useWebRTC({
     console.log("[WebRTC] Creating new RTCPeerConnection...");
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     pcRef.current = pc;
+    if (typeof window !== "undefined") {
+      (window as any).__debug_pc = pc;
+    }
+
+    const localAudioTrack = localStreamRef.current?.getAudioTracks()[0] || null;
+    const localVideoTrack = localStreamRef.current?.getVideoTracks()[0] || null;
 
     // Upfront transceivers guarantee audio and video m-lines in SDP offer & answer
     try {
-      pc.addTransceiver("audio", { direction: "sendrecv" });
-      pc.addTransceiver("video", { direction: "sendrecv" });
+      if (localAudioTrack) {
+        pc.addTransceiver(localAudioTrack, {
+          direction: "sendrecv",
+          streams: localStreamRef.current ? [localStreamRef.current] : [],
+        });
+      } else {
+        pc.addTransceiver("audio", { direction: "sendrecv" });
+      }
+
+      if (localVideoTrack) {
+        pc.addTransceiver(localVideoTrack, {
+          direction: "sendrecv",
+          streams: localStreamRef.current ? [localStreamRef.current] : [],
+        });
+      } else {
+        pc.addTransceiver("video", { direction: "sendrecv" });
+      }
     } catch (e) {
       console.warn("[WebRTC] addTransceiver warning:", e);
-    }
-
-    // Attach existing local tracks
-    if (localStreamRef.current) {
-      for (const track of localStreamRef.current.getTracks()) {
-        const sender = pc.getSenders().find((s) => s.track?.kind === track.kind || s.track === track);
-        if (sender) {
-          sender.replaceTrack(track).catch(console.warn);
-        } else {
-          try {
-            pc.addTrack(track, localStreamRef.current);
-          } catch {}
-        }
-      }
     }
 
     // Relay local ICE candidates
@@ -201,11 +224,18 @@ export function useWebRTC({
       }
     };
 
-    // Receive incoming remote tracks
+    // Receive incoming remote tracks and accumulate them into a unified MediaStream
     pc.ontrack = (event) => {
       console.log(`[WebRTC] Received remote track: ${event.track.kind}, id: ${event.track.id}`);
-      const incomingStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
-      setRemoteStream(incomingStream);
+      setRemoteStream((prev) => {
+        if (prev) {
+          prev.addTrack(event.track);
+          return new MediaStream(prev.getTracks());
+        }
+        return event.streams && event.streams[0]
+          ? event.streams[0]
+          : new MediaStream([event.track]);
+      });
     };
 
     pc.onconnectionstatechange = () => {
@@ -260,11 +290,9 @@ export function useWebRTC({
         const pc = pcRef.current;
         if (pc) {
           const track = stream.getAudioTracks()[0];
-          const audioSender = pc.getSenders().find(
-            (s) => s.track?.kind === "audio" || (s as any).kind === "audio"
-          );
+          const audioSender = getAudioSender(pc);
           if (audioSender) {
-            audioSender.replaceTrack(track).catch(console.warn);
+            await audioSender.replaceTrack(track);
           } else {
             pc.addTrack(track, stream);
           }
@@ -522,9 +550,7 @@ export function useWebRTC({
         setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
 
         const pc = pcRef.current || createPC();
-        const audioSender = pc.getSenders().find(
-          (s) => s.track?.kind === "audio" || (s as any).kind === "audio"
-        );
+        const audioSender = getAudioSender(pc);
 
         if (audioSender && audioTrack) {
           await audioSender.replaceTrack(audioTrack);
@@ -575,9 +601,7 @@ export function useWebRTC({
         setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
 
         const pc = pcRef.current || createPC();
-        const videoSender = pc.getSenders().find(
-          (s) => s.track?.kind === "video" || (s as any).kind === "video"
-        );
+        const videoSender = getVideoSender(pc);
 
         if (videoSender && videoTrack) {
           await videoSender.replaceTrack(videoTrack);
@@ -614,9 +638,7 @@ export function useWebRTC({
         const screenTrack = stream.getVideoTracks()[0];
 
         const pc = pcRef.current || createPC();
-        const videoSender = pc.getSenders().find(
-          (s) => s.track?.kind === "video" || (s as any).kind === "video"
-        );
+        const videoSender = getVideoSender(pc);
         if (videoSender) {
           await videoSender.replaceTrack(screenTrack);
         }
@@ -637,9 +659,7 @@ export function useWebRTC({
       }
       const pc = pcRef.current;
       const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
-      const videoSender = pc?.getSenders().find(
-        (s) => s.track?.kind === "video" || (s as any).kind === "video"
-      );
+      const videoSender = pc ? getVideoSender(pc) : undefined;
       if (videoSender && cameraTrack) {
         videoSender.replaceTrack(isVideoOn ? cameraTrack : null).catch(console.warn);
       }

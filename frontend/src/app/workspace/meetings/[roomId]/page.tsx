@@ -454,6 +454,7 @@ function MeetingRoomContent() {
                   ref={remoteVideoRef}
                   autoPlay
                   playsInline
+                  muted={true}
                   className="w-full h-full object-cover"
                 />
               ) : (
