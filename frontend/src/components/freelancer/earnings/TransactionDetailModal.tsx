@@ -12,6 +12,7 @@ import {
   Building,
 } from "lucide-react";
 import { FreelancerTransaction } from "@/lib/freelancer-earnings-types";
+import { downloadPaymentReceipt } from "@/lib/receipt-generator";
 
 interface TransactionDetailModalProps {
   transaction: FreelancerTransaction | null;
@@ -174,6 +175,20 @@ export default function TransactionDetailModal({
           <button
             type="button"
             onClick={() => {
+              downloadPaymentReceipt({
+                receiptNumber: `RCP-${new Date().getFullYear()}-${transaction.id.slice(-6).toUpperCase().replace(/[^A-Z0-9]/g, "")}`,
+                orderId: transaction.orderId || undefined,
+                captureId: transaction.captureId || undefined,
+                proofHash: transaction.proofHash,
+                amountDisplay: transaction.formattedAmount,
+                date: transaction.date,
+                status: transaction.status,
+                milestoneTitle: transaction.description,
+                projectName: transaction.project,
+                freelancerName: "Freelancer Account",
+                clientName: transaction.client,
+                paymentRail: transaction.paymentRail,
+              });
               showToast(`Receipt for ${transaction.description} downloaded.`);
               onClose();
             }}

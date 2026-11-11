@@ -4,6 +4,7 @@ import { clientPaymentsService } from "../services/clientPaymentsService.js";
 import { ValidationError, UnauthorizedError, ForbiddenError } from "../lib/errors.js";
 import { Role } from "@prisma/client";
 import { SESSION_COOKIE_NAME, validateSession } from "../lib/auth.js";
+import { prisma } from "../prisma.js";
 
 const router = Router();
 
@@ -35,6 +36,23 @@ async function getClientId(req: Request): Promise<string> {
       // Continue to fallback
     }
   }
+
+  // 3. Fallback to active client user from database before mock
+  try {
+    const realClient = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { role: Role.CLIENT },
+          { email: "csmishra952@gmail.com" },
+          { name: { contains: "Sambit", mode: "insensitive" } },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (realClient?.id) {
+      return realClient.id;
+    }
+  } catch {}
 
   return "usr_client_alex";
 }

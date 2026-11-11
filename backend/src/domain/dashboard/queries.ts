@@ -310,15 +310,16 @@ export async function getEarningsSnapshot(freelancerId: string): Promise<{
   const acceptedMilestones = await prisma.milestone.findMany({
     where: {
       OR: [
-        { agreement: { freelancerId }, workStatus: MilestoneWorkStatus.ACCEPTED, state: PaymentState.CAPTURED },
-        { project: { agreement: { freelancerId } }, workStatus: MilestoneWorkStatus.ACCEPTED, state: PaymentState.CAPTURED },
+        { agreement: { freelancerId }, workStatus: { in: [MilestoneWorkStatus.ACCEPTED, "COMPLETED" as any] } },
+        { project: { agreement: { freelancerId } }, workStatus: { in: [MilestoneWorkStatus.ACCEPTED, "COMPLETED" as any] } },
+        { project: { projectProposals: { some: { freelancerId, status: "ACCEPTED" } } }, workStatus: { in: [MilestoneWorkStatus.ACCEPTED, "COMPLETED" as any] } },
       ],
       removedAt: null,
     },
   });
 
   const milestoneTotalMinor = acceptedMilestones.reduce(
-    (sum, m) => sum + (m.amountMinor || m.amountCents || 0),
+    (sum, m) => sum + (m.amountMinor || (m as any).amountCents || 0),
     0
   );
   if (milestoneTotalMinor > totalReleased) {
@@ -329,7 +330,12 @@ export async function getEarningsSnapshot(freelancerId: string): Promise<{
 
   const milestones = await prisma.milestone.findMany({
     where: {
-      agreement: { freelancerId },
+      OR: [
+        { agreement: { freelancerId } },
+        { project: { agreement: { freelancerId } } },
+        { project: { projectProposals: { some: { freelancerId, status: "ACCEPTED" } } } },
+        { project: { proposals: { some: { freelancerId, status: "ACCEPTED" } } } },
+      ],
       removedAt: null,
     },
     include: {
@@ -345,12 +351,19 @@ export async function getEarningsSnapshot(freelancerId: string): Promise<{
 
   for (const m of milestones) {
     const latestPayment = m.payments[0];
-    if (latestPayment && latestPayment.status === "CAPTURED") {
-      if (m.workStatus === MilestoneWorkStatus.IN_PROGRESS || m.workStatus === MilestoneWorkStatus.REVISIONS_REQUESTED) {
-        fundedMinor += latestPayment.amountMinor;
-      } else if (m.workStatus === MilestoneWorkStatus.AWAITING_CLIENT_REVIEW) {
-        inReviewMinor += latestPayment.amountMinor;
-      }
+    const isCaptured =
+      (latestPayment && (latestPayment.status === "CAPTURED" || latestPayment.status === "APPROVED")) ||
+      m.state === PaymentState.CAPTURED ||
+      m.workStatus === MilestoneWorkStatus.IN_PROGRESS;
+
+    const amt = m.amountMinor || (m as any).amountCents || latestPayment?.amountMinor || 0;
+
+    if (isCaptured && m.workStatus !== MilestoneWorkStatus.ACCEPTED && (m as any).workStatus !== "COMPLETED") {
+      fundedMinor += amt;
+    }
+
+    if (m.workStatus === MilestoneWorkStatus.AWAITING_CLIENT_REVIEW || m.workStatus === MilestoneWorkStatus.READY_TO_SUBMIT) {
+      inReviewMinor += amt;
     }
   }
 
@@ -616,14 +629,35 @@ export async function getMonthlyEarnings(freelancerId: string): Promise<Array<{
 
   const milestones = await prisma.milestone.findMany({
     where: {
-      agreement: { freelancerId },
+      OR: [
+        { agreement: { freelancerId } },
+        { project: { agreement: { freelancerId } } },
+        { project: { projectProposals: { some: { freelancerId, status: "ACCEPTED" } } } },
+        { project: { proposals: { some: { freelancerId, status: "ACCEPTED" } } } },
+      ],
       removedAt: null,
-      workStatus: { in: [MilestoneWorkStatus.IN_PROGRESS, MilestoneWorkStatus.AWAITING_CLIENT_REVIEW] },
     },
   });
 
-  const totalReleased = entries.reduce((sum, e) => sum + e.amountMinor, 0) / 100;
-  const totalPending = milestones.reduce((sum, m) => sum + m.amountMinor, 0) / 100;
+  const acceptedMilestones = milestones.filter(
+    (m) => m.workStatus === MilestoneWorkStatus.ACCEPTED || (m as any).workStatus === "COMPLETED"
+  );
+  const pendingMilestones = milestones.filter(
+    (m) =>
+      m.workStatus === MilestoneWorkStatus.IN_PROGRESS ||
+      m.workStatus === MilestoneWorkStatus.AWAITING_CLIENT_REVIEW ||
+      m.workStatus === MilestoneWorkStatus.READY_TO_SUBMIT
+  );
+
+  let totalReleased = entries.reduce((sum, e) => sum + e.amountMinor, 0) / 100;
+  for (const m of acceptedMilestones) {
+    const hasLedger = entries.some((e) => e.milestoneId === m.id);
+    if (!hasLedger) {
+      totalReleased += (m.amountMinor || (m as any).amountCents || 0) / 100;
+    }
+  }
+
+  const totalPending = pendingMilestones.reduce((sum, m) => sum + (m.amountMinor || (m as any).amountCents || 0), 0) / 100;
 
   const now = new Date();
   const result = [];

@@ -27,6 +27,7 @@ import {
   fetchClientUpcomingDeliverable,
   authorizeClientMilestoneRelease,
 } from "@/lib/api-client";
+import { downloadPaymentReceipt } from "@/lib/receipt-generator";
 
 export interface CashFlowTrendPoint {
   date: string;
@@ -1050,7 +1051,27 @@ export default function ClientPaymentsView({
               <button
                 type="button"
                 onClick={() => {
-                  showToast(`Downloaded verifiable PDF receipt for ${selectedTxForProof.receiptNumber}.`);
+                  downloadPaymentReceipt({
+                    receiptNumber: selectedTxForProof.receiptNumber,
+                    orderId: selectedTxForProof.orderId,
+                    captureId: selectedTxForProof.captureId,
+                    refundId: selectedTxForProof.refundId,
+                    proofHash: selectedTxForProof.proofHash,
+                    amountDisplay: selectedTxForProof.amountDisplay,
+                    currency: selectedTxForProof.currency,
+                    date: selectedTxForProof.date,
+                    time: selectedTxForProof.time,
+                    status: selectedTxForProof.status,
+                    statusLabel: selectedTxForProof.statusLabel,
+                    milestoneTitle: selectedTxForProof.milestoneTitle,
+                    milestoneNumber: selectedTxForProof.milestoneNumber,
+                    projectName: selectedTxForProof.projectName,
+                    freelancerName: selectedTxForProof.freelancerName,
+                    freelancerRole: selectedTxForProof.freelancerRole,
+                    clientName: user?.name || "Client",
+                    paymentRail: selectedTxForProof.paymentRail,
+                  });
+                  showToast(`Downloaded verifiable receipt for ${selectedTxForProof.receiptNumber}.`);
                   setSelectedTxForProof(null);
                 }}
                 className="px-4 py-2 rounded-xl text-xs font-bold bg-[#4f46e5] hover:bg-[#4338ca] text-white shadow-xs cursor-pointer flex items-center gap-1.5"

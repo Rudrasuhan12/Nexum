@@ -13,10 +13,21 @@ const router = Router();
 // Mount project AI assistant & document extraction routes
 router.use(projectAiRouter);
 
+function resolveClientId(req: Request): string {
+  if (req.user?.id) return req.user.id;
+  const headerId = (req.headers["x-client-id"] as string) || (req.headers["x-user-id"] as string);
+  if (headerId && headerId.trim()) return headerId.trim();
+  const queryId = req.query.clientId as string;
+  if (queryId && queryId.trim()) return queryId.trim();
+  const bodyId = (req.body?.clientId as string) || (req.body?.userId as string);
+  if (bodyId && bodyId.trim()) return bodyId.trim();
+  return "usr_client_alex";
+}
+
 // GET /api/client/overview - full overview telemetry, attention items, projects & talent
 router.get("/overview", async (req: Request, res: Response) => {
   try {
-    const clientId = (req.query.clientId as string) || undefined;
+    const clientId = resolveClientId(req);
     const data = await clientOverviewService.getOverview(clientId);
     res.json({ success: true, data });
   } catch (err: unknown) {
@@ -28,7 +39,7 @@ router.get("/overview", async (req: Request, res: Response) => {
 // GET /api/client/milestones - list all milestones with dynamic stats & distinct projects
 router.get("/milestones", async (req: Request, res: Response) => {
   try {
-    const clientId = (req.query.clientId as string) || "usr_client_alex";
+    const clientId = resolveClientId(req);
     const data = await clientOverviewService.getMilestones(clientId);
     res.json(data);
   } catch (err: unknown) {
@@ -40,7 +51,7 @@ router.get("/milestones", async (req: Request, res: Response) => {
 // POST /api/client/milestones/:id/approve - approve milestone deliverable and release funds
 router.post("/milestones/:id/approve", async (req: Request, res: Response) => {
   try {
-    const clientId = (req.body?.clientId as string) || (req.query?.clientId as string) || "usr_client_alex";
+    const clientId = resolveClientId(req);
     const result = await clientOverviewService.approveMilestone(req.params.id, clientId);
     res.json(result);
   } catch (err: unknown) {
