@@ -93,11 +93,13 @@ app.use(
 );
 app.use(
   express.json({
+    limit: "50mb",
     verify: (req: express.Request & { rawBody?: Buffer }, _res: express.Response, buf: Buffer) => {
       req.rawBody = buf;
     },
   })
 );
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cookieParser());
 app.use(csrfProtection);
 

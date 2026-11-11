@@ -4541,6 +4541,7 @@ export async function submitWorkspaceDeliverable(
     repoUrl?: string;
     previewUrl?: string;
     notes: string;
+    file?: File | Blob | null;
     fileBase64?: string;
     fileName?: string;
     fileSize?: string;
@@ -4551,10 +4552,29 @@ export async function submitWorkspaceDeliverable(
   error?: string;
 }> {
   try {
+    let body: BodyInit;
+    let headers: Record<string, string> = {};
+
+    if (payload.file) {
+      const formData = new FormData();
+      formData.append("file", payload.file);
+      formData.append("milestoneId", payload.milestoneId);
+      formData.append("freelancerId", payload.freelancerId);
+      if (payload.repoUrl) formData.append("repoUrl", payload.repoUrl);
+      if (payload.previewUrl) formData.append("previewUrl", payload.previewUrl);
+      formData.append("notes", payload.notes || "Milestone deliverable submitted.");
+      if (payload.fileName) formData.append("fileName", payload.fileName);
+      if (payload.fileSize) formData.append("fileSize", payload.fileSize);
+      body = formData;
+    } else {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(payload);
+    }
+
     const res = await fetch(`/api/workspace/projects/${projectId}/deliverables/submit`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      headers,
+      body,
     });
     return await res.json();
   } catch (err) {

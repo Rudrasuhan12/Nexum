@@ -3448,19 +3448,6 @@ export default function FreelancerWorkspaceChatsMode({
 
           showToast(`${targetTitle} deliverable logged to consensus!`);
 
-          let fileBase64: string | undefined;
-          if (details.file) {
-            fileBase64 = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const res = reader.result as string;
-                resolve(res.includes(",") ? res.split(",")[1] : res);
-              };
-              reader.onerror = () => resolve("");
-              reader.readAsDataURL(details.file as Blob);
-            });
-          }
-
           let responseData: any = null;
           try {
             const res = await submitWorkspaceDeliverable(selectedProjectId, {
@@ -3469,7 +3456,7 @@ export default function FreelancerWorkspaceChatsMode({
               repoUrl: details.prUrl || undefined,
               previewUrl: details.loomUrl || undefined,
               notes: details.notes,
-              fileBase64,
+              file: details.file,
               fileName: details.fileName,
               fileSize: details.fileSize,
             });

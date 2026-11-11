@@ -65,6 +65,9 @@ export async function GET(
   }
 }
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string[] }> }
@@ -79,8 +82,9 @@ export async function POST(
     let body: any;
 
     if (contentType.includes("multipart/form-data")) {
-      body = await request.formData();
-      // Notice: Do NOT set Content-Type header so fetch handles boundary generation automatically!
+      // Forward raw multipart stream directly without re-buffering
+      forwardHeaders["Content-Type"] = contentType;
+      body = request.body;
     } else {
       const json = await request.json().catch(() => ({}));
       body = JSON.stringify(json);
@@ -91,6 +95,8 @@ export async function POST(
       method: "POST",
       headers: forwardHeaders,
       body,
+      // @ts-ignore
+      duplex: "half",
       cache: "no-store",
     });
 

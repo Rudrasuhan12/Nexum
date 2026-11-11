@@ -918,43 +918,53 @@ router.post("/projects/:projectId/amendments/:messageId/respond", async (req: Re
 /**
  * POST /api/workspace/projects/:projectId/deliverables/submit
  * Submits deliverable links and starts the 72-hour inspection clock.
+ * Supports multipart/form-data (file upload via Multer) and JSON.
  */
-router.post("/projects/:projectId/deliverables/submit", async (req: Request, res: Response) => {
-  try {
-    const { projectId } = req.params;
-    const { milestoneId, freelancerId, repoUrl, previewUrl, notes, fileBase64, fileName, fileSize } = req.body;
+router.post(
+  "/projects/:projectId/deliverables/submit",
+  upload.single("file"),
+  async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      const file = req.file;
+      const { milestoneId, freelancerId, repoUrl, previewUrl, notes, fileBase64, fileName, fileSize } = req.body;
 
-    if (!milestoneId || !freelancerId || (!repoUrl && !fileName && !fileBase64)) {
-      return res.status(400).json({
+      const finalFileBuffer = file?.buffer || (fileBase64 ? Buffer.from(fileBase64, "base64") : undefined);
+      const finalFileName = file?.originalname || fileName;
+      const finalFileSize = file ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : fileSize;
+
+      if (!milestoneId || !freelancerId || (!repoUrl && !finalFileName && !finalFileBuffer)) {
+        return res.status(400).json({
+          success: false,
+          error: "milestoneId, freelancerId, and either repoUrl or an uploaded codebase archive are required",
+        });
+      }
+
+      const result = await workspaceService.submitDeliverable({
+        projectId,
+        milestoneId,
+        freelancerId,
+        repoUrl,
+        previewUrl,
+        notes: notes || "Milestone deliverable submitted for review.",
+        fileBuffer: finalFileBuffer,
+        fileName: finalFileName,
+        fileSize: finalFileSize,
+      });
+
+      res.status(201).json({
+        success: true,
+        data: result,
+      });
+    } catch (err) {
+      console.error("Submit deliverable error:", err);
+      res.status(500).json({
         success: false,
-        error: "milestoneId, freelancerId, and either repoUrl or an uploaded codebase archive are required",
+        error: err instanceof Error ? err.message : "Failed to submit deliverable",
       });
     }
-
-    const result = await workspaceService.submitDeliverable({
-      projectId,
-      milestoneId,
-      freelancerId,
-      repoUrl,
-      previewUrl,
-      notes: notes || "Milestone deliverable submitted for review.",
-      fileBase64,
-      fileName,
-      fileSize,
-    });
-
-    res.status(201).json({
-      success: true,
-      data: result,
-    });
-  } catch (err) {
-    console.error("Submit deliverable error:", err);
-    res.status(500).json({
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to submit deliverable",
-    });
   }
-});
+);
 
 /**
  * POST /api/workspace/projects/:projectId/meetings/propose

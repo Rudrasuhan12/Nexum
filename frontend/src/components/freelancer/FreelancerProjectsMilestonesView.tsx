@@ -484,19 +484,6 @@ export default function FreelancerProjectsMilestonesView({
     if (submission.githubPrUrl) links.push(submission.githubPrUrl);
     if (submission.demoUrl) links.push(submission.demoUrl);
 
-    let fileBase64: string | undefined;
-    if (submission.file) {
-      fileBase64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const res = reader.result as string;
-          resolve(res.includes(",") ? res.split(",")[1] : res);
-        };
-        reader.onerror = () => resolve("");
-        reader.readAsDataURL(submission.file as Blob);
-      });
-    }
-
     try {
       await submitWorkspaceDeliverable(selectedProject.id, {
         milestoneId: submittingMilestone.id,
@@ -504,7 +491,7 @@ export default function FreelancerProjectsMilestonesView({
         repoUrl: submission.githubPrUrl,
         previewUrl: submission.demoUrl,
         notes: submission.completionNote || submission.deliverableDescription || "Deliverable submitted",
-        fileBase64,
+        file: submission.file,
         fileName: submission.attachmentName || submission.file?.name,
         fileSize: submission.attachmentSize,
       });

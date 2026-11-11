@@ -699,6 +699,7 @@ export class WorkspaceService {
     repoUrl?: string;
     previewUrl?: string;
     notes: string;
+    fileBuffer?: Buffer;
     fileBase64?: string;
     fileName?: string;
     fileSize?: string;
@@ -713,7 +714,7 @@ export class WorkspaceService {
       },
     });
 
-    const fileBuffer = params.fileBase64 ? Buffer.from(params.fileBase64, "base64") : undefined;
+    const fileBuffer = params.fileBuffer || (params.fileBase64 ? Buffer.from(params.fileBase64, "base64") : undefined);
     const realFileName = params.fileName || (params.repoUrl ? "github_repository" : "deliverables.zip");
     const nextRevNum = (milestone?.submissions[0]?.revisionNumber || 0) + 1;
 
