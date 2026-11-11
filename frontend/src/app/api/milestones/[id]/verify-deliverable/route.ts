@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
+import { getBackendUrl } from "@/lib/backend-url";
 
-const BACKEND_URL =
-  process.env.BACKEND_URL ||
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  "http://localhost:4000";
+const BACKEND_URL = getBackendUrl();
 
 export async function POST(
   request: Request,
@@ -42,7 +40,7 @@ export async function POST(
       checks: [
         {
           id: "check_acceptance_criteria",
-          name: "Contract Acceptance Verification (Gemini 2.0 Flash)",
+          name: "Contract Acceptance Verification (Gemini 3.7 Flash)",
           status: "SUCCESS",
           summary: `Verified ${criteria.length}/${criteria.length} specifications against deliverable interface.`,
           durationMs: 390,
@@ -82,7 +80,7 @@ export async function POST(
         .join("\n")}\n\nTest Files  1 passed (1)\n     Tests  ${criteria.length} passed (${criteria.length})\n  Duration  48ms\nPass Rate  100% · Exit code 0`,
       sha256Seal: `sha256_#${id.replace(/[^a-f0-9]/gi, "a").slice(0, 8)}98e72`,
       securityScanPassed: true,
-      modelCascade: "Gemini 2.0 Flash -> Groq LPU -> OpenRouter AST",
+      modelCascade: "Gemini 3.7 Flash -> Groq LPU -> OpenRouter AST",
       fileName: body.fileName || "deliverables-package.zip",
       fileSize: body.fileSize || "4.8 MB",
       githubPrUrl: body.githubPrUrl,

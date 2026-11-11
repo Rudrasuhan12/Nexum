@@ -46,7 +46,7 @@ export const structuredResumeSchema = z.object({
 export type StructuredResume = z.infer<typeof structuredResumeSchema>;
 
 export const GEMINI_PROMPT_VERSION = "v2.0-structured-json";
-export const GEMINI_DEFAULT_MODEL = "gemini-2.5-flash";
+export const GEMINI_DEFAULT_MODEL = "gemini-3.7-flash";
 
 // Mock adapter slot for testing
 type GeminiExtractorFn = (text: string) => Promise<{

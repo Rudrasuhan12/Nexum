@@ -48,7 +48,7 @@ export async function uploadVisualProofArtifact(params: {
   // 1. Production Object Storage (S3 / R2 / Neon)
   if (s3Client) {
     try {
-      await s3Client.send(
+      const uploadPromise = s3Client.send(
         new PutObjectCommand({
           Bucket: S3_BUCKET,
           Key: key,
@@ -57,6 +57,12 @@ export async function uploadVisualProofArtifact(params: {
         })
       );
 
+      // Fast timeout safeguard (2.5s) if remote storage endpoint is offline
+      await Promise.race([
+        uploadPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error("S3 upload timeout")), 2500)),
+      ]);
+
       return {
         url: `/api/storage/${key}`,
         key,
@@ -64,7 +70,7 @@ export async function uploadVisualProofArtifact(params: {
         size: buffer.length,
       };
     } catch (err) {
-      console.warn("[Storage] S3 Object Storage upload failed, falling back to local file storage:", err);
+      console.warn("[Storage] S3 Object Storage upload failed or timed out, falling back to local file storage:", (err as Error)?.message || err);
     }
   }
 

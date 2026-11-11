@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
+import { getBackendUrl } from "@/lib/backend-url";
 
-const BACKEND_URL =
-  process.env.BACKEND_URL ||
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  "http://localhost:4000";
+const BACKEND_URL = getBackendUrl();
 
 export async function GET(
   request: Request,
@@ -44,7 +42,7 @@ export async function GET(
       checks: [
         {
           id: "check_acceptance_criteria",
-          name: "Contract Acceptance Verification (Gemini 2.0 Flash)",
+          name: "Contract Acceptance Verification (Gemini 3.7 Flash)",
           status: "SUCCESS",
           summary: "Verified 3/3 contractual deliverables against specification AST.",
           durationMs: 420,
@@ -82,7 +80,7 @@ export async function GET(
       terminalOutput: `✓ contracts/milestone_verification.test.ts (3 tests) 34ms\n  ✓ Test 1: Acceptance Criterion #1 - Deliverable interface conforms to contract (11ms)\n  ✓ Test 2: Acceptance Criterion #2 - Robust error boundaries and typed return signatures (14ms)\n  ✓ Test 3: Acceptance Criterion #3 - End-to-end integration and consensus integrity (9ms)\n\nTest Files  1 passed (1)\n     Tests  3 passed (3)\n  Duration  45ms\nPass Rate  100% · Exit code 0`,
       sha256Seal: `sha256_#${id.replace(/[^a-f0-9]/gi, "a").slice(0, 8)}7b4f8a92e106d`,
       securityScanPassed: true,
-      modelCascade: "Gemini 2.0 Flash -> Groq LPU -> OpenRouter AST",
+      modelCascade: "Gemini 3.7 Flash -> Groq LPU -> OpenRouter AST",
       fileName: "deliverables-package.zip",
       fileSize: "4.8 MB",
       githubPrUrl: "https://github.com/shopkart/storefront/pull/15",

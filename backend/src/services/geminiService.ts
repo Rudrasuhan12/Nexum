@@ -22,7 +22,7 @@ export class GeminiService {
   }
 
   /**
-   * Evaluate a requested scope add-on against locked milestones using Gemini 2.5 Flash.
+   * Evaluate a requested scope add-on against locked milestones using Gemini 3.7 Flash.
    * Determines whether to amend an existing milestone or create a new one,
    * calculating the integer price delta, timeline delta, and acceptance criteria.
    */
@@ -109,7 +109,7 @@ Return strictly valid JSON matching this schema:
 
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -179,7 +179,7 @@ Return strictly valid JSON matching this schema:
       return fallbackResult;
     }
 
-    const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+    const candidateModels = ["gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash"];
     const prompt = `You are Nexum AI, an expert software architecture and contract mediator.
 Analyze this technical or specification document ("${docName}") uploaded in the workspace.
 Produce a concise, professional executive summary (2-3 sentences) and 3 to 5 concrete deliverable key targets.

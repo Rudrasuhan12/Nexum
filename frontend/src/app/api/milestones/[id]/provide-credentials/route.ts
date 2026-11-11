@@ -37,7 +37,7 @@ export async function POST(
       checks: [
         {
           id: "check_acceptance_criteria",
-          name: "1. Contract Acceptance Verification (Gemini 2.0 Flash)",
+          name: "1. Contract Acceptance Verification (Gemini 3.7 Flash)",
           status: "SUCCESS",
           summary: "All contractual acceptance criteria verified against implementation.",
           durationMs: 380,
@@ -82,7 +82,7 @@ export async function POST(
       terminalOutput: "> vitest run tests/milestone_verification.test.ts\n✓ 4 passed",
       sha256Seal: `sha256_#${id.replace(/[^a-f0-9]/gi, "a").slice(0, 8)}7b4f8a`,
       securityScanPassed: true,
-      modelCascade: "Gemini 2.0 Flash -> Groq LPU",
+      modelCascade: "Gemini 3.7 Flash -> Groq LPU",
       visualProof: {
         status: "VERIFIED",
         targetUrl: "https://staging.shopkart.nexum.dev/client/dashboard",

@@ -279,7 +279,7 @@ export default function MilestoneAutomatedChecksCard({
           </span>
         </div>
         <p className="text-xs text-slate-500 leading-relaxed">
-          When a milestone deliverable is submitted, Nexum AI automatically initiates an automated 3-tier inspection (Gemini 2.0 Flash contract test suite, Groq LPU security scan, and dual SHA-256 consensus seal).
+          When a milestone deliverable is submitted, Nexum AI automatically initiates an automated 3-tier inspection (Gemini 3.7 Flash contract test suite, Groq LPU security scan, and dual SHA-256 consensus seal).
         </p>
         <button
           type="button"

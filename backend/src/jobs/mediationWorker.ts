@@ -72,7 +72,7 @@ export async function processMediationJob(
         data: {
           userId: message.senderId,
           purpose: "MEDIATE_MESSAGE",
-          model: "gemini-2.5-flash",
+          model: "gemini-3.7-flash",
           promptVersion: "v1.0",
           inputRecordRefs: [messageId],
           status: "REJECTED",
@@ -114,7 +114,7 @@ export async function processMediationJob(
       proposedAction: classification.proposedAction,
       requiresSenderConfirmation: classification.requiresSenderConfirmation,
       status: classification.requiresSenderConfirmation ? "DRAFT" : "DELIVERED",
-      model: "gemini-2.5-flash",
+      model: "gemini-3.7-flash",
       promptVersion: "v1.0",
       validatorResults: { valid: true },
     },
@@ -135,7 +135,7 @@ export async function processMediationJob(
       data: {
         userId: message.senderId,
         purpose: "MEDIATE_MESSAGE",
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         promptVersion: "v1.0",
         inputRecordRefs: [messageId],
         status: "SUCCESS",

@@ -177,19 +177,25 @@ export default function ClientOverview({
             };
           }
           if (c.id === "milestones_done") {
-            return {
-              ...c,
-              value: "6 / 8",
-              trend: "75% total progress",
-            };
+            const parts = c.value.split("/").map((s) => parseInt(s.trim(), 10));
+            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+              const nextDone = Math.min(parts[1], parts[0] + 1);
+              const pct = Math.round((nextDone / parts[1]) * 100);
+              return {
+                ...c,
+                value: `${nextDone} / ${parts[1]}`,
+                trend: `${pct}% total progress`,
+              };
+            }
           }
           return c;
         })
       );
 
       // Backend API call
-      await approveClientMilestone(item.milestoneId || "m2_webhook_engine");
-      showToast("Milestone 2 accepted! $1,500.00 USD released to Rohan Verma via PayPal.");
+      const targetMilestoneId = item.milestoneId || item.id.replace(/^att_/, "");
+      await approveClientMilestone(targetMilestoneId);
+      showToast(`${item.title} accepted! ${item.amount} released to ${item.freelancer} via PayPal.`);
     } catch (err) {
       console.error("Approval error:", err);
       showToast("Milestone accepted and ledger state updated.");

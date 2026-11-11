@@ -1094,7 +1094,7 @@ export default function ClientMilestonesView({
                           </span>
                         </div>
                         <p className="text-xs text-slate-600 mt-0.5">
-                          Autonomous inspection ran Gemini 2.0 Flash contract assertions, Vitest test suite, Groq secret audit, and SHA-256 seal.
+                          Autonomous inspection ran Gemini 3.7 Flash contract assertions, Vitest test suite, Groq secret audit, and SHA-256 seal.
                         </p>
                       </div>
                     </div>

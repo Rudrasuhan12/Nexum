@@ -76,7 +76,7 @@ export default function AssistantPage() {
   // Chat message state
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [activeModel, setActiveModel] = useState<string>("gemini-2.0-flash");
+  const [activeModel, setActiveModel] = useState<string>("gemini-3.7-flash");
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -576,7 +576,7 @@ export default function AssistantPage() {
               <div className="flex items-center gap-2">
                 <div
                   className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold text-blue-700 bg-blue-50 border border-blue-200"
-                  title="Modern Multi-Model Cascade Active: Gemini 2.0 Flash → 2.5 Flash → 2.0 Flash Lite → 1.5 Pro → 1.5 Flash"
+                  title="Modern Multi-Model Cascade Active: Gemini 3.7 Flash → 3.8 Flash → 3.6 Flash → 3.5 Flash"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   <span>{activeModel}</span>

@@ -23,6 +23,7 @@
     "verify:phase6": "tsx --env-file=.env tests/verify-phase6.ts",
     "verify:phase7": "tsx --env-file=.env tests/verify-phase7.ts",
     "verify:phase8": "tsx --env-file=.env tests/verify-phase8.ts",
+    "verify:codebase-engine": "tsx --env-file=.env tests/verify-codebase-engine.ts",
     "verify:batch6": "tsx --env-file=.env tests/verify-batch6.ts",
     "verify:workspace-isolation": "tsx --env-file=.env tests/verify-workspace-isolation.ts",
     "reset:terrashield": "tsx --env-file=.env scripts/resetTerraShield.ts",

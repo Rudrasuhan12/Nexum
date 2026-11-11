@@ -253,7 +253,7 @@ router.post("/chats/:id/messages", async (req: Request, res: Response, next: Nex
       data: {
         userId: ownerId,
         purpose: "PRIVATE_AI_CHAT",
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         promptVersion: "v1.0",
         inputRecordRefs,
         tokensIn: promptTokens,
