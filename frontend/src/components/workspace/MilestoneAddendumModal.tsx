@@ -15,8 +15,10 @@ import {
   ArrowRight,
   ShieldCheck,
   Check,
+  ShoppingBag,
 } from "lucide-react";
 import { suggestAddendumPrice, proposeScopeAmendment } from "@/lib/api-client";
+import Channel3ProductExplorerModal, { Channel3ProductItem } from "@/components/common/Channel3ProductExplorerModal";
 
 interface MilestoneAddendumModalProps {
   isOpen: boolean;
@@ -71,6 +73,7 @@ export default function MilestoneAddendumModal({
   // Submission State
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isChannel3ModalOpen, setIsChannel3ModalOpen] = useState(false);
 
   useEffect(() => {
     if (initialTitle) setTitle(initialTitle);
@@ -275,9 +278,20 @@ export default function MilestoneAddendumModal({
 
           {/* Specifications & Deliverables */}
           <div>
-            <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
-              Deliverables & Technical Specifications
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Deliverables & Technical Specifications
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsChannel3ModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
+                title="Browse real-world product catalog via Channel 3"
+              >
+                <ShoppingBag className="w-3.5 h-3.5 text-amber-600" />
+                <span>Channel 3 Catalog</span>
+              </button>
+            </div>
             <textarea
               rows={3}
               value={deliverables}
@@ -526,6 +540,28 @@ export default function MilestoneAddendumModal({
           </div>
         </div>
       </div>
+
+      {/* Channel 3 Product & SKU Explorer Modal */}
+      <Channel3ProductExplorerModal
+        isOpen={isChannel3ModalOpen}
+        onClose={() => setIsChannel3ModalOpen(false)}
+        initialQuery={title || "shoes"}
+        onSelectProduct={(p: Channel3ProductItem) => {
+          setIsChannel3ModalOpen(false);
+          if (!title) {
+            setTitle(`Implement ${p.title}`);
+          }
+          setDeliverables((prev) =>
+            prev
+              ? `${prev}\n\nReference SKU: ${p.sku} (${p.title} - ${p.priceDisplay})\nBrand: ${p.brand} | Retailer: ${p.retailer}`
+              : `Reference SKU: ${p.sku} (${p.title} - ${p.priceDisplay})\nBrand: ${p.brand} | Retailer: ${p.retailer}`
+          );
+          if (!budgetDollars || budgetDollars === 1500) {
+            setBudgetDollars(Math.round(p.priceCents / 100));
+          }
+          showToast?.(`Attached reference product "${p.title}" via Channel 3`);
+        }}
+      />
     </div>
   );
 }
