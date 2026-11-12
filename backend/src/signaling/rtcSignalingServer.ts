@@ -80,6 +80,14 @@ function cleanupOldRooms() {
 export function attachSignalingServer(server: http.Server): WebSocketServer {
   const wss = new WebSocketServer({ server, path: "/ws/meeting" });
 
+  wss.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      // Ignored: HTTP server error listener handles EADDRINUSE
+      return;
+    }
+    console.warn("[Signaling WebSocket] Notice:", err.message);
+  });
+
   wss.on("connection", (ws: WebSocket) => {
     let currentRoomId: string | null = null;
     let currentUserId: string | null = null;

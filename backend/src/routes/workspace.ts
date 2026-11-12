@@ -9,6 +9,7 @@ import { workspaceService } from "../services/workspaceService.js";
 import { groqService } from "../services/groqService.js";
 import { geminiService } from "../services/geminiService.js";
 import { defaultStorage } from "../lib/files.js";
+import { elasticService } from "../services/elasticService.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -429,6 +430,51 @@ router.get("/projects", async (req: Request, res: Response) => {
       error: err instanceof Error ? err.message : "Failed to fetch workspace projects",
     });
   }
+});
+
+/**
+ * GET /api/workspace/projects/:projectId/search
+ * Full-text search across messages, ADR decisions, and audit events powered by Elastic
+ */
+router.get("/projects/:projectId/search", async (req: Request, res: Response) => {
+  try {
+    const { projectId } = req.params;
+    const queryStr = (req.query.q as string) || (req.query.query as string) || "";
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 20, 1), 50);
+
+    if (!queryStr.trim()) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Search query 'q' must not be empty",
+          details: null,
+        },
+      });
+    }
+
+    const searchResult = await elasticService.searchWorkspace(projectId, queryStr, limit);
+    return res.json(searchResult);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Search error";
+    return res.status(500).json({
+      error: {
+        code: "SEARCH_ERROR",
+        message,
+        details: null,
+      },
+    });
+  }
+});
+
+/**
+ * GET /api/workspace/elastic/status
+ * Elastic cluster and APM health telemetry
+ */
+router.get("/elastic/status", (_req: Request, res: Response) => {
+  return res.json({
+    success: true,
+    telemetry: elasticService.getStatus(),
+  });
 });
 
 /**
