@@ -28,6 +28,13 @@ import {
   authorizeClientMilestoneRelease,
 } from "@/lib/api-client";
 import { downloadPaymentReceipt } from "@/lib/receipt-generator";
+import { AgGridReact } from "ag-grid-react";
+import { ModuleRegistry, AllCommunityModule, ColDef, GridApi, GridReadyEvent } from "ag-grid-community";
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-quartz.css";
+
+// Register all community features for AG Grid (Tables, Sorting, Filtering, CSV Export)
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 export interface CashFlowTrendPoint {
   date: string;
@@ -122,6 +129,162 @@ export default function ClientPaymentsView({
   // Transaction filter & search state
   const [txSearchQuery, setTxSearchQuery] = useState("");
   const [txStatusFilter, setTxStatusFilter] = useState<"ALL" | "RELEASED" | "IN_ESCROW" | "PENDING_REVIEW" | "REFUNDED">("ALL");
+  const [viewMode, setViewMode] = useState<"grid" | "cards">("grid");
+  const [gridApi, setGridApi] = useState<GridApi<PaymentTransaction> | null>(null);
+
+  const onExportCsv = useCallback(() => {
+    if (gridApi) {
+      gridApi.exportDataAsCsv({
+        fileName: `Nexum_Client_Payments_${new Date().toISOString().slice(0, 10)}.csv`,
+      });
+    }
+  }, [gridApi]);
+
+  const columnDefs = useMemo<ColDef<PaymentTransaction>[]>(() => [
+    {
+      headerName: "Contractor",
+      field: "freelancerName",
+      minWidth: 200,
+      flex: 1.4,
+      cellRenderer: (params: any) => {
+        const tx = params.data as PaymentTransaction | undefined;
+        if (!tx) return null;
+        return (
+          <div className="flex items-center gap-2.5 h-full py-1">
+            <div className="relative w-7 h-7 rounded-full overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
+              {tx.freelancerAvatar ? (
+                <img
+                  src={tx.freelancerAvatar}
+                  alt={tx.freelancerName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-[10px] uppercase">
+                  {tx.freelancerName?.charAt(0) || "F"}
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 leading-tight">
+              <div className="font-extrabold text-slate-900 text-xs truncate">
+                {tx.freelancerName}
+              </div>
+              <div className="text-[10px] text-slate-400 truncate">
+                {tx.freelancerRole || "Specialist"}
+              </div>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Project & Milestone",
+      field: "projectName",
+      minWidth: 220,
+      flex: 1.5,
+      cellRenderer: (params: any) => {
+        const tx = params.data as PaymentTransaction | undefined;
+        if (!tx) return null;
+        return (
+          <div className="flex flex-col justify-center h-full py-1 leading-tight">
+            <div className="font-semibold text-slate-900 text-xs truncate">
+              {tx.projectName}
+            </div>
+            <div className="text-[10px] text-slate-500 truncate">
+              {tx.milestoneTitle}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Settlement Date",
+      field: "date",
+      minWidth: 130,
+      flex: 1,
+      cellRenderer: (params: any) => {
+        const tx = params.data as PaymentTransaction | undefined;
+        if (!tx) return null;
+        return (
+          <div className="flex flex-col justify-center h-full font-mono text-xs leading-tight">
+            <span className="font-bold text-slate-900">{tx.date}</span>
+            <span className="text-[10px] text-slate-400">{tx.time}</span>
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Amount",
+      field: "amount",
+      minWidth: 120,
+      flex: 1,
+      cellRenderer: (params: any) => {
+        const tx = params.data as PaymentTransaction | undefined;
+        if (!tx) return null;
+        return (
+          <div className="flex items-center h-full font-mono font-extrabold text-xs sm:text-sm text-slate-900">
+            {tx.amountDisplay}
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Escrow Status",
+      field: "statusLabel",
+      minWidth: 130,
+      flex: 1,
+      cellRenderer: (params: any) => {
+        const tx = params.data as PaymentTransaction | undefined;
+        if (!tx) return null;
+        return (
+          <div className="flex items-center h-full">
+            <span
+              className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${tx.statusColor}`}
+            >
+              {tx.statusLabel}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Order ID",
+      field: "orderId",
+      minWidth: 130,
+      flex: 1,
+      cellRenderer: (params: any) => {
+        const tx = params.data as PaymentTransaction | undefined;
+        if (!tx) return null;
+        return (
+          <div className="flex items-center h-full font-mono text-[11px] text-slate-500 truncate">
+            {tx.orderId || tx.proofHash?.slice(0, 12) || "—"}
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Receipt",
+      field: "id",
+      minWidth: 100,
+      sortable: false,
+      filter: false,
+      cellRenderer: (params: any) => {
+        const tx = params.data as PaymentTransaction | undefined;
+        if (!tx) return null;
+        return (
+          <div className="flex items-center h-full">
+            <button
+              type="button"
+              onClick={() => setSelectedTxForProof(tx)}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-xs transition cursor-pointer flex items-center gap-1"
+            >
+              <Receipt className="w-3 h-3 text-slate-500" />
+              <span>Receipt</span>
+            </button>
+          </div>
+        );
+      },
+    },
+  ], []);
 
   // Chart hover state
   const [hoveredPoint, setHoveredPoint] = useState<CashFlowTrendPoint | null>(null);
@@ -731,36 +894,81 @@ export default function ClientPaymentsView({
         <div className="lg:col-span-8 bg-white rounded-3xl border border-slate-200/80 p-6 sm:p-7 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div>
-              <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
-                Transaction History
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
+                  Transaction History
+                </h2>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  AG Grid v36
+                </span>
+              </div>
               <p className="text-xs text-slate-500 mt-0.5">
                 Verified settlement records & Dual SHA-256 state consensus receipts.
               </p>
             </div>
 
-            {/* Quick Status Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto">
-              {(["ALL", "RELEASED", "IN_ESCROW", "PENDING_REVIEW"] as const).map((st) => (
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Quick Status Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                {(["ALL", "RELEASED", "IN_ESCROW", "PENDING_REVIEW"] as const).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setTxStatusFilter(st)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                      txStatusFilter === st
+                        ? "bg-[#4f46e5] text-white shadow-xs"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {st === "ALL"
+                      ? "All"
+                      : st === "IN_ESCROW"
+                      ? "In Escrow"
+                      : st === "PENDING_REVIEW"
+                      ? "Pending"
+                      : "Paid"}
+                  </button>
+                ))}
+              </div>
+
+              {/* View Mode Toggle & CSV Export */}
+              <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
                 <button
-                  key={st}
                   type="button"
-                  onClick={() => setTxStatusFilter(st)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
-                    txStatusFilter === st
-                      ? "bg-[#4f46e5] text-white shadow-xs"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
+                  onClick={onExportCsv}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                  title="Export grid data to CSV (AG Grid)"
                 >
-                  {st === "ALL"
-                    ? "All"
-                    : st === "IN_ESCROW"
-                    ? "In Escrow"
-                    : st === "PENDING_REVIEW"
-                    ? "Pending"
-                    : "Paid"}
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="hidden sm:inline">Export CSV</span>
                 </button>
-              ))}
+
+                <div className="flex rounded-xl bg-slate-100 p-0.5 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("grid")}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      viewMode === "grid"
+                        ? "bg-white text-indigo-700 shadow-xs"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    Grid
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("cards")}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      viewMode === "cards"
+                        ? "bg-white text-indigo-700 shadow-xs"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    Cards
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -776,28 +984,48 @@ export default function ClientPaymentsView({
             />
           </div>
 
-          {/* Transaction Rows or Clean Empty State */}
-          <div className="divide-y divide-slate-100 pt-1">
-            {isLoading ? (
-              <div className="py-12 text-center text-xs text-slate-400 font-medium">
-                Loading verified ledger entries...
+          {/* Transaction Content: AG Grid or Cards */}
+          {isLoading ? (
+            <div className="py-12 text-center text-xs text-slate-400 font-medium">
+              Loading verified ledger entries...
+            </div>
+          ) : filteredTransactions.length === 0 ? (
+            <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
+                <Receipt className="w-6 h-6" />
               </div>
-            ) : filteredTransactions.length === 0 ? (
-              <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
-                  <Receipt className="w-6 h-6" />
-                </div>
-                <div className="max-w-xs">
-                  <h3 className="text-sm font-bold text-slate-800">No transactions recorded</h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {txSearchQuery || txStatusFilter !== "ALL"
-                      ? "No records matched your search filters."
-                      : "Milestone funding deposits and releases will appear here with cryptographic receipts."}
-                  </p>
-                </div>
+              <div className="max-w-xs">
+                <h3 className="text-sm font-bold text-slate-800">No transactions recorded</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  {txSearchQuery || txStatusFilter !== "ALL"
+                    ? "No records matched your search filters."
+                    : "Milestone funding deposits and releases will appear here with cryptographic receipts."}
+                </p>
               </div>
-            ) : (
-              filteredTransactions.map((tx) => (
+            </div>
+          ) : viewMode === "grid" ? (
+            <div className="ag-theme-quartz w-full rounded-2xl overflow-hidden border border-slate-200/90 shadow-xs" style={{ height: 440 }}>
+              <AgGridReact<PaymentTransaction>
+                theme="legacy"
+                rowData={filteredTransactions}
+                columnDefs={columnDefs}
+                pagination={true}
+                paginationPageSize={10}
+                paginationPageSizeSelector={[10, 20, 50]}
+                onGridReady={(params: GridReadyEvent<PaymentTransaction>) => setGridApi(params.api)}
+                rowHeight={52}
+                headerHeight={42}
+                quickFilterText={txSearchQuery}
+                defaultColDef={{
+                  sortable: true,
+                  filter: true,
+                  resizable: true,
+                }}
+              />
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 pt-1">
+              {filteredTransactions.map((tx) => (
                 <div
                   key={tx.id}
                   className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 p-2.5 rounded-2xl transition"
@@ -855,9 +1083,9 @@ export default function ClientPaymentsView({
                     </button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* RIGHT: Stack of Previous & Upcoming Settlement Cards */}
