@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ShieldCheck,
   Search,
@@ -26,6 +26,14 @@ import {
   UserCheck,
 } from "lucide-react";
 import { fetchClientAuditLogs } from "@/lib/api-client";
+import { AgGridReact } from "ag-grid-react";
+import { ModuleRegistry, AllCommunityModule, ColDef, GridApi, GridReadyEvent } from "ag-grid-community";
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-quartz.css";
+import { Download } from "lucide-react";
+
+// Register all community features for AG Grid (Tables, Sorting, Filtering, CSV Export)
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface AuditLogEntry {
   id: string;
@@ -63,6 +71,129 @@ export default function ClientAuditLogsView({
   // Detail Modal state
   const [activeLogModal, setActiveLogModal] = useState<AuditLogEntry | null>(null);
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "cards">("grid");
+  const [gridApi, setGridApi] = useState<GridApi<AuditLogEntry> | null>(null);
+
+  const onExportCsv = useCallback(() => {
+    if (gridApi) {
+      gridApi.exportDataAsCsv({
+        fileName: `Nexum_Audit_Ledger_${new Date().toISOString().slice(0, 10)}.csv`,
+      });
+    }
+  }, [gridApi]);
+
+  const auditColumnDefs = useMemo<ColDef<AuditLogEntry>[]>(() => [
+    {
+      headerName: "Timestamp",
+      field: "timestamp",
+      minWidth: 160,
+      flex: 1.2,
+      cellRenderer: (params: any) => {
+        const log = params.data as AuditLogEntry | undefined;
+        if (!log) return null;
+        const d = new Date(log.timestamp);
+        return (
+          <div className="flex flex-col justify-center h-full font-mono text-[11px] leading-tight text-slate-700">
+            <span className="font-bold text-slate-900">{d.toLocaleDateString()}</span>
+            <span className="text-slate-400">{d.toLocaleTimeString()}</span>
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Action",
+      field: "action",
+      minWidth: 200,
+      flex: 1.5,
+      cellRenderer: (params: any) => {
+        const log = params.data as AuditLogEntry | undefined;
+        if (!log) return null;
+        const badge = getActionBadge(log.action);
+        const BadgeIcon = badge.icon;
+        return (
+          <div className="flex items-center gap-2 h-full">
+            <div className={`w-6 h-6 rounded-lg border grid place-items-center shrink-0 ${badge.bg}`}>
+              <BadgeIcon className="w-3.5 h-3.5" />
+            </div>
+            <span className="font-bold text-slate-900 text-xs truncate">
+              {log.action}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Object Type",
+      field: "objectType",
+      minWidth: 120,
+      flex: 1,
+      cellRenderer: (params: any) => {
+        const log = params.data as AuditLogEntry | undefined;
+        if (!log) return null;
+        return (
+          <div className="flex items-center h-full">
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+              {log.objectType}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Target ID",
+      field: "objectId",
+      minWidth: 150,
+      flex: 1.2,
+      cellRenderer: (params: any) => {
+        const log = params.data as AuditLogEntry | undefined;
+        if (!log) return null;
+        return (
+          <div className="flex items-center h-full font-mono text-xs text-slate-500 truncate">
+            {log.objectId || "—"}
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Consensus Hash",
+      field: "versionHash",
+      minWidth: 160,
+      flex: 1.2,
+      cellRenderer: (params: any) => {
+        const log = params.data as AuditLogEntry | undefined;
+        if (!log) return null;
+        return (
+          <div className="flex items-center gap-1.5 h-full font-mono text-[11px] text-slate-600">
+            <Lock className="w-3 h-3 text-slate-400 shrink-0" />
+            <span className="truncate">{log.versionHash ? log.versionHash.slice(0, 16) + "..." : "SHA256-RATIFIED"}</span>
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "Inspection",
+      field: "id",
+      minWidth: 100,
+      sortable: false,
+      filter: false,
+      cellRenderer: (params: any) => {
+        const log = params.data as AuditLogEntry | undefined;
+        if (!log) return null;
+        return (
+          <div className="flex items-center h-full">
+            <button
+              type="button"
+              onClick={() => setActiveLogModal(log)}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white hover:bg-slate-50 text-indigo-700 border border-slate-200 shadow-xs transition cursor-pointer flex items-center gap-1"
+            >
+              <Code2 className="w-3 h-3" />
+              <span>Details</span>
+            </button>
+          </div>
+        );
+      },
+    },
+  ], []);
 
   // Fetch logs
   const loadLogs = useCallback(async () => {
@@ -331,6 +462,44 @@ export default function ClientAuditLogsView({
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
             </button>
+
+            {/* Export CSV & View Mode Toggle (AG Grid) */}
+            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
+              <button
+                type="button"
+                onClick={onExportCsv}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                title="Export audit log to CSV via AG Grid"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-500" />
+                <span className="hidden sm:inline">Export CSV</span>
+              </button>
+
+              <div className="flex rounded-xl bg-slate-100 p-0.5 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("grid")}
+                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                    viewMode === "grid"
+                      ? "bg-white text-indigo-700 shadow-xs"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  AG Grid
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("cards")}
+                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                    viewMode === "cards"
+                      ? "bg-white text-indigo-700 shadow-xs"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Cards
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -420,6 +589,26 @@ export default function ClientAuditLogsView({
             >
               Clear all filters
             </button>
+          </div>
+        ) : viewMode === "grid" ? (
+          <div className="ag-theme-quartz w-full" style={{ height: 480 }}>
+            <AgGridReact<AuditLogEntry>
+              theme="legacy"
+              rowData={logs}
+              columnDefs={auditColumnDefs}
+              pagination={true}
+              paginationPageSize={limit}
+              paginationPageSizeSelector={[10, 25, 50]}
+              onGridReady={(params: GridReadyEvent<AuditLogEntry>) => setGridApi(params.api)}
+              rowHeight={52}
+              headerHeight={42}
+              quickFilterText={searchQuery}
+              defaultColDef={{
+                sortable: true,
+                filter: true,
+                resizable: true,
+              }}
+            />
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
