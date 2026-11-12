@@ -11,24 +11,23 @@ export function getBackendUrl(): string {
     process.env.BACKEND_URL ||
     process.env.NEXT_PUBLIC_BACKEND_URL;
 
-  const isCloudOrProd =
+  const isRemoteCloud =
     process.env.VERCEL === "1" ||
     Boolean(process.env.VERCEL) ||
     Boolean(process.env.VERCEL_URL) ||
     Boolean(process.env.NEXT_PUBLIC_VERCEL_URL) ||
-    process.env.NODE_ENV === "production" ||
     Boolean(process.env.RENDER) ||
-    (typeof window === "undefined" && Boolean(process.env.AWS_REGION));
+    Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
 
   const isLocalhost =
     !configured ||
     configured.includes("localhost") ||
     configured.includes("127.0.0.1");
 
-  // In production / Vercel cloud serverless, never block on unreachable localhost
-  if (isCloudOrProd && isLocalhost) {
+  // In real cloud serverless deployments (Vercel/Render), never block on localhost
+  if (isRemoteCloud && isLocalhost) {
     return FALLBACK_RENDER_URL;
   }
 
-  return configured || (isCloudOrProd ? FALLBACK_RENDER_URL : "http://localhost:4000");
+  return configured || (isRemoteCloud ? FALLBACK_RENDER_URL : "http://localhost:4000");
 }
