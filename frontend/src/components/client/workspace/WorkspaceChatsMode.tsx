@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import {
   Search,
   ShoppingCart,
+  ShoppingBag,
   Smartphone,
   BarChart2,
   Sparkles,
@@ -73,6 +74,9 @@ import HandoverChecklistView from "@/components/handover/HandoverChecklistView";
 import BilateralContractModal from "@/components/workspace/BilateralContractModal";
 import MilestoneAddendumModal from "@/components/workspace/MilestoneAddendumModal";
 import CounterofferModal from "@/components/workspace/CounterofferModal";
+import MilestoneGanttView from "@/components/workspace/MilestoneGanttView";
+import { ElasticWorkspaceSearchModal } from "@/components/workspace/ElasticWorkspaceSearchModal";
+import Channel3ProductExplorerModal from "@/components/common/Channel3ProductExplorerModal";
 import { parseMeetingSlot, formatDualTimezoneSlot, formatInTimezone } from "@/lib/timezone-utils";
 
 interface WorkspaceChatsModeProps {
@@ -98,7 +102,7 @@ export default function WorkspaceChatsMode({
   // Timeline & Messages
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [activeTab, setActiveTab] = useState<
-    "chat" | "milestones" | "deliverables" | "handover" | "tasks" | "files" | "decisions" | "meetings" | "safe_harbor"
+    "chat" | "milestones" | "timeline" | "deliverables" | "handover" | "tasks" | "files" | "decisions" | "meetings" | "safe_harbor"
   >("chat");
 
   // Project Handover State
@@ -174,6 +178,23 @@ export default function WorkspaceChatsMode({
   const [addendumInitialDesc, setAddendumInitialDesc] = useState("");
   const [isCounterofferModalOpen, setIsCounterofferModalOpen] = useState(false);
   const [counterTargetCard, setCounterTargetCard] = useState<any>(null);
+
+  // Phase 12: Elastic Search Modal State
+  const [isElasticSearchModalOpen, setIsElasticSearchModalOpen] = useState(false);
+
+  // Phase 11: Channel 3 Product Explorer Modal State
+  const [isChannel3ModalOpen, setIsChannel3ModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsElasticSearchModalOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const timelineEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1269,6 +1290,32 @@ export default function WorkspaceChatsMode({
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
+                    onClick={() => setIsElasticSearchModalOpen(true)}
+                    className="px-2.5 py-1 rounded-lg border border-amber-200/80 bg-amber-50/50 hover:bg-amber-100/60 text-xs font-semibold text-amber-800 transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                    title="Search workspace records (Ctrl+K)"
+                  >
+                    <Search className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Elastic Search</span>
+                    <span className="hidden md:inline-block px-1 py-0.2 rounded border border-amber-200 bg-white font-mono text-[9px] text-amber-700">
+                      ⌘K
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsChannel3ModalOpen(true)}
+                    className="px-2.5 py-1 rounded-lg border border-purple-200/80 bg-purple-50/60 hover:bg-purple-100/70 text-xs font-semibold text-purple-800 transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                    title="Channel 3 Universal Product Discovery & Scope"
+                  >
+                    <ShoppingBag className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Channel 3</span>
+                    <span className="hidden lg:inline-block px-1 py-0.2 rounded text-[9px] font-bold bg-purple-600 text-white">
+                      Catalog
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setIsProposeMeetingModalOpen(true)}
                     className="px-2.5 py-1 rounded-lg border border-slate-200/90 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition cursor-pointer shadow-2xs flex items-center gap-1.5"
                   >
@@ -1295,6 +1342,7 @@ export default function WorkspaceChatsMode({
               {[
                 { id: "chat", label: "Chat" },
                 { id: "milestones", label: "Milestones" },
+                { id: "timeline", label: "Timeline (Gantt)", badge: "Bryntum" },
                 { id: "deliverables", label: "Deliverables" },
                 {
                   id: "handover",
@@ -2997,7 +3045,32 @@ export default function WorkspaceChatsMode({
         {/* TAB 2: MILESTONES & ESCROW */}
         {activeTab === "milestones" && (
           <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Milestone Breakdown & Escrow</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Milestone Breakdown & Escrow</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsChannel3ModalOpen(true)}
+                  className="px-2.5 py-1.5 rounded-xl border border-purple-200/90 bg-purple-50/70 hover:bg-purple-100/80 text-xs font-bold text-purple-800 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Discover hardware/products to attach into milestone scope"
+                >
+                  <ShoppingBag className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Channel 3 Explorer</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddendumInitialTitle("");
+                    setAddendumInitialDesc("");
+                    setIsAddendumModalOpen(true);
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Propose Addendum</span>
+                </button>
+              </div>
+            </div>
             <div className="space-y-2.5">
               {selectedProject.milestones.length === 0 ? (
                 <div className="p-8 rounded-2xl border border-slate-200/80 bg-slate-50/50 text-center flex flex-col items-center justify-center">
@@ -3025,6 +3098,18 @@ export default function WorkspaceChatsMode({
               )}
             </div>
           </div>
+        )}
+
+        {/* TAB: BRYNTUM MILESTONE TIMELINE & GANTT ENGINE */}
+        {activeTab === "timeline" && (
+          <MilestoneGanttView
+            project={selectedProject}
+            userRole="CLIENT"
+            onPostponeMilestone={(milestoneId, currentDueDate) => {
+              setSelectedMilestoneForPostpone({ id: milestoneId, dueDate: currentDueDate });
+              setIsPostponeMilestoneModalOpen(true);
+            }}
+          />
         )}
 
           {/* TAB 3: DELIVERABLES (72-Hour Inspection Buffer) */}
@@ -3750,6 +3835,16 @@ export default function WorkspaceChatsMode({
                     Propose meeting
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => setIsChannel3ModalOpen(true)}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100/80 transition cursor-pointer shrink-0 flex items-center gap-1 shadow-2xs"
+                    title="Channel 3 Universal Product Discovery & Milestone Scope"
+                  >
+                    <ShoppingBag className="w-3 h-3 text-purple-600" />
+                    <span>Channel 3</span>
+                  </button>
+
                   {hasScopeOrPriceKeywords && (
                     <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/70 shrink-0">
                       <AlertCircle className="w-3 h-3 text-amber-600" />
@@ -4133,6 +4228,36 @@ export default function WorkspaceChatsMode({
       showToast={showToast}
     />
   )}
+
+  {/* Phase 12: Elastic Search Modal */}
+  <ElasticWorkspaceSearchModal
+    isOpen={isElasticSearchModalOpen}
+    onClose={() => setIsElasticSearchModalOpen(false)}
+    projectId={selectedProjectId}
+    projectName={selectedProject?.name || "Active Contract"}
+    onSelectHit={(hit) => {
+      if (hit.type === "DECISION") {
+        setActiveTab("tasks"); // or decisions
+      } else {
+        setActiveTab("chat");
+      }
+      showToast(`Selected ${hit.type.toLowerCase()} record: ${hit.title || hit.snippet.slice(0, 30)}...`);
+    }}
+  />
+
+  {/* Phase 11: Channel 3 Product Explorer Modal */}
+  <Channel3ProductExplorerModal
+    isOpen={isChannel3ModalOpen}
+    onClose={() => setIsChannel3ModalOpen(false)}
+    initialQuery="shoes"
+    onSelectProduct={(p) => {
+      setIsChannel3ModalOpen(false);
+      setAddendumInitialTitle(`Integrate ${p.title}`);
+      setAddendumInitialDesc(`Scope addition for product catalog: ${p.title} (${p.brand}) - SKU: ${p.sku}. Retail price: ${p.priceDisplay} (${p.retailer}). ${p.description}`);
+      setIsAddendumModalOpen(true);
+      showToast(`Selected "${p.title}" (${p.priceDisplay}) from Channel 3`);
+    }}
+  />
 
   {/* Toast Notification */}
       {toastMessage && (

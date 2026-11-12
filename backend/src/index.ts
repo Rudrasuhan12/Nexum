@@ -48,6 +48,7 @@ import freelancerDashboardRouter from "./routes/freelancer/dashboard.js";
 import notificationsRouter from "./routes/notifications.js";
 import freelancerSettingsRouter from "./routes/freelancer/settings.js";
 import freelancerAssistantRouter from "./routes/freelancer/assistant.js";
+import channel3Router from "./routes/channel3.js";
 import workspaceRouter from "./routes/workspace.js";
 import telegramRouter from "./routes/telegram.js";
 import { telegramService } from "./services/telegramService.js";
@@ -188,6 +189,7 @@ app.use("/api/client", clientRouter);
 app.use("/api/agreements", agreementsRouter);
 app.use("/api/milestones", milestonesVerifierRouter);
 app.use("/api/workspace", workspaceRouter);
+app.use("/api/channel3", channel3Router);
 app.use("/api/telegram", telegramRouter);
 app.use("/api/projects", handoverRouter);
 
@@ -211,7 +213,7 @@ app.use(notFoundHandler);
 // Global Standardized Error Handler: { error: { code, message, details } }
 app.use(errorHandler);
 
-if (env.NODE_ENV !== "test") {
+if (process.env.NODE_ENV !== "test" && env.NODE_ENV !== "test") {
   const server = app.listen(Number(port), "0.0.0.0", () => {
     console.log(`🚀 Nexum Express Backend running on port ${port}`);
     console.log(`📡 Health endpoint: http://localhost:${port}/health`);

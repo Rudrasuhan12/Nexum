@@ -5347,3 +5347,189 @@ export async function finalizeProjectHandover(projectId: string): Promise<{
     return { success: false, error: msg };
   }
 }
+
+// ===========================================================================
+// Phase 12: Elastic Search & APM Telemetry
+// ===========================================================================
+
+export interface ElasticSearchHit {
+  id: string;
+  type: "MESSAGE" | "DECISION" | "AUDIT_EVENT";
+  projectId: string;
+  title?: string;
+  content: string;
+  snippet: string;
+  score: number;
+  timestamp: string;
+  metadata?: Record<string, any>;
+}
+
+export interface ElasticSearchResult {
+  success: boolean;
+  query: string;
+  projectId: string;
+  provider: "ELASTICSEARCH" | "POSTGRES_FALLBACK";
+  count: number;
+  hits: ElasticSearchHit[];
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+}
+
+export interface ElasticTelemetry {
+  elasticsearchConfigured: boolean;
+  elasticsearchConnected: boolean;
+  apmConfigured: boolean;
+  apmServerUrl: string | null;
+  serviceName: string;
+  indices: string[];
+}
+
+/**
+ * Full-text search across workspace messages, ADR decisions, and audit events powered by Elastic
+ */
+export async function searchWorkspaceElastic(
+  projectId: string,
+  query: string,
+  limit = 20
+): Promise<ElasticSearchResult> {
+  try {
+    const res = await fetch(
+      `/api/workspace/projects/${encodeURIComponent(projectId)}/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+      { cache: "no-store" }
+    );
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Search query failed";
+    return {
+      success: false,
+      query,
+      projectId,
+      provider: "POSTGRES_FALLBACK",
+      count: 0,
+      hits: [],
+      error: { code: "NETWORK_ERROR", message: msg },
+    };
+  }
+}
+
+/**
+ * Fetch Elastic Search and APM telemetry health
+ */
+export async function fetchElasticTelemetry(): Promise<{
+  success: boolean;
+  telemetry?: ElasticTelemetry;
+  error?: string;
+}> {
+  try {
+    const res = await fetch("/api/workspace/elastic/status", { cache: "no-store" });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch Elastic status";
+    return { success: false, error: msg };
+  }
+}
+
+// ===========================================================================
+// Phase 13: PayPal Strengthening (Payouts, Disputes & Account Linking)
+// ===========================================================================
+
+export interface PayPalPayoutResult {
+  success: boolean;
+  payout?: {
+    batchId: string;
+    batchStatus: string;
+    itemId: string;
+    recipientEmail: string;
+    amountMinor: number;
+    currency: string;
+    payoutDate: string;
+  };
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+}
+
+/**
+ * Dispatches a PayPal Payout (REST v1) for an accepted milestone
+ */
+export async function triggerEscrowPayout(
+  milestoneId: string,
+  recipientEmail?: string,
+  note?: string
+): Promise<PayPalPayoutResult> {
+  try {
+    const res = await fetch("/api/payments/escrow/payout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ milestoneId, recipientEmail, note }),
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to trigger escrow payout";
+    return {
+      success: false,
+      error: { code: "NETWORK_ERROR", message: msg },
+    };
+  }
+}
+
+/**
+ * Links and verifies a PayPal account for a user (Client or Freelancer)
+ */
+export async function linkPayPalAccount(
+  userId: string,
+  paypalEmail: string
+): Promise<{
+  success: boolean;
+  paypalEmail?: string;
+  isPaypalVerified?: boolean;
+  message?: string;
+  error?: { code: string; message: string; details?: any };
+}> {
+  try {
+    const res = await fetch("/api/payments/paypal/link-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, paypalEmail }),
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to link PayPal account";
+    return {
+      success: false,
+      error: { code: "NETWORK_ERROR", message: msg },
+    };
+  }
+}
+
+/**
+ * Retrieves the linked PayPal status for a user
+ */
+export async function getPayPalAccountStatus(userId: string): Promise<{
+  success: boolean;
+  userId?: string;
+  paypalEmail?: string | null;
+  isPaypalVerified?: boolean;
+  paypalLinkedAt?: string | null;
+  error?: { code: string; message: string; details?: any };
+}> {
+  try {
+    const res = await fetch(`/api/payments/paypal/account-status?userId=${encodeURIComponent(userId)}`, {
+      cache: "no-store",
+    });
+    return await res.json();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch PayPal status";
+    return {
+      success: false,
+      error: { code: "NETWORK_ERROR", message: msg },
+    };
+  }
+}
+
+

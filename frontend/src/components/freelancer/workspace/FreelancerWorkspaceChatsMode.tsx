@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   Search,
   ShoppingCart,
+  ShoppingBag,
   Smartphone,
   BarChart2,
   Sparkles,
@@ -56,6 +57,9 @@ import HandoverChecklistView from "@/components/handover/HandoverChecklistView";
 import BilateralContractModal from "@/components/workspace/BilateralContractModal";
 import MilestoneAddendumModal from "@/components/workspace/MilestoneAddendumModal";
 import CounterofferModal from "@/components/workspace/CounterofferModal";
+import MilestoneGanttView from "@/components/workspace/MilestoneGanttView";
+import { ElasticWorkspaceSearchModal } from "@/components/workspace/ElasticWorkspaceSearchModal";
+import Channel3ProductExplorerModal from "@/components/common/Channel3ProductExplorerModal";
 import { parseMeetingSlot, formatDualTimezoneSlot, formatInTimezone } from "@/lib/timezone-utils";
 import {
   getWorkspaceTimeline,
@@ -109,6 +113,7 @@ export default function FreelancerWorkspaceChatsMode({
     | "deliverables"
     | "handover"
     | "milestones"
+    | "timeline"
     | "tasks"
     | "files"
     | "payments"
@@ -157,6 +162,23 @@ export default function FreelancerWorkspaceChatsMode({
   const [addendumInitialDesc, setAddendumInitialDesc] = useState("");
   const [isCounterofferModalOpen, setIsCounterofferModalOpen] = useState(false);
   const [counterTargetCard, setCounterTargetCard] = useState<any>(null);
+
+  // Phase 12: Elastic Search Modal State
+  const [isElasticSearchModalOpen, setIsElasticSearchModalOpen] = useState(false);
+
+  // Phase 11: Channel 3 Product Explorer Modal State
+  const [isChannel3ModalOpen, setIsChannel3ModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsElasticSearchModalOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const timelineEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1098,6 +1120,32 @@ export default function FreelancerWorkspaceChatsMode({
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
+                    onClick={() => setIsElasticSearchModalOpen(true)}
+                    className="px-2.5 py-1 rounded-lg border border-amber-200/80 bg-amber-50/50 hover:bg-amber-100/60 text-xs font-semibold text-amber-800 transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                    title="Search workspace records (Ctrl+K)"
+                  >
+                    <Search className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Elastic Search</span>
+                    <span className="hidden md:inline-block px-1 py-0.2 rounded border border-amber-200 bg-white font-mono text-[9px] text-amber-700">
+                      ⌘K
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsChannel3ModalOpen(true)}
+                    className="px-2.5 py-1 rounded-lg border border-purple-200/80 bg-purple-50/60 hover:bg-purple-100/70 text-xs font-semibold text-purple-800 transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                    title="Channel 3 Universal Product Discovery & Scope"
+                  >
+                    <ShoppingBag className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Channel 3</span>
+                    <span className="hidden lg:inline-block px-1 py-0.2 rounded text-[9px] font-bold bg-purple-600 text-white">
+                      Catalog
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setIsProposeMeetingModalOpen(true)}
                     className="px-2.5 py-1 rounded-lg border border-slate-200/90 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition cursor-pointer shadow-2xs flex items-center gap-1.5"
                   >
@@ -1136,6 +1184,7 @@ export default function FreelancerWorkspaceChatsMode({
                         : undefined,
                     },
                     { id: "milestones", label: "Milestones" },
+                    { id: "timeline", label: "Timeline (Gantt)", badge: "Bryntum" },
                     { id: "tasks", label: "Tasks" },
                     { id: "files", label: "Files" },
                     { id: "payments", label: "Payments & Escrow" },
@@ -2868,9 +2917,34 @@ export default function FreelancerWorkspaceChatsMode({
           {/* TAB 5: MILESTONES */}
           {activeTab === "milestones" && (
             <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Milestones & Escrow Schedule
-              </h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  Milestones & Escrow Schedule
+                </h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsChannel3ModalOpen(true)}
+                    className="px-2.5 py-1.5 rounded-xl border border-purple-200/90 bg-purple-50/70 hover:bg-purple-100/80 text-xs font-bold text-purple-800 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="Discover hardware/products to attach into milestone scope"
+                  >
+                    <ShoppingBag className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Channel 3 Explorer</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddendumInitialTitle("");
+                      setAddendumInitialDesc("");
+                      setIsAddendumModalOpen(true);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Propose Addendum</span>
+                  </button>
+                </div>
+              </div>
               {!selectedProject.milestones || selectedProject.milestones.length === 0 ? (
                 <div className="text-center py-12 px-4 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
                   <Layers className="w-10 h-10 text-slate-300 mx-auto mb-3" />
@@ -2903,6 +2977,17 @@ export default function FreelancerWorkspaceChatsMode({
                 </div>
               )}
             </div>
+          )}
+
+          {/* TAB: BRYNTUM MILESTONE TIMELINE & GANTT ENGINE */}
+          {activeTab === "timeline" && (
+            <MilestoneGanttView
+              project={selectedProject as any}
+              userRole="FREELANCER"
+              onPostponeMilestone={(milestoneId, currentDueDate) => {
+                showToast(`Milestone adjustment requested. Proposing postponement through mediation.`);
+              }}
+            />
           )}
 
           {/* TAB: PAYMENTS & ESCROW */}
@@ -3376,6 +3461,16 @@ export default function FreelancerWorkspaceChatsMode({
                     className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:bg-slate-200/60 transition cursor-pointer shrink-0"
                   >
                     Propose meeting
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsChannel3ModalOpen(true)}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100/80 transition cursor-pointer shrink-0 flex items-center gap-1 shadow-2xs"
+                    title="Channel 3 Universal Product Discovery & Milestone Scope"
+                  >
+                    <ShoppingBag className="w-3 h-3 text-purple-600" />
+                    <span>Channel 3</span>
                   </button>
 
                   {hasScopeOrPriceKeywords && (
@@ -3873,6 +3968,36 @@ export default function FreelancerWorkspaceChatsMode({
           showToast={showToast}
         />
       )}
+
+      {/* Phase 12: Elastic Search Modal */}
+      <ElasticWorkspaceSearchModal
+        isOpen={isElasticSearchModalOpen}
+        onClose={() => setIsElasticSearchModalOpen(false)}
+        projectId={selectedProjectId}
+        projectName={selectedProject?.name || "Active Contract"}
+        onSelectHit={(hit) => {
+          if (hit.type === "DECISION") {
+            setActiveTab("tasks");
+          } else {
+            setActiveTab("chat");
+          }
+          showToast(`Selected ${hit.type.toLowerCase()} record: ${hit.title || hit.snippet.slice(0, 30)}...`);
+        }}
+      />
+
+      {/* Phase 11: Channel 3 Product Explorer Modal */}
+      <Channel3ProductExplorerModal
+        isOpen={isChannel3ModalOpen}
+        onClose={() => setIsChannel3ModalOpen(false)}
+        initialQuery="shoes"
+        onSelectProduct={(p) => {
+          setIsChannel3ModalOpen(false);
+          setAddendumInitialTitle(`Integrate ${p.title}`);
+          setAddendumInitialDesc(`Scope addition for product catalog: ${p.title} (${p.brand}) - SKU: ${p.sku}. Retail price: ${p.priceDisplay} (${p.retailer}). ${p.description}`);
+          setIsAddendumModalOpen(true);
+          showToast(`Selected "${p.title}" (${p.priceDisplay}) from Channel 3`);
+        }}
+      />
     </div>
   );
 }
