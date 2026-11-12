@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { prisma } from "../prisma.js";
 import { PaymentState, MilestoneWorkStatus, ProjectState, LedgerEntryKind } from "@prisma/client";
-import { createPayPalOrder, capturePayPalOrder } from "../domain/payments/paypal.js";
+import { createPayPalOrder, capturePayPalOrder, createPayPalPayout, getPayPalPayoutBatch } from "../domain/payments/paypal.js";
 import { workspaceService } from "../services/workspaceService.js";
 import { z } from "zod";
 
@@ -35,6 +35,17 @@ const approveReleaseSchema = z.object({
 const refundUnreleasedSchema = z.object({
   projectId: z.string().min(1, "projectId is required"),
   reason: z.string().optional(),
+});
+
+const escrowPayoutSchema = z.object({
+  milestoneId: z.string().min(1, "milestoneId is required"),
+  recipientEmail: z.string().email("A valid recipient email is required").optional(),
+  note: z.string().optional(),
+});
+
+const linkPaypalAccountSchema = z.object({
+  userId: z.string().min(1, "userId is required"),
+  paypalEmail: z.string().email("A valid PayPal email address is required"),
 });
 
 // GET /api/payments/attempts - list payment attempts with evidence
@@ -764,6 +775,21 @@ router.post("/milestones/:id/approve-and-release", async (req: Request, res: Res
       return;
     }
 
+    // Safety: check for active dispute holds before release
+    const activeDispute = await prisma.disputeHold.findFirst({
+      where: { milestoneId: milestone.id, status: "OPEN" },
+    });
+    if (activeDispute) {
+      res.status(409).json({
+        error: {
+          code: "DISPUTE_HOLD_ACTIVE",
+          message: "Cannot release milestone funds: an active dispute hold is unresolved.",
+          details: { disputeId: activeDispute.id, reason: activeDispute.reason },
+        },
+      });
+      return;
+    }
+
     const now = new Date();
     const amountMinor = milestone.amountMinor || milestone.amountCents || 0;
     const currency = milestone.currency || "USD";
@@ -1030,6 +1056,248 @@ router.post("/escrow/refund-unreleased", async (req: Request, res: Response, nex
       currency,
       refundedMilestonesCount: refundableMilestones.length,
       message: `Successfully refunded ${formattedRefund} of unreleased escrow to Client.`,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/payments/escrow/payout
+ * Dispatches a PayPal Payout (REST v1) to the freelancer's linked PayPal account.
+ * Reconciles minor units and enforces dispute hold checks.
+ */
+router.post("/escrow/payout", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const parsed = escrowPayoutSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid payout request payload",
+          details: parsed.error.flatten(),
+        },
+      });
+      return;
+    }
+
+    const { milestoneId, recipientEmail, note } = parsed.data;
+
+    const milestone = await prisma.milestone.findUnique({
+      where: { id: milestoneId },
+      include: {
+        agreement: true,
+        project: {
+          include: {
+            agreement: true,
+            proposals: { where: { status: "ACCEPTED" } },
+            projectProposals: { where: { status: "ACCEPTED" } },
+          },
+        },
+      },
+    });
+
+    if (!milestone) {
+      res.status(404).json({
+        error: {
+          code: "NOT_FOUND",
+          message: "Milestone not found",
+          details: null,
+        },
+      });
+      return;
+    }
+
+    // Safety: check for active dispute holds
+    const activeDispute = await prisma.disputeHold.findFirst({
+      where: { milestoneId: milestone.id, status: "OPEN" },
+    });
+    if (activeDispute) {
+      res.status(409).json({
+        error: {
+          code: "DISPUTE_HOLD_ACTIVE",
+          message: "Cannot execute payout: an active dispute hold is unresolved.",
+          details: { disputeId: activeDispute.id, reason: activeDispute.reason },
+        },
+      });
+      return;
+    }
+
+    // Resolve recipient email
+    let targetEmail = recipientEmail;
+    const freelancerId =
+      milestone.project?.agreement?.freelancerId ||
+      (milestone.project as any)?.projectProposals?.[0]?.freelancerId ||
+      (milestone.project as any)?.proposals?.[0]?.freelancerId ||
+      milestone.agreement?.freelancerId;
+
+    if (!targetEmail && freelancerId) {
+      const freelancerUser = await prisma.user.findUnique({
+        where: { id: freelancerId },
+      });
+      const prefs = (freelancerUser?.preferences as Record<string, any>) || {};
+      targetEmail = prefs.paypalEmail || freelancerUser?.email;
+    }
+
+    if (!targetEmail) {
+      res.status(400).json({
+        error: {
+          code: "RECIPIENT_PAYPAL_REQUIRED",
+          message: "Recipient freelancer does not have a linked PayPal email address",
+          details: null,
+        },
+      });
+      return;
+    }
+
+    const amountMinor = milestone.amountMinor || milestone.amountCents || 0;
+    const currency = milestone.currency || "USD";
+
+    // Execute PayPal Payouts v1 call
+    const payoutResult = await createPayPalPayout({
+      recipientEmail: targetEmail,
+      amountMinor,
+      currency,
+      senderItemId: `payout_ms_${milestone.id}`,
+      note: note || `Nexum Milestone Settlement: ${milestone.title}`,
+      emailSubject: "Nexum Escrow Payout",
+    });
+
+    // Record append-only audit event
+    await prisma.auditEvent.create({
+      data: {
+        actorId: (req as any).user?.id || milestone.project?.clientId || "client",
+        action: "ESCROW_PAYOUT_INITIATED",
+        objectType: "MILESTONE",
+        objectId: milestone.id,
+        metadata: {
+          payoutBatchId: payoutResult.batchId,
+          batchStatus: payoutResult.batchStatus,
+          recipientEmail: targetEmail,
+          amountMinor,
+          currency,
+          milestoneId: milestone.id,
+          timestamp: new Date().toISOString(),
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      payout: payoutResult,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/payments/paypal/link-account
+ * Links and verifies a PayPal account for a user (Client or Freelancer)
+ */
+router.post("/paypal/link-account", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const parsed = linkPaypalAccountSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid PayPal link payload",
+          details: parsed.error.flatten(),
+        },
+      });
+      return;
+    }
+
+    const { userId, paypalEmail } = parsed.data;
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      res.status(404).json({
+        error: {
+          code: "USER_NOT_FOUND",
+          message: "User not found",
+          details: null,
+        },
+      });
+      return;
+    }
+
+    const existingPrefs = (user.preferences as Record<string, any>) || {};
+    const updatedPrefs = {
+      ...existingPrefs,
+      paypalEmail,
+      isPaypalVerified: true,
+      paypalLinkedAt: new Date().toISOString(),
+    };
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { preferences: updatedPrefs },
+    });
+
+    await prisma.auditEvent.create({
+      data: {
+        actorId: userId,
+        action: "PAYPAL_ACCOUNT_LINKED",
+        objectType: "USER",
+        objectId: userId,
+        metadata: {
+          paypalEmail,
+          isPaypalVerified: true,
+          timestamp: new Date().toISOString(),
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      paypalEmail,
+      isPaypalVerified: true,
+      message: "PayPal account successfully connected and verified for escrow payouts.",
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/payments/paypal/account-status
+ * Inspects connected PayPal account status for the given userId
+ */
+router.get("/paypal/account-status", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = (req.query.userId as string) || (req as any).user?.id;
+    if (!userId) {
+      res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "userId query parameter is required",
+          details: null,
+        },
+      });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      res.status(404).json({
+        error: {
+          code: "USER_NOT_FOUND",
+          message: "User not found",
+          details: null,
+        },
+      });
+      return;
+    }
+
+    const prefs = (user.preferences as Record<string, any>) || {};
+
+    res.json({
+      success: true,
+      userId,
+      paypalEmail: prefs.paypalEmail || null,
+      isPaypalVerified: Boolean(prefs.isPaypalVerified),
+      paypalLinkedAt: prefs.paypalLinkedAt || null,
     });
   } catch (err) {
     next(err);

@@ -93,6 +93,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction): Promis
     }
 
     // 3. Match payment in database
+    const disputedTxId = resource.disputed_transactions?.[0]?.seller_transaction_id;
     const orderId =
       resource.supplementary_data?.related_ids?.order_id ||
       (resource.intent ? resource.id : undefined) ||
@@ -102,13 +103,19 @@ router.post("/", async (req: Request, res: Response, next: NextFunction): Promis
     const payment = await prisma.payment.findFirst({
       where: {
         OR: [
+          disputedTxId ? { paypalCaptureId: disputedTxId } : undefined,
+          disputedTxId ? { paypalOrderId: disputedTxId } : undefined,
           orderId ? { paypalOrderId: orderId } : undefined,
           captureId ? { paypalCaptureId: captureId } : undefined,
           resource.custom_id ? { id: resource.custom_id } : undefined,
         ].filter(Boolean) as any,
       },
       include: {
-        milestone: true,
+        milestone: {
+          include: {
+            project: true,
+          },
+        },
       },
     });
 
@@ -119,6 +126,113 @@ router.post("/", async (req: Request, res: Response, next: NextFunction): Promis
         processed: false,
         message: "Webhook received but payment not found in system",
       });
+      return;
+    }
+
+    // Handle PayPal Dispute Lifecycle Events
+    if (eventType === "CUSTOMER.DISPUTE.CREATED") {
+      const disputeReason = resource.reason || resource.dispute_amount?.value
+        ? `PayPal Dispute: ${resource.reason || "Unauthorized/Item not received"} (${resource.dispute_amount?.value || ""} ${resource.dispute_amount?.currency_code || "USD"})`
+        : "PayPal Customer Dispute opened";
+
+      if (payment.milestoneId) {
+        const existingHold = await prisma.disputeHold.findFirst({
+          where: { milestoneId: payment.milestoneId, status: "OPEN" },
+        });
+
+        if (!existingHold) {
+          const clientId = payment.milestone?.project?.clientId || payment.milestone?.project?.id || "client";
+          await prisma.disputeHold.create({
+            data: {
+              milestoneId: payment.milestoneId,
+              openedById: clientId,
+              reason: disputeReason,
+              evidence: resource,
+              status: "OPEN",
+            },
+          });
+        }
+      }
+
+      await prisma.paymentEvent.create({
+        data: {
+          paymentId: payment.id,
+          source: PaymentEventSource.WEBHOOK,
+          paypalEventId: eventId,
+          eventType,
+          verified: true,
+          rawPayload: event,
+        },
+      });
+
+      await appendAuditEvent({
+        actorId: "PAYPAL_DISPUTES_WEBHOOK",
+        action: "DISPUTE_HOLD_OPENED_VIA_PAYPAL_WEBHOOK",
+        objectType: "MILESTONE",
+        objectId: payment.milestoneId || payment.id,
+        previousStatus: "CAPTURED",
+        newStatus: "DISPUTED",
+        metadata: { disputeId: resource.dispute_id, reason: disputeReason, eventId },
+      });
+
+      res.status(200).json({ success: true, processed: true, eventType, disputeCreated: true });
+      return;
+    }
+
+    if (eventType === "CUSTOMER.DISPUTE.RESOLVED") {
+      if (payment.milestoneId) {
+        await prisma.disputeHold.updateMany({
+          where: { milestoneId: payment.milestoneId, status: "OPEN" },
+          data: { status: "RESOLVED" },
+        });
+      }
+
+      await prisma.paymentEvent.create({
+        data: {
+          paymentId: payment.id,
+          source: PaymentEventSource.WEBHOOK,
+          paypalEventId: eventId,
+          eventType,
+          verified: true,
+          rawPayload: event,
+        },
+      });
+
+      await appendAuditEvent({
+        actorId: "PAYPAL_DISPUTES_WEBHOOK",
+        action: "DISPUTE_HOLD_RESOLVED_VIA_PAYPAL_WEBHOOK",
+        objectType: "MILESTONE",
+        objectId: payment.milestoneId || payment.id,
+        previousStatus: "DISPUTED",
+        newStatus: "RESOLVED",
+        metadata: { disputeId: resource.dispute_id, outcome: resource.dispute_outcome, eventId },
+      });
+
+      res.status(200).json({ success: true, processed: true, eventType, disputeResolved: true });
+      return;
+    }
+
+    if (eventType === "PAYMENT.PAYOUTSBATCH.SUCCESS") {
+      await prisma.paymentEvent.create({
+        data: {
+          paymentId: payment.id,
+          source: PaymentEventSource.WEBHOOK,
+          paypalEventId: eventId,
+          eventType,
+          verified: true,
+          rawPayload: event,
+        },
+      });
+
+      await appendAuditEvent({
+        actorId: "PAYPAL_PAYOUTS_WEBHOOK",
+        action: "PAYPAL_PAYOUT_BATCH_SUCCESS",
+        objectType: "PAYMENT",
+        objectId: payment.id,
+        metadata: { batchId: resource.batch_header?.payout_batch_id, eventId },
+      });
+
+      res.status(200).json({ success: true, processed: true, eventType });
       return;
     }
 
